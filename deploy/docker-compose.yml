@@ -1,0 +1,50 @@
+# Vigilo — stack do projeto sobre a infra existente (Traefik + MySQL + Redis).
+# Copie este arquivo para ~/apps/vigilo/docker-compose.yml (ao lado da pasta src/):
+#   cp src/deploy/docker-compose.yml ~/apps/vigilo/
+# Os caminhos ./src abaixo assumem que o compose roda em ~/apps/vigilo/.
+services:
+  app:
+    build:
+      context: ./src/deploy
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www
+    networks: [data]
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www
+      - ./src/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [web, data]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vigilo.rule=Host(`vigilo.hygnuz.cloud`)"
+      - "traefik.http.routers.vigilo.entrypoints=websecure"
+      - "traefik.http.routers.vigilo.tls.certresolver=le"
+      - "traefik.docker.network=web"
+
+  queue:
+    build:
+      context: ./src/deploy
+    restart: unless-stopped
+    command: php artisan queue:work --tries=3 --timeout=90
+    volumes:
+      - ./src:/var/www
+    networks: [data]
+
+  scheduler:
+    build:
+      context: ./src/deploy
+    restart: unless-stopped
+    command: php artisan schedule:work
+    volumes:
+      - ./src:/var/www
+    networks: [data]
+
+networks:
+  web:
+    external: true
+  data:
+    external: true
