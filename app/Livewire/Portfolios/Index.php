@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Livewire\Portfolios;
 
 use App\Actions\QueuePortfolioRefresh;
+use App\Enums\RefreshStatus;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\Portfolio;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
@@ -89,7 +91,13 @@ class Index extends Component
         $this->currentOrganizationId();
 
         $portfolios = Portfolio::query()
-            ->withCount('monitoredCompanies')
+            ->withCount([
+                'monitoredCompanies',
+                'monitoredCompanies as ok_count' => fn (Builder $q) => $q->where('last_refresh_status', RefreshStatus::Ok->value),
+                'monitoredCompanies as pending_count' => fn (Builder $q) => $q->whereNull('last_refresh_status'),
+                'monitoredCompanies as not_found_count' => fn (Builder $q) => $q->where('last_refresh_status', RefreshStatus::NotFound->value),
+                'monitoredCompanies as error_count' => fn (Builder $q) => $q->where('last_refresh_status', RefreshStatus::Error->value),
+            ])
             ->latest()
             ->get();
 

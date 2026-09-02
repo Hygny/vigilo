@@ -26,4 +26,20 @@ enum ChangeType: string
             self::NameChanged => 'Razão social / nome fantasia alterado',
         };
     }
+
+    /**
+     * Ícone Material Symbols para o tipo de mudança.
+     */
+    public function icon(): string
+    {
+        return match ($this) {
+            self::SituacaoChanged => 'gpp_maybe',
+            self::PartnerAdded => 'person_add',
+            self::PartnerRemoved => 'person_remove',
+            self::AddressChanged => 'location_on',
+            self::CnaeChanged => 'category',
+            self::PorteChanged => 'straighten',
+            self::NameChanged => 'badge',
+        };
+    }
 }

@@ -5,9 +5,6 @@ use Livewire\Volt\Component;
 
 new class extends Component
 {
-    /**
-     * Log the current user out of the application.
-     */
     public function logout(Logout $logout): void
     {
         $logout();
@@ -16,108 +13,93 @@ new class extends Component
     }
 }; ?>
 
-<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
-    <!-- Primary Navigation Menu -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-            <div class="flex">
-                <!-- Brand -->
-                <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center gap-2">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-sm font-bold text-white">V</span>
-                        <span class="text-lg font-semibold tracking-tight text-slate-800">Vigilo</span>
+@php
+    $navItems = [
+        ['route' => 'dashboard', 'active' => 'dashboard', 'icon' => 'dashboard', 'label' => 'Painel'],
+        ['route' => 'portfolios.index', 'active' => 'portfolios.*', 'icon' => 'folder_open', 'label' => 'Portfólios'],
+        ['route' => 'alerts.index', 'active' => 'alerts.*', 'icon' => 'notifications', 'label' => 'Alertas'],
+    ];
+@endphp
+
+<header x-data="{
+            open: false,
+            theme: document.documentElement.getAttribute('data-theme') || 'light',
+            toggle() {
+                this.theme = this.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', this.theme);
+                try { localStorage.setItem('vigilo-theme', this.theme); } catch (e) {}
+            }
+        }"
+        class="sticky top-0 z-20 border-b border-line bg-surface shadow-card">
+    <div class="mx-auto flex h-[62px] max-w-[1200px] items-center gap-6 px-5 sm:px-8">
+        {{-- Marca --}}
+        <a href="{{ route('dashboard') }}" wire:navigate class="flex shrink-0 items-center gap-2.5">
+            <span class="flex h-[33px] w-[33px] items-center justify-center rounded-[9px] text-[17px] font-bold text-white shadow-card"
+                  style="background:linear-gradient(135deg,var(--logo-a),var(--logo-b));">V</span>
+            <span class="text-[17px] font-semibold tracking-tight text-ink">Vigilo</span>
+        </a>
+
+        {{-- Navegação (desktop) --}}
+        <nav class="hidden items-center gap-1 sm:flex">
+            @foreach ($navItems as $item)
+                @php $on = request()->routeIs($item['active']); @endphp
+                <a href="{{ route($item['route']) }}" wire:navigate
+                   @class([
+                       'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
+                       'bg-primary-soft text-primary' => $on,
+                       'text-ink-2 hover:bg-surface-2' => ! $on,
+                   ])>
+                    <x-ui.icon :name="$item['icon']" :size="19" />{{ $item['label'] }}
+                </a>
+            @endforeach
+        </nav>
+
+        {{-- Ações à direita --}}
+        <div class="ml-auto flex items-center gap-2.5">
+            <button @click="toggle()" title="Alternar tema"
+                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line bg-surface-2 text-ink-2 transition-colors hover:bg-surface-3">
+                <span class="msym" style="font-size:20px;" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'" aria-hidden="true">dark_mode</span>
+            </button>
+
+            <div class="relative" x-data="{ menu: false }" @click.outside="menu = false">
+                <button @click="menu = ! menu"
+                        class="flex items-center gap-2 rounded-full border border-line bg-surface-2 py-1 pl-1 pr-2.5 transition-colors hover:bg-surface-3">
+                    <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-surface-3">
+                        <x-ui.icon name="person" :size="18" class="text-ink-muted" />
+                    </span>
+                    <span class="hidden max-w-[120px] truncate text-[13.5px] font-medium text-ink-2 sm:block">{{ auth()->user()->name }}</span>
+                    <x-ui.icon name="expand_more" :size="18" class="text-ink-muted" />
+                </button>
+                <div x-show="menu" x-transition x-cloak
+                     class="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-float">
+                    <a href="{{ route('profile') }}" wire:navigate class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:bg-surface-2">
+                        <x-ui.icon name="settings" :size="18" />Perfil
                     </a>
-                </div>
-
-                <!-- Navigation Links -->
-                <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Painel') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('portfolios.index')" :active="request()->routeIs('portfolios.*')" wire:navigate>
-                        {{ __('Portfólios') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('alerts.index')" :active="request()->routeIs('alerts.*')" wire:navigate>
-                        {{ __('Alertas') }}
-                    </x-nav-link>
+                    <button wire:click="logout" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:bg-surface-2">
+                        <x-ui.icon name="logout" :size="18" />Sair
+                    </button>
                 </div>
             </div>
 
-            <!-- Settings Dropdown -->
-            <div class="hidden sm:flex sm:items-center sm:ms-6">
-                <x-dropdown align="right" width="48">
-                    <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150">
-                            <div x-data="{{ json_encode(['name' => auth()->user()->name]) }}" x-text="name" x-on:profile-updated.window="name = $event.detail.name"></div>
-
-                            <div class="ms-1">
-                                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                </svg>
-                            </div>
-                        </button>
-                    </x-slot>
-
-                    <x-slot name="content">
-                        <x-dropdown-link :href="route('profile')" wire:navigate>
-                            {{ __('Profile') }}
-                        </x-dropdown-link>
-
-                        <!-- Authentication -->
-                        <button wire:click="logout" class="w-full text-start">
-                            <x-dropdown-link>
-                                {{ __('Log Out') }}
-                            </x-dropdown-link>
-                        </button>
-                    </x-slot>
-                </x-dropdown>
-            </div>
-
-            <!-- Hamburger -->
-            <div class="-me-2 flex items-center sm:hidden">
-                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out">
-                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path :class="{'hidden': open, 'inline-flex': ! open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                        <path :class="{'hidden': ! open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
+            <button @click="open = ! open"
+                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line bg-surface-2 text-ink-2 sm:hidden">
+                <span class="msym" style="font-size:20px;" x-text="open ? 'close' : 'menu'" aria-hidden="true">menu</span>
+            </button>
         </div>
     </div>
 
-    <!-- Responsive Navigation Menu -->
-    <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
-        <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                {{ __('Painel') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('portfolios.index')" :active="request()->routeIs('portfolios.*')" wire:navigate>
-                {{ __('Portfólios') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('alerts.index')" :active="request()->routeIs('alerts.*')" wire:navigate>
-                {{ __('Alertas') }}
-            </x-responsive-nav-link>
-        </div>
-
-        <!-- Responsive Settings Options -->
-        <div class="pt-4 pb-1 border-t border-gray-200">
-            <div class="px-4">
-                <div class="font-medium text-base text-gray-800" x-data="{{ json_encode(['name' => auth()->user()->name]) }}" x-text="name" x-on:profile-updated.window="name = $event.detail.name"></div>
-                <div class="font-medium text-sm text-gray-500">{{ auth()->user()->email }}</div>
-            </div>
-
-            <div class="mt-3 space-y-1">
-                <x-responsive-nav-link :href="route('profile')" wire:navigate>
-                    {{ __('Profile') }}
-                </x-responsive-nav-link>
-
-                <!-- Authentication -->
-                <button wire:click="logout" class="w-full text-start">
-                    <x-responsive-nav-link>
-                        {{ __('Log Out') }}
-                    </x-responsive-nav-link>
-                </button>
-            </div>
-        </div>
+    {{-- Navegação (mobile) --}}
+    <div x-show="open" x-cloak class="space-y-1 border-t border-line bg-surface px-4 py-3 sm:hidden">
+        @foreach ($navItems as $item)
+            @php $on = request()->routeIs($item['active']); @endphp
+            <a href="{{ route($item['route']) }}" wire:navigate
+               @class([
+                   'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium',
+                   'bg-primary-soft text-primary' => $on,
+                   'text-ink-2 hover:bg-surface-2' => ! $on,
+               ])>
+                <x-ui.icon :name="$item['icon']" :size="20" />{{ $item['label'] }}
+            </a>
+        @endforeach
     </div>
-</nav>
+</header>

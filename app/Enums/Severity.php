@@ -35,15 +35,15 @@ enum Severity: string
     }
 
     /**
-     * Tailwind badge classes used across the UI.
+     * Tom do design system (mapeia para os componentes <x-ui.badge :tone>).
      */
-    public function badgeClasses(): string
+    public function tone(): string
     {
         return match ($this) {
-            self::Critical => 'bg-red-100 text-red-800 ring-red-600/20',
-            self::High => 'bg-orange-100 text-orange-800 ring-orange-600/20',
-            self::Medium => 'bg-amber-100 text-amber-800 ring-amber-600/20',
-            self::Low => 'bg-slate-100 text-slate-700 ring-slate-500/20',
+            self::Critical => 'crit',
+            self::High => 'high',
+            self::Medium => 'med',
+            self::Low => 'low',
         };
     }
 }

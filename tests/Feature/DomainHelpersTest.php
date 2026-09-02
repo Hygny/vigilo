@@ -12,9 +12,9 @@ it('orders severities by weight (critical > high > medium > low)', function () {
         ->and(Severity::Medium->weight())->toBeGreaterThan(Severity::Low->weight());
 });
 
-it('gives every severity a non-empty label and badge classes', function (Severity $severity) {
+it('gives every severity a non-empty label and tone', function (Severity $severity) {
     expect($severity->label())->not->toBe('')
-        ->and($severity->badgeClasses())->not->toBe('');
+        ->and($severity->tone())->not->toBe('');
 })->with(Severity::cases());
 
 it('gives every change type a non-empty label', function (ChangeType $type) {

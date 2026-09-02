@@ -19,12 +19,27 @@ enum RefreshStatus: string
         };
     }
 
-    public function badgeClasses(): string
+    /**
+     * Tom do design system (mapeia para <x-ui.badge :tone>).
+     */
+    public function tone(): string
     {
         return match ($this) {
-            self::Ok => 'bg-emerald-100 text-emerald-800 ring-emerald-600/20',
-            self::NotFound => 'bg-slate-100 text-slate-600 ring-slate-500/20',
-            self::Error => 'bg-red-100 text-red-800 ring-red-600/20',
+            self::Ok => 'ok',
+            self::NotFound => 'muted',
+            self::Error => 'crit',
+        };
+    }
+
+    /**
+     * Ícone Material Symbols correspondente ao status.
+     */
+    public function icon(): string
+    {
+        return match ($this) {
+            self::Ok => 'check_circle',
+            self::NotFound => 'help',
+            self::Error => 'error',
         };
     }
 }
