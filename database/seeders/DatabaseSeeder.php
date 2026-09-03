@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Enums\Role;
 use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
@@ -30,6 +31,16 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
             'organization_id' => $organization->id,
+            'role' => Role::Admin,
+        ]);
+
+        User::create([
+            'name' => 'Analista Demo',
+            'email' => 'analista@vigilo.test',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'organization_id' => $organization->id,
+            'role' => Role::User,
         ]);
 
         $portfolio = Portfolio::create([

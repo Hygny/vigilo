@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\Role;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -22,12 +23,13 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string $email
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property Role $role
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Organization|null $organization
  */
-#[Fillable(['name', 'email', 'password', 'organization_id'])]
+#[Fillable(['name', 'email', 'password', 'organization_id', 'role'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -42,6 +44,11 @@ class User extends Authenticatable
         return $this->belongsTo(Organization::class);
     }
 
+    public function isAdmin(): bool
+    {
+        return $this->role === Role::Admin;
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -52,6 +59,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => Role::class,
         ];
     }
 }

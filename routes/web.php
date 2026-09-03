@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Admin\Users;
 use App\Livewire\Alerts\Inbox;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
@@ -20,6 +21,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('companies/{company}', CompanyShow::class)->name('companies.show');
 
     Route::get('alerts', Inbox::class)->name('alerts.index');
+
+    Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
 });
 
 Route::view('profile', 'profile')

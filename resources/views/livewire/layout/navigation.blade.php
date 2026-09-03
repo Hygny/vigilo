@@ -19,6 +19,10 @@ new class extends Component
         ['route' => 'portfolios.index', 'active' => 'portfolios.*', 'icon' => 'folder_open', 'label' => 'Portfólios'],
         ['route' => 'alerts.index', 'active' => 'alerts.*', 'icon' => 'notifications', 'label' => 'Alertas'],
     ];
+
+    if (auth()->user()?->isAdmin()) {
+        $navItems[] = ['route' => 'users.index', 'active' => 'users.*', 'icon' => 'group', 'label' => 'Usuários'];
+    }
 @endphp
 
 <header x-data="{

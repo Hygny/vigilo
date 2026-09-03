@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Role;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
@@ -38,6 +39,7 @@ new #[Layout('layouts.guest')] class extends Component
                 'email' => $validated['email'],
                 'password' => Hash::make($validated['password']),
                 'organization_id' => $organization->id,
+                'role' => Role::Admin,
             ]);
         });
 
