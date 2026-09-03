@@ -9,7 +9,7 @@ use App\Livewire\Portfolios\Index as PortfolioIndex;
 use App\Livewire\Portfolios\Show as PortfolioShow;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome');
+Route::redirect('/', '/login');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', Dashboard::class)->name('dashboard');
