@@ -7,13 +7,20 @@
 
         <title>{{ config('app.name', 'Vigilo') }}</title>
 
-        {{-- Aplica o tema salvo antes do render (evita flash) --}}
+        {{-- Aplica o tema salvo antes do render (evita flash) e o reaplica após
+             cada navegação SPA do Livewire: wire:navigate troca o DOM e o HTML
+             novo vem sem data-theme, então reidratamos no evento livewire:navigated
+             (que também dispara no load inicial). --}}
         <script>
             (function () {
-                try {
-                    var t = localStorage.getItem('vigilo-theme');
-                    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
-                } catch (e) {}
+                function applyTheme() {
+                    try {
+                        var t = localStorage.getItem('vigilo-theme');
+                        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+                    } catch (e) {}
+                }
+                applyTheme();
+                document.addEventListener('livewire:navigated', applyTheme);
             })();
         </script>
 

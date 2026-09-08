@@ -7,12 +7,18 @@
 
         <title>{{ config('app.name', 'Vigilo') }}</title>
 
+        {{-- Aplica o tema salvo antes do render e reaplica após cada navegação SPA
+             (ver comentário no layout app.blade.php). --}}
         <script>
             (function () {
-                try {
-                    var t = localStorage.getItem('vigilo-theme');
-                    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
-                } catch (e) {}
+                function applyTheme() {
+                    try {
+                        var t = localStorage.getItem('vigilo-theme');
+                        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+                    } catch (e) {}
+                }
+                applyTheme();
+                document.addEventListener('livewire:navigated', applyTheme);
             })();
         </script>
 

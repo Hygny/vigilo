@@ -27,7 +27,7 @@ new class extends Component
 
 <header x-data="{
             open: false,
-            theme: document.documentElement.getAttribute('data-theme') || 'light',
+            theme: (function () { try { return localStorage.getItem('vigilo-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(),
             toggle() {
                 this.theme = this.theme === 'dark' ? 'light' : 'dark';
                 document.documentElement.setAttribute('data-theme', this.theme);
