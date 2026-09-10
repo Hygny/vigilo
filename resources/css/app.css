@@ -121,6 +121,14 @@
     letter-spacing: normal;
     text-transform: none;
     display: inline-block;
+    /* Reserva a caixa quadrada do ícone (1em) e clipa o texto-fonte da ligatura
+       (ex.: "folder_open") caso apareça antes da fonte carregar — sem flash de
+       texto largo nem deslocamento do layout ao redor. flex:none impede que o
+       ícone seja encolhido (e cortado) quando é item de um container flex. */
+    width: 1em;
+    flex: none;
+    overflow: hidden;
+    text-align: center;
     white-space: nowrap;
     word-wrap: normal;
     direction: ltr;
