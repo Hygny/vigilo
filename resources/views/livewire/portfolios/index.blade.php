@@ -50,8 +50,10 @@
                             <div class="flex shrink-0 items-center gap-1.5">
                                 <button wire:click="queueRefresh({{ $portfolio->id }})" title="Atualizar" class="ui-icon-btn"><x-ui.icon name="refresh" :size="18" /></button>
                                 <button wire:click="startEdit({{ $portfolio->id }})" title="Renomear" class="ui-icon-btn"><x-ui.icon name="edit" :size="18" /></button>
-                                <button wire:click="delete({{ $portfolio->id }})" wire:confirm="Remover este portfólio e todas as empresas nele?" title="Excluir"
-                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                @can('delete', $portfolio)
+                                    <button wire:click="delete({{ $portfolio->id }})" wire:confirm="Remover este portfólio e todas as empresas nele?" title="Excluir"
+                                            class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                @endcan
                             </div>
                         </div>
                         <div class="grid grid-cols-4 gap-2.5">

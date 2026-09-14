@@ -153,8 +153,10 @@
                                 <td class="px-[22px] py-3.5">
                                     <div class="flex justify-end gap-1.5">
                                         <button wire:click="queueRefresh({{ $company->id }})" title="Atualizar" class="ui-icon-btn"><x-ui.icon name="refresh" :size="18" /></button>
-                                        <button wire:click="removeCompany({{ $company->id }})" wire:confirm="Remover esta empresa do monitoramento?" title="Remover"
-                                                class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                        @can('delete', $company)
+                                            <button wire:click="removeCompany({{ $company->id }})" wire:confirm="Remover esta empresa do monitoramento?" title="Remover"
+                                                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                        @endcan
                                     </div>
                                 </td>
                             </tr>

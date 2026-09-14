@@ -44,14 +44,38 @@ it('lists only portfolios of the current organization', function () {
         ->assertDontSee('Carteira alheia');
 });
 
-it('deletes a portfolio', function () {
+it('lets an admin delete a portfolio', function () {
     $org = Organization::factory()->create();
-    $user = User::factory()->for($org)->create();
+    $admin = User::factory()->for($org)->admin()->create();
     $portfolio = Portfolio::factory()->for($org)->create();
 
-    Livewire::actingAs($user)->test(Index::class)->call('delete', $portfolio->id);
+    Livewire::actingAs($admin)->test(Index::class)->call('delete', $portfolio->id);
 
     $this->assertDatabaseMissing('portfolios', ['id' => $portfolio->id]);
+});
+
+it('forbids a regular user from deleting a portfolio', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create(); // papel Usuário
+    $portfolio = Portfolio::factory()->for($org)->create();
+
+    Livewire::actingAs($user)->test(Index::class)
+        ->call('delete', $portfolio->id)
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('portfolios', ['id' => $portfolio->id]);
+});
+
+it('hides the delete control from a regular user but shows it to an admin', function () {
+    $org = Organization::factory()->create();
+    $portfolio = Portfolio::factory()->for($org)->create();
+    $confirm = 'Remover este portfólio e todas as empresas nele?';
+
+    $user = User::factory()->for($org)->create();
+    Livewire::actingAs($user)->test(Index::class)->assertDontSee($confirm);
+
+    $admin = User::factory()->for($org)->admin()->create();
+    Livewire::actingAs($admin)->test(Index::class)->assertSee($confirm);
 });
 
 it('resets status to pending and queues a refresh per company (from the list)', function () {

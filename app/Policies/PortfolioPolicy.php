@@ -31,7 +31,9 @@ class PortfolioPolicy
 
     public function delete(User $user, Portfolio $portfolio): bool
     {
-        return $this->owns($user, $portfolio);
+        // Excluir portfólio é ação destrutiva de carteira → admin-only. O papel
+        // Usuário opera (cria/importa/atualiza), mas não exclui.
+        return $user->isAdmin() && $this->owns($user, $portfolio);
     }
 
     private function owns(User $user, Portfolio $portfolio): bool

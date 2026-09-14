@@ -22,7 +22,9 @@ class MonitoredCompanyPolicy
 
     public function delete(User $user, MonitoredCompany $company): bool
     {
-        return $this->owns($user, $company);
+        // Remover empresa do monitoramento é destrutivo → admin-only. O papel
+        // Usuário adiciona/atualiza empresas, mas não remove.
+        return $user->isAdmin() && $this->owns($user, $company);
     }
 
     /**

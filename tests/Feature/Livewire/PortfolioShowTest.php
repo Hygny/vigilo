@@ -225,3 +225,26 @@ it('shows the scheduled run history', function () {
         ->assertSee('agendado p/ dia 15')
         ->assertSee('10 empresa(s)');
 });
+
+it('lets an admin remove a company from monitoring', function () {
+    $org = Organization::factory()->create();
+    $admin = User::factory()->for($org)->admin()->create();
+    $portfolio = Portfolio::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for($portfolio)->create();
+
+    Livewire::actingAs($admin)->test(Show::class, ['portfolio' => $portfolio])
+        ->call('removeCompany', $company->id);
+
+    $this->assertDatabaseMissing('monitored_companies', ['id' => $company->id]);
+});
+
+it('forbids a regular user from removing a company', function () {
+    [$user, $portfolio] = ownedPortfolio(); // papel Usuário
+    $company = MonitoredCompany::factory()->for($portfolio)->create();
+
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->call('removeCompany', $company->id)
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('monitored_companies', ['id' => $company->id]);
+});
