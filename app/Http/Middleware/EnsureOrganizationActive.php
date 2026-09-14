@@ -22,7 +22,12 @@ class EnsureOrganizationActive
     {
         $user = $request->user();
 
-        if ($user instanceof User && ! $user->isSuperAdmin() && $user->organization?->isSuspended()) {
+        // Personificação (super-admin logado como usuário) não é cortada pela
+        // suspensão — o operador precisa conseguir inspecionar a org suspensa.
+        if ($user instanceof User
+            && ! $user->isSuperAdmin()
+            && ! $request->session()->has('impersonator_id')
+            && $user->organization?->isSuspended()) {
             Auth::guard('web')->logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Livewire\Admin\Organizations;
 
 use App\Enums\Role;
+use App\Models\ImpersonationLog;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -73,6 +75,39 @@ class Show extends Component
 
         $target->update(['role' => $newRole]);
         session()->flash('status', 'Papel atualizado.');
+    }
+
+    /**
+     * Personifica um usuário da org ("logar como"): registra a auditoria, guarda
+     * o id do super-admin na sessão e troca a identidade. O retorno é pelo banner
+     * (rota impersonate.stop). Redirect completo (navigate:false) para o app do
+     * tenant carregar já com a nova identidade.
+     */
+    public function impersonate(int $userId): void
+    {
+        $admin = $this->currentUser();
+        abort_unless($admin->isSuperAdmin(), 403);
+
+        /** @var User $target */
+        $target = $this->organization->users()->findOrFail($userId);
+
+        // Nunca personificar outro super-admin nem a si mesmo.
+        if ($target->isSuperAdmin() || $target->id === $admin->id) {
+            return;
+        }
+
+        ImpersonationLog::create([
+            'impersonator_id' => $admin->id,
+            'impersonator_email' => $admin->email,
+            'impersonated_user_id' => $target->id,
+            'impersonated_email' => $target->email,
+            'organization_id' => $this->organization->id,
+        ]);
+
+        session(['impersonator_id' => $admin->id]);
+        Auth::login($target);
+
+        $this->redirect(route('dashboard'), navigate: false);
     }
 
     public function render(): View

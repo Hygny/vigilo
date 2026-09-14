@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\StopImpersonationController;
 use App\Livewire\Admin\Organizations\Index as AdminOrganizations;
 use App\Livewire\Admin\Organizations\Show as AdminOrganizationShow;
 use App\Livewire\Admin\Users;
@@ -30,6 +31,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::view('profile', 'profile')
     ->middleware(['auth'])
     ->name('profile');
+
+// Encerra a personificação (disparada pelo banner na sessão personificada).
+Route::post('impersonate/stop', StopImpersonationController::class)
+    ->middleware('auth')
+    ->name('impersonate.stop');
 
 // Painel do super-admin (dono da plataforma) — back-office sobre todas as orgs.
 Route::middleware(['auth', 'super-admin'])

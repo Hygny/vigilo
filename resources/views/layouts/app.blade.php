@@ -22,6 +22,19 @@
     </head>
     <body class="font-sans text-ink antialiased">
         <div class="min-h-screen">
+            @if (session('impersonator_id'))
+                <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-hl px-4 py-2 text-center text-[13px] font-medium text-hl-ink">
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="msym" style="font-size:17px;" aria-hidden="true">visibility</span>
+                        Você está personificando <strong>{{ auth()->user()->name }}</strong>.
+                    </span>
+                    <form method="POST" action="{{ route('impersonate.stop') }}">
+                        @csrf
+                        <button type="submit" class="font-semibold underline underline-offset-2 hover:opacity-80">Voltar ao admin</button>
+                    </form>
+                </div>
+            @endif
+
             <livewire:layout.navigation />
 
             <main>

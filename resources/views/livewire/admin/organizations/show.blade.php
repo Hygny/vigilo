@@ -72,12 +72,16 @@
                                     <x-ui.badge tone="muted">Usuário</x-ui.badge>
                                 @endif
                             </td>
-                            <td class="px-5 py-3.5 text-right">
-                                @if ($u->isAdmin())
-                                    <x-ui.button variant="secondary" size="sm" wire:click="setRole({{ $u->id }}, 'user')">Rebaixar</x-ui.button>
-                                @else
-                                    <x-ui.button variant="secondary" size="sm" wire:click="setRole({{ $u->id }}, 'admin')">Promover a admin</x-ui.button>
-                                @endif
+                            <td class="px-5 py-3.5">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <x-ui.button variant="ghost" size="sm" icon="visibility" wire:click="impersonate({{ $u->id }})"
+                                                 wire:confirm="Entrar como {{ $u->name }}? Você poderá voltar ao admin pelo banner.">Personificar</x-ui.button>
+                                    @if ($u->isAdmin())
+                                        <x-ui.button variant="secondary" size="sm" wire:click="setRole({{ $u->id }}, 'user')">Rebaixar</x-ui.button>
+                                    @else
+                                        <x-ui.button variant="secondary" size="sm" wire:click="setRole({{ $u->id }}, 'admin')">Promover a admin</x-ui.button>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @endforeach
