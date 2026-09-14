@@ -248,3 +248,16 @@ it('forbids a regular user from removing a company', function () {
 
     $this->assertDatabaseHas('monitored_companies', ['id' => $company->id]);
 });
+
+it('hides the remove-company control from a regular user but shows it to an admin', function () {
+    $org = Organization::factory()->create();
+    $portfolio = Portfolio::factory()->for($org)->create();
+    MonitoredCompany::factory()->for($portfolio)->create();
+    $confirm = 'Remover esta empresa do monitoramento?';
+
+    $user = User::factory()->for($org)->create();
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])->assertDontSee($confirm);
+
+    $admin = User::factory()->for($org)->admin()->create();
+    Livewire::actingAs($admin)->test(Show::class, ['portfolio' => $portfolio])->assertSee($confirm);
+});

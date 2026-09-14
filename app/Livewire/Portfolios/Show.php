@@ -354,10 +354,19 @@ class Show extends Component
 
         $savedDays = $this->normalizedScheduleDays($this->portfolio->schedule_days ?? []);
 
+        // A permissão de remover é a mesma para todas as linhas (todas pertencem
+        // a este portfólio → mesma organização), então resolvemos a policy uma
+        // única vez aqui em vez de um @can por linha (evita N+1 na listagem).
+        $canRemoveCompanies = auth()->user()?->can(
+            'delete',
+            (new MonitoredCompany)->forceFill(['portfolio_id' => $this->portfolio->id])
+        ) ?? false;
+
         return view('livewire.portfolios.show', [
             'companies' => $companies,
             'stats' => $stats,
             'filters' => $filters,
+            'canRemoveCompanies' => $canRemoveCompanies,
             'scheduledRuns' => $this->portfolio->scheduledRuns()->limit(12)->get(),
             'scheduleDirty' => $this->normalizedScheduleDays($this->scheduleDays) !== $savedDays,
             'nextRun' => $this->nextScheduledRun($savedDays),
