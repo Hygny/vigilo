@@ -24,6 +24,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property Role $role
+ * @property bool $is_super_admin
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -35,6 +36,16 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    /**
+     * Default de atributos em memória — garante que is_super_admin nunca seja
+     * null em instâncias novas/de factory (o padrão do banco também é false).
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_super_admin' => false,
+    ];
 
     /**
      * @return BelongsTo<Organization, $this>
@@ -50,6 +61,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Dono da plataforma: opera fora do escopo de organização, no painel /admin.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->is_super_admin === true;
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -60,6 +79,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => Role::class,
+            'is_super_admin' => 'boolean',
         ];
     }
 }

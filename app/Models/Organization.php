@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property string $name
+ * @property Carbon|null $suspended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, User> $users
@@ -26,6 +27,26 @@ class Organization extends Model
 
     /** @var list<string> */
     protected $fillable = ['name'];
+
+    /**
+     * Organização suspensa (ex.: inadimplência) bloqueia login/uso dos seus
+     * usuários. `suspended_at` é definido só por ação do super-admin, nunca por
+     * mass assignment (fora do $fillable de propósito).
+     */
+    public function isSuspended(): bool
+    {
+        return $this->suspended_at !== null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'suspended_at' => 'datetime',
+        ];
+    }
 
     /**
      * @return HasMany<User, $this>

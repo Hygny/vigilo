@@ -36,6 +36,9 @@ it('lets an admin create a user in their organization', function () {
         'organization_id' => $org->id,
         'role' => 'user',
     ]);
+
+    // Criado já verificado — senão cairia no middleware 'verified' sem usar o app.
+    expect(User::whereEmail('maria@empresa.com')->firstOrFail()->hasVerifiedEmail())->toBeTrue();
 });
 
 it('creates an admin when the admin role is chosen', function () {

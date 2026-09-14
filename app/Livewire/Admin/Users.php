@@ -46,14 +46,17 @@ class Users extends Component
             'role' => ['required', Rule::enum(Role::class)],
         ]);
 
-        User::create([
+        // forceFill: email_verified_at está fora do #[Fillable] do User; via
+        // mass assignment seria descartado e o novo usuário cairia no middleware
+        // 'verified' sem conseguir usar o app.
+        (new User)->forceFill([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'organization_id' => $admin->organization_id,
             'role' => $validated['role'],
             'email_verified_at' => now(),
-        ]);
+        ])->save();
 
         $this->reset('name', 'email', 'password');
         $this->role = 'user';

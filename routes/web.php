@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Admin\Organizations\Index as AdminOrganizations;
+use App\Livewire\Admin\Organizations\Show as AdminOrganizationShow;
 use App\Livewire\Admin\Users;
 use App\Livewire\Alerts\Inbox;
 use App\Livewire\Companies\Show as CompanyShow;
@@ -28,5 +30,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::view('profile', 'profile')
     ->middleware(['auth'])
     ->name('profile');
+
+// Painel do super-admin (dono da plataforma) — back-office sobre todas as orgs.
+Route::middleware(['auth', 'super-admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::redirect('/', '/admin/organizations');
+        Route::get('organizations', AdminOrganizations::class)->name('organizations.index');
+        Route::get('organizations/{organization}', AdminOrganizationShow::class)->name('organizations.show');
+    });
 
 require __DIR__.'/auth.php';

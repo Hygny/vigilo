@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\EnsureOrganizationActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,8 +23,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // loop de login. Em produção o app nunca é acessado sem passar pelo proxy.
         $middleware->trustProxies(at: '*');
 
+        // Toda página web autenticada corta o acesso de usuário cuja organização
+        // foi suspensa (no-op para guest e super-admin).
+        $middleware->web(append: [
+            EnsureOrganizationActive::class,
+        ]);
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
+            'super-admin' => EnsureUserIsSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

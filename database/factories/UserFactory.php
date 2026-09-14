@@ -60,4 +60,16 @@ class UserFactory extends Factory
             'role' => Role::Admin,
         ]);
     }
+
+    /**
+     * Indicate that the user is the platform super-admin (no organization —
+     * operates in the /admin back-office across every tenant).
+     */
+    public function superAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_super_admin' => true,
+            'organization_id' => null,
+        ]);
+    }
 }

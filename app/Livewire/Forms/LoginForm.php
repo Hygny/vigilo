@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Forms;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -37,6 +38,17 @@ class LoginForm extends Form
 
             throw ValidationException::withMessages([
                 'form.email' => trans('auth.failed'),
+            ]);
+        }
+
+        // Organização suspensa não estabelece sessão (super-admin não tem org).
+        $user = Auth::user();
+
+        if ($user instanceof User && ! $user->isSuperAdmin() && $user->organization?->isSuspended()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'form.email' => 'Organização suspensa. Fale com o suporte.',
             ]);
         }
 

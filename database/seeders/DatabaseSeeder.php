@@ -43,6 +43,18 @@ class DatabaseSeeder extends Seeder
             'role' => Role::User,
         ]);
 
+        // Super-admin da plataforma (dono) — sem organização, opera no /admin.
+        // is_super_admin fica fora do #[Fillable], então usamos forceFill.
+        (new User)->forceFill([
+            'name' => 'Super Admin',
+            'email' => 'super@vigilo.test',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'organization_id' => null,
+            'role' => Role::Admin,
+            'is_super_admin' => true,
+        ])->save();
+
         $portfolio = Portfolio::create([
             'organization_id' => $organization->id,
             'name' => 'Carteira demo',

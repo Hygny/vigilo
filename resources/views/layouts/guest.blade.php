@@ -7,20 +7,7 @@
 
         <title>{{ config('app.name', 'Vigilo') }}</title>
 
-        {{-- Aplica o tema salvo antes do render e reaplica após cada navegação SPA
-             (ver comentário no layout app.blade.php). --}}
-        <script>
-            (function () {
-                function applyTheme() {
-                    try {
-                        var t = localStorage.getItem('vigilo-theme');
-                        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
-                    } catch (e) {}
-                }
-                applyTheme();
-                document.addEventListener('livewire:navigated', applyTheme);
-            })();
-        </script>
+        @include('partials.theme-bootstrap')
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

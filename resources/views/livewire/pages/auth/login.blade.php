@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Forms\LoginForm;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -20,7 +21,12 @@ new #[Layout('layouts.guest')] class extends Component
 
         Session::regenerate();
 
-        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+        // Super-admin opera no painel /admin (não tem organização/painel de tenant).
+        $home = Auth::user()?->isSuperAdmin()
+            ? route('admin.organizations.index', absolute: false)
+            : route('dashboard', absolute: false);
+
+        $this->redirectIntended(default: $home, navigate: true);
     }
 }; ?>
 
