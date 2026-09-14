@@ -46,6 +46,19 @@
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <form wire:submit="addCompany" class="space-y-3.5 rounded-card border border-line bg-surface p-[22px] shadow-card">
                 <div class="flex items-center gap-2"><x-ui.icon name="add_business" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Adicionar empresa</h2></div>
+
+                {{-- Uso da quota do plano (CNPJs monitorados na organização toda) --}}
+                <div class="rounded-btn border border-line bg-surface-2 px-3 py-2">
+                    <div class="flex items-center justify-between text-[12px]">
+                        <span class="font-semibold text-ink-2">Plano {{ $planUsage['plan'] }}</span>
+                        <span class="font-mono text-ink-muted">{{ $planUsage['used'] }} / {{ $planUsage['max'] }} CNPJs</span>
+                    </div>
+                    @php $pct = $planUsage['max'] > 0 ? min(100, (int) round($planUsage['used'] / $planUsage['max'] * 100)) : 100; @endphp
+                    <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
+                        <div class="h-full rounded-full {{ $pct >= 100 ? 'bg-crit' : ($pct >= 80 ? 'bg-hl' : 'bg-primary') }}" style="width: {{ $pct }}%"></div>
+                    </div>
+                </div>
+
                 <div>
                     <label for="cnpj" class="mb-1.5 block text-[13px] font-semibold text-ink">CNPJ</label>
                     <div class="ui-input-wrap"><x-ui.icon name="badge" :size="19" class="text-ink-muted" /><input wire:model="cnpj" id="cnpj" type="text" placeholder="00.000.000/0001-91" class="ui-input" /></div>

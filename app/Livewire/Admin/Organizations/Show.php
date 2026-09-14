@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin\Organizations;
 
+use App\Enums\Plan;
 use App\Enums\Role;
 use App\Models\ImpersonationLog;
 use App\Models\Organization;
@@ -51,6 +52,21 @@ class Show extends Component
         }
 
         session()->flash('status', 'Organização reativada.');
+    }
+
+    public function setPlan(string $plan): void
+    {
+        abort_unless($this->currentUser()->isSuperAdmin(), 403);
+
+        $newPlan = Plan::tryFrom($plan);
+
+        if ($newPlan === null) {
+            return;
+        }
+
+        // plan fica fora do $fillable — atribuição explícita via forceFill.
+        $this->organization->forceFill(['plan' => $newPlan->value])->save();
+        session()->flash('status', "Plano alterado para {$newPlan->label()}.");
     }
 
     public function setRole(int $userId, string $role): void
@@ -124,6 +140,8 @@ class Show extends Component
             'users' => $users,
             'portfolios' => $portfolios,
             'companiesTotal' => (int) $portfolios->sum('monitored_companies_count'),
+            'plans' => Plan::cases(),
+            'maxCompanies' => $this->organization->maxMonitoredCompanies(),
         ]);
     }
 

@@ -26,10 +26,15 @@ final class CompanyImporter
 
     public const REASON_DUPLICATE = 'duplicado';
 
+    public const REASON_PLAN_LIMIT = 'limite_do_plano';
+
     /**
      * @param  iterable<int, array{cnpj?: string|null, label?: string|null, line?: int}>  $rows
+     * @param  int|null  $limit  Máximo de empresas a criar nesta importação (quota
+     *                           do plano); linhas válidas além disso são rejeitadas
+     *                           com REASON_PLAN_LIMIT. null = sem limite.
      */
-    public function import(Portfolio $portfolio, iterable $rows): ImportReport
+    public function import(Portfolio $portfolio, iterable $rows, ?int $limit = null): ImportReport
     {
         /** @var array<string, true> $existing */
         $existing = array_fill_keys(
@@ -71,6 +76,13 @@ final class CompanyImporter
                 continue;
             }
 
+            // Quota do plano: já preencheu as vagas desta importação.
+            if ($limit !== null && count($imported) >= $limit) {
+                $rejected[] = ['line' => $line, 'value' => $normalized, 'reason' => self::REASON_PLAN_LIMIT];
+
+                continue;
+            }
+
             $seen[$normalized] = true;
             $label = trim((string) ($row['label'] ?? ''));
 
@@ -89,9 +101,9 @@ final class CompanyImporter
         return new ImportReport($imported, $rejected);
     }
 
-    public function importFromFile(Portfolio $portfolio, string $path): ImportReport
+    public function importFromFile(Portfolio $portfolio, string $path, ?int $limit = null): ImportReport
     {
-        return $this->import($portfolio, $this->readCsv($path));
+        return $this->import($portfolio, $this->readCsv($path), $limit);
     }
 
     /**

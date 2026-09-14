@@ -30,6 +30,7 @@
                                 <a href="{{ route('admin.organizations.show', $org) }}" wire:navigate class="font-semibold text-ink hover:underline">{{ $org->name }}</a>
                                 <div class="mt-0.5 flex items-center gap-2 text-[12px] text-ink-muted">
                                     <span>criada {{ $org->created_at?->diffForHumans() }}</span>
+                                    <x-ui.badge tone="muted">{{ $org->plan->label() }}</x-ui.badge>
                                     @if ($org->isSuspended())
                                         <x-ui.badge tone="crit" dot>Suspensa</x-ui.badge>
                                     @endif

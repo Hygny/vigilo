@@ -46,8 +46,40 @@
         </div>
         <div class="rounded-card border border-line bg-surface px-4 py-3.5 shadow-card">
             <div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Empresas</div>
-            <div class="mt-1 text-2xl font-bold text-ink">{{ $companiesTotal }}</div>
+            <div class="mt-1 text-2xl font-bold {{ $companiesTotal > $maxCompanies ? 'text-crit' : 'text-ink' }}">
+                {{ $companiesTotal }} <span class="text-base font-medium text-ink-muted">/ {{ $maxCompanies }}</span>
+            </div>
         </div>
+    </div>
+
+    {{-- Plano / quota --}}
+    <div class="mb-6 rounded-card border border-line bg-surface p-5 shadow-card">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-[15px] font-semibold text-ink">Plano</h2>
+                <p class="mt-0.5 text-[12.5px] text-ink-muted">Define a quota de CNPJs monitorados da organização.</p>
+                @error('plan') <p class="mt-1 text-xs text-crit">{{ $message }}</p> @enderror
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                @foreach ($plans as $plan)
+                    @php $active = $organization->plan === $plan; @endphp
+                    <button type="button" wire:click="setPlan('{{ $plan->value }}')"
+                            @class([
+                                'rounded-btn px-3.5 py-2 text-sm font-semibold transition-colors border cursor-pointer',
+                                'bg-primary text-onprimary border-primary' => $active,
+                                'bg-surface text-ink-2 border-line-strong hover:bg-surface-2' => ! $active,
+                            ])>
+                        {{ $plan->label() }}
+                        <span class="ml-1 text-[11px] font-normal opacity-80">{{ $plan->maxCompanies() }} CNPJs</span>
+                    </button>
+                @endforeach
+            </div>
+        </div>
+        @if ($companiesTotal > $maxCompanies)
+            <p class="mt-3 rounded-btn border border-crit bg-crit-soft px-3 py-2 text-[12.5px] text-crit">
+                Esta organização já monitora mais CNPJs do que o plano atual permite ({{ $companiesTotal }} de {{ $maxCompanies }}). Ela não conseguirá adicionar novos até fazer upgrade.
+            </p>
+        @endif
     </div>
 
     <div class="grid gap-6 lg:grid-cols-[1fr_360px]">

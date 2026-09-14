@@ -217,6 +217,14 @@ class Show extends Component
             return;
         }
 
+        $organization = $this->portfolio->organization;
+
+        if ($organization->remainingCompanySlots() < 1) {
+            $this->addError('cnpj', "Limite do plano {$organization->plan->label()} atingido ({$organization->maxMonitoredCompanies()} CNPJs). Faça upgrade para adicionar mais.");
+
+            return;
+        }
+
         $this->portfolio->monitoredCompanies()->create([
             'cnpj' => $cnpj->value,
             'label' => ($this->label !== null && $this->label !== '') ? $this->label : null,
@@ -237,7 +245,11 @@ class Show extends Component
             return;
         }
 
-        $report = $importer->importFromFile($this->portfolio, $path);
+        // Quota do plano: importa no máximo as vagas restantes; o excedente volta
+        // rejeitado com motivo "limite_do_plano".
+        $remaining = $this->portfolio->organization->remainingCompanySlots();
+
+        $report = $importer->importFromFile($this->portfolio, $path, $remaining);
 
         $this->importReport = [
             'imported' => $report->importedCount(),
@@ -245,7 +257,15 @@ class Show extends Component
         ];
 
         $this->reset('csv');
-        session()->flash('status', "Importação concluída: {$report->importedCount()} adicionada(s), {$report->rejectedCount()} rejeitada(s).");
+
+        $message = "Importação concluída: {$report->importedCount()} adicionada(s), {$report->rejectedCount()} rejeitada(s).";
+        $blockedByPlan = count($report->rejectedWithReason(CompanyImporter::REASON_PLAN_LIMIT));
+
+        if ($blockedByPlan > 0) {
+            $message .= " {$blockedByPlan} não entraram por limite do plano — faça upgrade.";
+        }
+
+        session()->flash('status', $message);
     }
 
     public function queueRefresh(int $companyId): void
@@ -362,11 +382,20 @@ class Show extends Component
             (new MonitoredCompany)->forceFill(['portfolio_id' => $this->portfolio->id])
         ) ?? false;
 
+        // Uso da quota do plano (org-wide: soma CNPJs de todos os portfólios).
+        $organization = $this->portfolio->organization;
+        $planUsage = [
+            'plan' => $organization->plan->label(),
+            'used' => $organization->monitoredCompaniesCount(),
+            'max' => $organization->maxMonitoredCompanies(),
+        ];
+
         return view('livewire.portfolios.show', [
             'companies' => $companies,
             'stats' => $stats,
             'filters' => $filters,
             'canRemoveCompanies' => $canRemoveCompanies,
+            'planUsage' => $planUsage,
             'scheduledRuns' => $this->portfolio->scheduledRuns()->limit(12)->get(),
             'scheduleDirty' => $this->normalizedScheduleDays($this->scheduleDays) !== $savedDays,
             'nextRun' => $this->nextScheduledRun($savedDays),
