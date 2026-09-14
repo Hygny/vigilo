@@ -100,3 +100,17 @@ it('lets the super-admin change an organization plan and raise the quota', funct
     expect($org->fresh()->plan)->toBe(Plan::Business)
         ->and($org->fresh()->maxMonitoredCompanies())->toBe(2000);
 });
+
+it('forbids a non super-admin from changing an organization plan', function () {
+    $super = User::factory()->superAdmin()->create();
+    $org = Organization::factory()->create();
+
+    $component = Livewire::actingAs($super)->test(OrgShow::class, ['organization' => $org]);
+
+    // Privilégio perdido após o mount (o /livewire/update não re-roda mount).
+    $super->forceFill(['is_super_admin' => false])->save();
+
+    $component->call('setPlan', 'business')->assertForbidden();
+
+    expect($org->fresh()->plan)->toBe(Plan::Free); // inalterado
+});

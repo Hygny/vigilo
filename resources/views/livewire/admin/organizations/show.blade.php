@@ -58,7 +58,6 @@
             <div>
                 <h2 class="text-[15px] font-semibold text-ink">Plano</h2>
                 <p class="mt-0.5 text-[12.5px] text-ink-muted">Define a quota de CNPJs monitorados da organização.</p>
-                @error('plan') <p class="mt-1 text-xs text-crit">{{ $message }}</p> @enderror
             </div>
             <div class="flex flex-wrap gap-1.5">
                 @foreach ($plans as $plan)
