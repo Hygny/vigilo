@@ -7,8 +7,10 @@ use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
 Route::middleware('guest')->group(function () {
-    Volt::route('register', 'pages.auth.register')
-        ->name('register');
+    // Sem autocadastro público. O Vigilo é multi-tenant B2B: cada organização é
+    // onboardada manualmente (seeder/tinker) e cresce pela tela de Usuários
+    // (admin-only). Expor /register deixaria qualquer um criar uma organização
+    // e virar admin dela — por isso a rota não existe.
 
     Volt::route('login', 'pages.auth.login')
         ->name('login');
