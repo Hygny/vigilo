@@ -31,9 +31,11 @@ final class CompanyDiffer
      */
     public function diff(?CompanySnapshot $previous, CompanySnapshot $current): array
     {
-        // First observation is the baseline — nothing to compare against yet.
+        // Primeira observação é o baseline — normalmente sem alerta. Exceção: se
+        // a empresa já entra em situação negativa (baixada/inapta/etc.), isso é um
+        // achado de due diligence e vira alerta crítico já na entrada.
         if ($previous === null) {
-            return [];
+            return $this->initialNegativeStatus($current);
         }
 
         return [
@@ -47,6 +49,24 @@ final class CompanyDiffer
             ...$this->compareScalar($previous->razao_social, $current->razao_social, ChangeType::NameChanged, 'razao_social', Severity::Low),
             ...$this->compareScalar($previous->nome_fantasia, $current->nome_fantasia, ChangeType::NameChanged, 'nome_fantasia', Severity::Low),
         ];
+    }
+
+    /**
+     * Alerta crítico quando a empresa entra no monitoramento já em situação
+     * negativa (baixada/inapta/suspensa/nula). Sem valor anterior — a aresta
+     * "— → BAIXADA" comunica "entrou já assim". Situação ativa/vazia = sem alerta.
+     *
+     * @return list<ChangeEventData>
+     */
+    private function initialNegativeStatus(CompanySnapshot $current): array
+    {
+        $situacao = trim($current->situacao_cadastral);
+
+        if ($situacao === '' || ! $this->isNegativeSituacao($situacao)) {
+            return [];
+        }
+
+        return [new ChangeEventData(ChangeType::SituacaoChanged, 'situacao_cadastral', null, $situacao, Severity::Critical)];
     }
 
     /**

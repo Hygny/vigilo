@@ -62,6 +62,21 @@ it('flags a degraded cadastral status as critical', function (string $situacao) 
         ->and($events[0]->severity)->toBe(Severity::Critical);
 })->with(['BAIXADA', 'INAPTA', 'SUSPENSA', 'NULA']);
 
+it('flags a company that enters already in a negative status as critical (baseline)', function (string $situacao) {
+    $events = diffOf(null, snap(['situacao_cadastral' => $situacao]));
+
+    expect($events)->toHaveCount(1)
+        ->and($events[0]->type)->toBe(ChangeType::SituacaoChanged)
+        ->and($events[0]->field)->toBe('situacao_cadastral')
+        ->and($events[0]->oldValue)->toBeNull() // entrou já assim — sem valor anterior
+        ->and($events[0]->newValue)->toBe($situacao)
+        ->and($events[0]->severity)->toBe(Severity::Critical);
+})->with(['BAIXADA', 'INAPTA', 'SUSPENSA', 'NULA']);
+
+it('does not flag a company that enters active (baseline stays silent)', function () {
+    expect(diffOf(null, snap(['situacao_cadastral' => 'ATIVA'])))->toBe([]);
+});
+
 it('flags a status change back to a healthy state as high (not critical)', function () {
     $events = diffOf(snap(['situacao_cadastral' => 'SUSPENSA']), snap(['situacao_cadastral' => 'ATIVA']));
 

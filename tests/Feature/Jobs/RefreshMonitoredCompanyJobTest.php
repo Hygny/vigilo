@@ -70,6 +70,31 @@ it('creates a baseline snapshot without events on the first refresh', function (
     Notification::assertNothingSent();
 });
 
+it('alerts on the first refresh when the company is already in a negative status', function () {
+    Notification::fake();
+    Http::fake(['https://brasilapi.com.br/*' => Http::response(companyPayload('BAIXADA'), 200)]);
+
+    $company = tenantCompany();
+
+    RefreshMonitoredCompanyJob::dispatchSync($company); // primeira coleta, já BAIXADA
+
+    expect($company->snapshots()->count())->toBe(1)
+        ->and($company->changeEvents()->count())->toBe(1);
+
+    $event = $company->changeEvents()->first();
+
+    expect($event->type)->toBe(ChangeType::SituacaoChanged)
+        ->and($event->severity)->toBe(Severity::Critical)
+        ->and($event->old_value)->toBeNull()      // entrou já assim
+        ->and($event->new_value)->toBe('BAIXADA')
+        ->and($event->from_snapshot_id)->toBeNull(); // baseline, sem snapshot anterior
+
+    Notification::assertSentTo(
+        $company->portfolio->organization->users->first(),
+        CompanyChangeDetected::class
+    );
+});
+
 it('detects changes on a later refresh and notifies the organization', function () {
     Notification::fake();
 
