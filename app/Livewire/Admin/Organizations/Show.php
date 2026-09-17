@@ -9,6 +9,8 @@ use App\Enums\Role;
 use App\Models\ImpersonationLog;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Asaas\Exceptions\AsaasException;
+use App\Services\Billing\SubscriptionService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -54,7 +56,7 @@ class Show extends Component
         session()->flash('status', 'Organização reativada.');
     }
 
-    public function setPlan(string $plan): void
+    public function setPlan(string $plan, SubscriptionService $subscriptions): void
     {
         abort_unless($this->currentUser()->isSuperAdmin(), 403);
 
@@ -66,7 +68,19 @@ class Show extends Component
 
         // plan fica fora do $fillable — atribuição explícita via forceFill.
         $this->organization->forceFill(['plan' => $newPlan->value])->save();
-        session()->flash('status', "Plano alterado para {$newPlan->label()}.");
+
+        // Reconcilia a assinatura no Asaas com o novo plano. Uma falha de
+        // integração (ex.: credencial ausente no .env) não desfaz a troca de
+        // plano — o super-admin só é avisado para configurar a cobrança.
+        try {
+            $subscriptions->syncForPlan($this->organization, $newPlan);
+            session()->flash('status', "Plano alterado para {$newPlan->label()}.");
+        } catch (AsaasException $e) {
+            report($e);
+            session()->flash('status', "Plano alterado para {$newPlan->label()}, mas a cobrança no Asaas não foi atualizada — verifique a configuração.");
+        }
+
+        $this->organization->refresh();
     }
 
     public function setRole(int $userId, string $role): void

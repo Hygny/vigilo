@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Contracts\CnpjDataProvider;
 use App\Providers\Cnpj\BrasilApiProvider;
+use App\Services\Asaas\AsaasClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -33,6 +34,16 @@ class AppServiceProvider extends ServiceProvider
                 ),
                 default => throw new InvalidArgumentException("Driver de CNPJ não suportado: [{$driver}]."),
             };
+        });
+
+        $this->app->singleton(AsaasClient::class, function (): AsaasClient {
+            $apiKey = config('asaas.api_key');
+
+            return new AsaasClient(
+                baseUrl: (string) config('asaas.base_url'),
+                apiKey: is_string($apiKey) ? $apiKey : null,
+                timeout: (int) config('asaas.timeout'),
+            );
         });
     }
 

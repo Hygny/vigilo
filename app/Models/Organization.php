@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\BillingStatus;
 use App\Enums\Plan;
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Collection;
@@ -16,6 +17,9 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $name
  * @property Plan $plan
+ * @property string|null $asaas_customer_id
+ * @property string|null $asaas_subscription_id
+ * @property BillingStatus $billing_status
  * @property Carbon|null $suspended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -31,14 +35,16 @@ class Organization extends Model
     protected $fillable = ['name'];
 
     /**
-     * Default em memória: garante que `plan` nunca seja null em instâncias novas
-     * (o padrão do banco também é 'free'). `plan` fica fora do $fillable —
-     * definido só por ação do super-admin (forceFill).
+     * Default em memória: garante que `plan` e `billing_status` nunca sejam null
+     * em instâncias novas (o padrão do banco também é 'free'/'none'). Ambos ficam
+     * fora do $fillable — definidos só por ação do super-admin ou do fluxo de
+     * cobrança (forceFill).
      *
      * @var array<string, mixed>
      */
     protected $attributes = [
         'plan' => 'free',
+        'billing_status' => 'none',
     ];
 
     /**
@@ -49,6 +55,23 @@ class Organization extends Model
     public function isSuspended(): bool
     {
         return $this->suspended_at !== null;
+    }
+
+    /**
+     * Já possui uma assinatura recorrente vinculada no Asaas.
+     */
+    public function hasSubscription(): bool
+    {
+        return $this->asaas_subscription_id !== null;
+    }
+
+    /**
+     * Cobrança vencida (inadimplente). A suspensão de acesso é aplicada à parte
+     * (suspended_at), mas anda junto na prática.
+     */
+    public function isPastDue(): bool
+    {
+        return $this->billing_status === BillingStatus::PastDue;
     }
 
     /**
@@ -84,6 +107,7 @@ class Organization extends Model
     {
         return [
             'plan' => Plan::class,
+            'billing_status' => BillingStatus::class,
             'suspended_at' => 'datetime',
         ];
     }

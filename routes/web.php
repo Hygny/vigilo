@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\StopImpersonationController;
 use App\Livewire\Admin\Organizations\Index as AdminOrganizations;
 use App\Livewire\Admin\Organizations\Show as AdminOrganizationShow;
 use App\Livewire\Admin\Users;
 use App\Livewire\Alerts\Inbox;
+use App\Livewire\Billing\Index as Billing;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
@@ -26,7 +28,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('alerts', Inbox::class)->name('alerts.index');
 
     Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
+
+    // Assinatura da organização — só o admin do tenant gerencia a cobrança.
+    Route::get('assinatura', Billing::class)->name('billing.index')->middleware('admin');
 });
+
+// Webhook de pagamento do Asaas: público (sem sessão), autenticado pelo token no
+// header. Fica fora do grupo auth e é isento de CSRF (ver bootstrap/app.php).
+Route::post('webhooks/asaas', AsaasWebhookController::class)->name('webhooks.asaas');
 
 Route::view('profile', 'profile')
     ->middleware(['auth'])

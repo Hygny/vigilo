@@ -29,6 +29,12 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureOrganizationActive::class,
         ]);
 
+        // O webhook do Asaas é uma chamada servidor-a-servidor (sem sessão/CSRF);
+        // é autenticado pelo token no header, validado no controller.
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/asaas',
+        ]);
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
             'super-admin' => EnsureUserIsSuperAdmin::class,

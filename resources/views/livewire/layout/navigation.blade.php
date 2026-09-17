@@ -22,6 +22,7 @@ new class extends Component
 
     if (auth()->user()?->isAdmin()) {
         $navItems[] = ['route' => 'users.index', 'active' => 'users.*', 'icon' => 'group', 'label' => 'Usuários'];
+        $navItems[] = ['route' => 'billing.index', 'active' => 'billing.*', 'icon' => 'credit_card', 'label' => 'Assinatura'];
     }
 @endphp
 
