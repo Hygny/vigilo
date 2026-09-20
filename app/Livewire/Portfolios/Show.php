@@ -51,6 +51,10 @@ class Show extends Component
     #[Url]
     public string $statusFilter = 'all';
 
+    /** Busca textual na lista: casa por CNPJ (dígitos) ou por TAG (label). */
+    #[Url]
+    public string $search = '';
+
     /** Rótulos dos filtros, na ordem em que aparecem na UI. */
     private const FILTERS = [
         'all' => 'Todos',
@@ -312,6 +316,40 @@ class Show extends Component
     }
 
     /**
+     * Ao digitar na busca, volta para a primeira página (o total muda).
+     */
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    /**
+     * Aplica a busca textual à query da listagem: casa o termo por TAG (label)
+     * e, se houver dígitos, também por CNPJ. Só filtra a lista visível — os
+     * totais de status e os cards de resumo seguem refletindo o portfólio todo.
+     *
+     * @param  Builder<MonitoredCompany>  $query
+     */
+    private function applySearch(Builder $query): void
+    {
+        $term = trim($this->search);
+
+        if ($term === '') {
+            return;
+        }
+
+        $digits = preg_replace('/\D/', '', $term) ?? '';
+
+        $query->where(function (Builder $inner) use ($term, $digits): void {
+            $inner->where('label', 'like', "%{$term}%");
+
+            if ($digits !== '') {
+                $inner->orWhere('cnpj', 'like', "%{$digits}%");
+            }
+        });
+    }
+
+    /**
      * Reprocessa (revalida) apenas o subconjunto do filtro ativo — ex.: só os
      * CNPJs com erro, ou só os não encontrados.
      */
@@ -357,6 +395,8 @@ class Show extends Component
         $companiesQuery = $this->baseQuery()
             ->with('latestSnapshot')
             ->orderByDesc('id');
+
+        $this->applySearch($companiesQuery);
 
         $constraint = $this->statusConstraint($this->statusFilter);
 

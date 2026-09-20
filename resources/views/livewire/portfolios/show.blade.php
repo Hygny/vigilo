@@ -114,12 +114,22 @@
                     </button>
                 @endforeach
             </div>
-            @if ($statusFilter !== 'all')
-                <x-ui.button wire:click="reprocessFiltered" wire:confirm="Revalidar as {{ $filters[$statusFilter]['count'] }} empresa(s) do filtro '{{ $filters[$statusFilter]['label'] }}'?"
-                             variant="secondary" size="sm" icon="refresh">
-                    Revalidar filtrados ({{ $filters[$statusFilter]['count'] }})
-                </x-ui.button>
-            @endif
+            <div class="flex flex-wrap items-center gap-2">
+                <label class="relative block">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-muted">
+                        <x-ui.icon name="search" :size="18" />
+                    </span>
+                    <input type="search" wire:model.live.debounce.400ms="search"
+                           placeholder="Buscar por CNPJ ou TAG…"
+                           class="w-full rounded-full border border-line-strong bg-surface py-2 pl-9 pr-3 text-[13.5px] text-ink placeholder:text-ink-muted focus:border-primary focus:outline-none sm:w-72" />
+                </label>
+                @if ($statusFilter !== 'all')
+                    <x-ui.button wire:click="reprocessFiltered" wire:confirm="Revalidar as {{ $filters[$statusFilter]['count'] }} empresa(s) do filtro '{{ $filters[$statusFilter]['label'] }}'?"
+                                 variant="secondary" size="sm" icon="refresh">
+                        Revalidar filtrados ({{ $filters[$statusFilter]['count'] }})
+                    </x-ui.button>
+                @endif
+            </div>
         </div>
 
         {{-- Tabela de empresas --}}
@@ -176,7 +186,11 @@
                         @empty
                             <tr>
                                 <td colspan="5" class="px-[22px] py-10 text-center text-sm text-ink-muted">
-                                    {{ $statusFilter === 'all' ? 'Nenhuma empresa neste portfólio ainda.' : 'Nenhuma empresa neste filtro.' }}
+                                    @if (trim($search) !== '')
+                                        Nenhuma empresa encontrada para “{{ $search }}”.
+                                    @else
+                                        {{ $statusFilter === 'all' ? 'Nenhuma empresa neste portfólio ainda.' : 'Nenhuma empresa neste filtro.' }}
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse

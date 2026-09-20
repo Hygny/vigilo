@@ -5,10 +5,15 @@
                 <h1 class="text-[28px] font-bold tracking-[-0.03em] text-ink">Alertas</h1>
                 <p class="mt-1 text-[14.5px] text-ink-muted">Mudanças detectadas que ainda não foram revisadas.</p>
             </div>
-            <x-ui.button variant="secondary" size="sm" icon="done_all"
-                         wire:click="acknowledgeAll" wire:confirm="Marcar como vistos todos os alertas do filtro atual?">
-                Marcar todos como vistos
-            </x-ui.button>
+            <div class="flex flex-wrap items-center gap-2">
+                <x-ui.button variant="secondary" size="sm" icon="download" wire:click="export">
+                    Exportar Excel
+                </x-ui.button>
+                <x-ui.button variant="secondary" size="sm" icon="done_all"
+                             wire:click="acknowledgeAll" wire:confirm="Marcar como vistos todos os alertas do filtro atual?">
+                    Marcar todos como vistos
+                </x-ui.button>
+            </div>
         </div>
 
         @if (session('status'))

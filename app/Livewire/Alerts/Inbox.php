@@ -8,6 +8,7 @@ use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\ChangeEvent;
 use App\Models\MonitoredCompany;
 use App\Models\Portfolio;
+use App\Services\Export\AlertsExcelExport;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -15,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 #[Layout('layouts.app')]
 class Inbox extends Component
@@ -45,6 +47,26 @@ class Inbox extends Component
         $this->openFilteredEvents()->update(['acknowledged_at' => Carbon::now()]);
 
         session()->flash('status', 'Alertas do filtro atual marcados como vistos.');
+    }
+
+    /**
+     * Exporta em Excel TODOS os alertas localizados no filtro atual (sem o teto
+     * de 100 da listagem). Respeita o escopo da organização e o filtro de
+     * severidade.
+     */
+    public function export(AlertsExcelExport $export): BinaryFileResponse
+    {
+        $events = $this->openFilteredEvents()
+            ->with('monitoredCompany')
+            ->orderByDesc('detected_at')
+            ->get();
+
+        $path = $export->build($events);
+        $filename = 'alertas-'.Carbon::now()->format('Y-m-d-His').'.xlsx';
+
+        return response()->download($path, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend();
     }
 
     public function render(): View
