@@ -35,6 +35,12 @@ return [
             'retry_backoff_ms' => (int) env('CNPJ_RETRY_BACKOFF_MS', 500),
         ],
 
+        // Base CNPJ própria (V2) — lê da conexão PostgreSQL local, sem rate limit.
+        // Ative com CNPJ_DRIVER=local (BrasilAPI segue como fallback opcional).
+        'local' => [
+            'connection' => env('CNPJ_LOCAL_CONNECTION', 'cnpj'),
+        ],
+
     ],
 
     /*

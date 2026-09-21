@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Contracts\CnpjDataProvider;
 use App\Providers\Cnpj\BrasilApiProvider;
+use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -31,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
                     tries: (int) config('cnpj.providers.brasilapi.tries'),
                     retryBackoffMs: (int) config('cnpj.providers.brasilapi.retry_backoff_ms'),
                     throttlePerMinute: (int) config('cnpj.throttle.requests_per_minute'),
+                ),
+                'local' => new LocalCnpjProvider(
+                    connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
                 ),
                 default => throw new InvalidArgumentException("Driver de CNPJ não suportado: [{$driver}]."),
             };
