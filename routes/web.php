@@ -9,6 +9,7 @@ use App\Livewire\Admin\Organizations\Show as AdminOrganizationShow;
 use App\Livewire\Admin\Users;
 use App\Livewire\Alerts\Inbox;
 use App\Livewire\Billing\Index as Billing;
+use App\Livewire\Companies\Graph as CompanyGraph;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
@@ -24,6 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('portfolios/{portfolio}', PortfolioShow::class)->name('portfolios.show');
 
     Route::get('companies/{company}', CompanyShow::class)->name('companies.show');
+    Route::get('companies/{company}/grafo', CompanyGraph::class)->name('companies.graph');
 
     Route::get('alerts', Inbox::class)->name('alerts.index');
 

@@ -15,7 +15,10 @@
                 </div>
                 <p class="mt-1 font-mono text-sm text-ink-muted">{{ $company->formattedCnpj() }}</p>
             </div>
-            <x-ui.button wire:click="queueRefresh" icon="bolt">Atualizar agora</x-ui.button>
+            <div class="flex flex-wrap items-center gap-2">
+                <x-ui.button :href="route('companies.graph', $company)" variant="secondary" icon="hub" wire:navigate>Grafo societário</x-ui.button>
+                <x-ui.button wire:click="queueRefresh" icon="bolt">Atualizar agora</x-ui.button>
+            </div>
         </div>
 
         @if (session('status'))
