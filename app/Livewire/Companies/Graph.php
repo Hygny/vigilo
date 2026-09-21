@@ -40,8 +40,12 @@ class Graph extends Component
     /**
      * Recentra o grafo num nó clicado (empresa ou sócio PJ). Lê dado público da
      * Receita — a página já é autorizada pela empresa monitorada de origem.
+     *
+     * Nome `focusOn` (não `focus`) de propósito: há a propriedade pública
+     * `$focus`, e no cliente `$wire.focus` resolveria para a propriedade, não
+     * para o método — o `wire:click` não dispararia.
      */
-    public function focus(string $cnpj): void
+    public function focusOn(string $cnpj): void
     {
         $digits = preg_replace('/\D/', '', $cnpj) ?? '';
 

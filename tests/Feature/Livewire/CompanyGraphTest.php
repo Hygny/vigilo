@@ -89,8 +89,8 @@ it('renders the ownership graph for a monitored company', function () {
         ->assertSee('MARIA')                   // sócia direta
         ->assertSee('EMPRESA GRUPO')           // grupo econômico (aresta reversa)
         ->assertSee('Beneficiários finais')    // painel de beneficiário final
-        ->assertSee('wire:click="focus(\''.$grupoCnpj, false) // empresa do grupo é clicável
-        ->assertDontSee("focus('***", false);  // PF (CPF mascarado) NÃO é clicável
+        ->assertSee('wire:click="focusOn(\''.$grupoCnpj, false) // empresa do grupo é clicável
+        ->assertDontSee("focusOn('***", false);  // PF (CPF mascarado) NÃO é clicável
 });
 
 it('shows an unavailable notice when the CNPJ base is down', function () {
@@ -131,7 +131,7 @@ it('recenters the graph when focusing another company, and resets back', functio
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
         ->assertSee('EMPRESA CENTRO')
-        ->call('focus', $grupoCnpj)
+        ->call('focusOn', $grupoCnpj)
         ->assertSee('EMPRESA GRUPO')          // novo centro
         ->assertSee('PEDRO')                  // sócio do novo centro
         ->assertSee('Voltar à empresa monitorada')
@@ -146,6 +146,6 @@ it('ignores a focus with an invalid CNPJ', function () {
     bootCompanyGraphBase();
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
-        ->call('focus', '123')
+        ->call('focusOn', '123')
         ->assertSee('EMPRESA CENTRO'); // permanece na empresa monitorada
 });

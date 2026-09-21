@@ -44,7 +44,7 @@
                             @php
                                 $stroke = $node['kind'] === 'empresa' ? 'var(--line-strong)' : 'var(--surface)';
                                 // cnpj já é validado (14 dígitos) no componente → injeção segura.
-                                $clickAttrs = $node['cnpj'] ? 'wire:click="focus(\''.$node['cnpj'].'\')" style="cursor:pointer;"' : '';
+                                $clickAttrs = $node['cnpj'] ? 'wire:click="focusOn(\''.$node['cnpj'].'\')" style="cursor:pointer;"' : '';
                                 $titleSuffix = $node['cnpj'] ? ' — clique para expandir' : '';
                             @endphp
                             <g {!! $clickAttrs !!}>
