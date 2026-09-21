@@ -1,8 +1,9 @@
 FROM php:8.4-fpm-alpine
 
 # Extensoes do Laravel + redis (cache/fila/sessao)
-RUN apk add --no-cache git curl libpng-dev libzip-dev icu-dev oniguruma-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip intl opcache
+# libpq-dev: cliente do PostgreSQL (base CNPJ da V2, conexão `cnpj` via pdo_pgsql).
+RUN apk add --no-cache git curl libpng-dev libzip-dev icu-dev oniguruma-dev libpq-dev \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip intl opcache
 
 RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
     && pecl install redis \
