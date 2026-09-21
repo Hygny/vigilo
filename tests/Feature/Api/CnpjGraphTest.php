@@ -52,6 +52,9 @@ function seedGraphCenterBase(): void
         'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02',
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A']);
+    DB::connection('cnpj')->table('socios')->insert([
+        'cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2',
+    ]);
 }
 
 /**
@@ -87,7 +90,9 @@ it('returns the ownership graph for a monitored CNPJ', function () {
         ->getJson('/api/cnpj/11222333000181/grafo')
         ->assertOk()
         ->assertJsonPath('centro', 'empresa:11222333')
-        ->assertJsonPath('nos.0.nome', 'EMPRESA A');
+        ->assertJsonPath('nos.0.nome', 'EMPRESA A')
+        ->assertJsonPath('beneficiarios.0.nome', 'MARIA')
+        ->assertJsonPath('beneficiarios.0.nivel', 1);
 });
 
 it('validates the CNPJ length', function () {

@@ -51,8 +51,39 @@
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
-                    Camada 1: sócios diretos e empresas ligadas por sócio em comum. Níveis mais profundos e o beneficiário final chegam numa próxima etapa.
+                    Camada 1: sócios diretos e empresas ligadas por sócio em comum.
                 </p>
+            </x-ui.card>
+
+            {{-- Beneficiários finais (estrutura) --}}
+            <x-ui.card class="p-5">
+                <div class="mb-3 flex items-center gap-2">
+                    <x-ui.icon name="account_tree" :size="20" class="text-accent" />
+                    <h2 class="text-[15px] font-semibold text-ink">Beneficiários finais (estrutura)</h2>
+                </div>
+
+                @if (count($beneficiaries) > 0)
+                    <ul class="divide-y divide-line overflow-hidden rounded-btn ring-1 ring-line">
+                        @foreach ($beneficiaries as $owner)
+                            <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                                <div class="flex items-center gap-2">
+                                    <x-ui.icon name="person" :size="16" class="text-ink-muted" />
+                                    <span class="text-sm font-medium text-ink">{{ $owner->name }}</span>
+                                    @if ($owner->type === 'ext')<span class="text-[11px] text-ink-muted">(estrangeiro)</span>@endif
+                                </div>
+                                <div class="flex items-center gap-3 text-[12.5px] text-ink-muted">
+                                    @if ($owner->document)<span class="font-mono">{{ $owner->document }}</span>@endif
+                                    <span>{{ $owner->depth === 1 ? 'sócio direto' : 'nível '.$owner->depth }}</span>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="mt-3 text-[12px] text-ink-muted">
+                        Estrutural (sem % de participação): pessoas físicas no topo da cadeia societária. Não aplica o critério legal de ≥25%.
+                    </p>
+                @else
+                    <p class="text-sm text-ink-muted">Nenhuma pessoa física identificada na cadeia dentro da profundidade analisada (pode haver sócios PJ além do limite).</p>
+                @endif
             </x-ui.card>
         @endif
     </div>

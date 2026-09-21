@@ -39,12 +39,14 @@ class Graph extends Component
         $layout = null;
         $partnerCount = 0;
         $groupCount = 0;
+        $beneficiaries = [];
 
         try {
             $graph = $graphs->for($this->company->cnpj);
             $layout = $this->buildLayout($graph);
             $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio')));
             $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center));
+            $beneficiaries = $graphs->beneficialOwners($this->company->cnpj);
         } catch (Throwable $e) {
             report($e);
             $available = false;
@@ -55,6 +57,7 @@ class Graph extends Component
             'layout' => $layout,
             'partnerCount' => $partnerCount,
             'groupCount' => $groupCount,
+            'beneficiaries' => $beneficiaries,
         ]);
     }
 

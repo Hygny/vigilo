@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Graph;
 
+use App\DTO\Graph\BeneficialOwner;
 use App\DTO\Graph\GraphEdge;
 use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
@@ -25,6 +26,8 @@ final class OwnershipGraphService
     public function __construct(
         private readonly string $connection,
         private readonly int $reverseLimit,
+        private readonly int $maxDepth = 5,
+        private readonly int $maxCompanies = 300,
     ) {}
 
     public function for(string $cnpj): OwnershipGraph
@@ -105,6 +108,68 @@ final class OwnershipGraphService
         }
 
         return new OwnershipGraph($centerId, array_values($nodes), array_values($edges));
+    }
+
+    /**
+     * Beneficiários finais **estruturais**: sobe a cadeia societária (sócios PJ →
+     * seus sócios → …) até as pessoas físicas no topo. Cycle-safe (não revisita
+     * uma empresa) e limitado por profundidade e por um teto de empresas
+     * visitadas. Sem % — não aplica o critério legal de ≥25%, indica controle
+     * por estrutura. PF que aparece em vários caminhos fica com o menor nível.
+     *
+     * @return list<BeneficialOwner>
+     */
+    public function beneficialOwners(string $cnpj, ?int $maxDepth = null): array
+    {
+        $maxDepth = max(1, $maxDepth ?? $this->maxDepth);
+        $db = DB::connection($this->connection);
+        $startBasico = substr(Cnpj::normalize($cnpj), 0, 8);
+
+        /** @var array<string, true> $visited */
+        $visited = [$startBasico => true];
+        /** @var array<string, BeneficialOwner> $owners */
+        $owners = [];
+        /** @var list<array{basico: string, depth: int}> $queue */
+        $queue = [['basico' => $startBasico, 'depth' => 1]];
+        $budget = $this->maxCompanies;
+
+        while ($queue !== [] && $budget > 0) {
+            $node = array_shift($queue);
+            $budget--;
+
+            $socios = $db->table('socios')
+                ->where('cnpj_basico', $node['basico'])
+                ->get(['nome_socio', 'cnpj_cpf_do_socio', 'identificador_de_socio']);
+
+            foreach ($socios as $row) {
+                $s = (array) $row;
+                $ident = $this->str($s['identificador_de_socio'] ?? null);
+                $document = $this->str($s['cnpj_cpf_do_socio'] ?? null);
+                $nome = $this->str($s['nome_socio'] ?? null) ?? 'Sócio';
+
+                // Sócio PJ: sobe mais um nível (se houver profundidade e ainda não visitado).
+                if ($ident === '1') {
+                    if ($document !== null && $node['depth'] < $maxDepth) {
+                        $pjBasico = substr($document, 0, 8);
+                        if (! isset($visited[$pjBasico])) {
+                            $visited[$pjBasico] = true;
+                            $queue[] = ['basico' => $pjBasico, 'depth' => $node['depth'] + 1];
+                        }
+                    }
+
+                    continue;
+                }
+
+                // PF ('2') ou estrangeiro ('3') → beneficiário final estrutural.
+                $key = $document ?? 'n:'.mb_strtolower($nome);
+
+                if (! isset($owners[$key]) || $owners[$key]->depth > $node['depth']) {
+                    $owners[$key] = new BeneficialOwner($nome, $document, $ident === '3' ? 'ext' : 'pf', $node['depth']);
+                }
+            }
+        }
+
+        return array_values($owners);
     }
 
     /**

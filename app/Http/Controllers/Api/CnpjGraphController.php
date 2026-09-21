@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\DTO\Graph\BeneficialOwner;
 use App\Http\Controllers\Controller;
 use App\Models\MonitoredCompany;
 use App\Models\User;
@@ -45,6 +46,12 @@ final class CnpjGraphController extends Controller
             return response()->json(['message' => 'CNPJ não monitorado pela organização.'], 404);
         }
 
-        return response()->json($graph->for($digits)->toArray());
+        return response()->json([
+            ...$graph->for($digits)->toArray(),
+            'beneficiarios' => array_map(
+                fn (BeneficialOwner $owner): array => $owner->toArray(),
+                $graph->beneficialOwners($digits),
+            ),
+        ]);
     }
 }

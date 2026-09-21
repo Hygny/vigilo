@@ -80,9 +80,10 @@ it('renders the ownership graph for a monitored company', function () {
     $this->actingAs($user)->get(route('companies.graph', $company))
         ->assertOk()
         ->assertSee('Grafo societário')
-        ->assertSee('EMPRESA CENTRO')  // nó centro
-        ->assertSee('MARIA')           // sócia direta
-        ->assertSee('EMPRESA GRUPO');  // grupo econômico (aresta reversa)
+        ->assertSee('EMPRESA CENTRO')          // nó centro
+        ->assertSee('MARIA')                   // sócia direta
+        ->assertSee('EMPRESA GRUPO')           // grupo econômico (aresta reversa)
+        ->assertSee('Beneficiários finais');   // painel de beneficiário final
 });
 
 it('shows an unavailable notice when the CNPJ base is down', function () {

@@ -54,6 +54,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OwnershipGraphService::class, fn (): OwnershipGraphService => new OwnershipGraphService(
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
             reverseLimit: (int) config('cnpj.graph.reverse_limit', 25),
+            maxDepth: (int) config('cnpj.graph.max_depth', 5),
+            maxCompanies: (int) config('cnpj.graph.max_companies', 300),
         ));
     }
 

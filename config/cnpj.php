@@ -88,6 +88,10 @@ return [
 
     'graph' => [
         'reverse_limit' => (int) env('CNPJ_GRAPH_REVERSE_LIMIT', 25),
+        // Profundidade máxima ao subir a cadeia societária (beneficiário final).
+        'max_depth' => (int) env('CNPJ_GRAPH_MAX_DEPTH', 5),
+        // Teto de empresas visitadas na recursão (rede de segurança).
+        'max_companies' => (int) env('CNPJ_GRAPH_MAX_COMPANIES', 300),
     ],
 
 ];

@@ -124,3 +124,79 @@ it('degrades to a lone center node when the CNPJ is absent from the base', funct
 it('resolves the graph service from the container', function () {
     expect(app(OwnershipGraphService::class))->toBeInstanceOf(OwnershipGraphService::class);
 });
+
+// ---------------------------------------------------------------------------
+// Beneficiário final estrutural
+// ---------------------------------------------------------------------------
+
+it('lists a direct natural person as a beneficial owner at level 1', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $owners = (new OwnershipGraphService('cnpj', 25))->beneficialOwners('11222333000181');
+
+    expect($owners)->toHaveCount(1)
+        ->and($owners[0]->name)->toBe('MARIA')
+        ->and($owners[0]->type)->toBe('pf')
+        ->and($owners[0]->depth)->toBe(1);
+});
+
+it('climbs through a PJ partner to the natural person at the top (level 2)', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('socios')->insert([
+        // centro tem sócio PJ = holding 99888777
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
+        // a holding tem sócio PF JOAO
+        ['cnpj_basico' => '99888777', 'nome_socio' => 'JOAO', 'cnpj_cpf_do_socio' => '***999**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $owners = (new OwnershipGraphService('cnpj', 25))->beneficialOwners('11222333000181');
+
+    // A holding (PJ) não é beneficiário; JOAO no topo, nível 2.
+    expect($owners)->toHaveCount(1)
+        ->and($owners[0]->name)->toBe('JOAO')
+        ->and($owners[0]->depth)->toBe(2);
+});
+
+it('respects the depth limit (does not climb PJ partners beyond it)', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '99888777', 'nome_socio' => 'JOAO', 'cnpj_cpf_do_socio' => '***999**', 'identificador_de_socio' => '2'],
+    ]);
+
+    // profundidade 1 → não sobe na holding → nenhum PF alcançado
+    $owners = (new OwnershipGraphService('cnpj', 25))->beneficialOwners('11222333000181', maxDepth: 1);
+
+    expect($owners)->toHaveCount(0);
+});
+
+it('is cycle-safe when two companies own each other', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'EMP B', 'cnpj_cpf_do_socio' => '44555666000155', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'EMP A', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'LUCIA', 'cnpj_cpf_do_socio' => '***222**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $owners = (new OwnershipGraphService('cnpj', 25))->beneficialOwners('11222333000181');
+
+    // Termina (visited impede loop) e chega em LUCIA.
+    expect(collect($owners)->pluck('name')->all())->toContain('LUCIA');
+});
+
+it('dedups a person reached by multiple paths, keeping the nearest level', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '99888777', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $owners = (new OwnershipGraphService('cnpj', 25))->beneficialOwners('11222333000181');
+
+    expect(collect($owners)->where('document', '***111**'))->toHaveCount(1)
+        ->and(collect($owners)->firstWhere('document', '***111**')->depth)->toBe(1);
+});
