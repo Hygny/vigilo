@@ -8,6 +8,7 @@ use App\Contracts\CnpjDataProvider;
 use App\DTO\CompanyData;
 use App\DTO\PartnerData;
 use App\Support\Cnpj;
+use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -24,15 +25,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class LocalCnpjProvider implements CnpjDataProvider
 {
-    /** Código da situação cadastral (Receita) → texto que o resto do sistema usa. */
-    private const SITUACAO = [
-        '01' => 'NULA',
-        '02' => 'ATIVA',
-        '03' => 'SUSPENSA',
-        '04' => 'INAPTA',
-        '08' => 'BAIXADA',
-    ];
-
     /** Código do porte → rótulo. 00 (não informado) vira null. */
     private const PORTE = [
         '01' => 'ME',
@@ -80,7 +72,7 @@ final class LocalCnpjProvider implements CnpjDataProvider
             cnpj: $normalized,
             razaoSocial: $this->str($e['razao_social'] ?? null) ?? '',
             nomeFantasia: $this->str($e['nome_fantasia'] ?? null),
-            situacaoCadastral: self::SITUACAO[trim((string) ($e['situacao_cadastral'] ?? ''))] ?? '',
+            situacaoCadastral: SituacaoCadastral::label($e['situacao_cadastral'] ?? null),
             situacaoData: $this->str($e['data_situacao_cadastral'] ?? null),
             cnaePrincipal: $this->str($e['cnae_fiscal_principal'] ?? null),
             porte: $this->porte($e['porte'] ?? null),

@@ -8,6 +8,7 @@ use App\Contracts\CnpjDataProvider;
 use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
+use App\Services\Graph\OwnershipGraphService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -49,6 +50,11 @@ class AppServiceProvider extends ServiceProvider
                 timeout: (int) config('asaas.timeout'),
             );
         });
+
+        $this->app->singleton(OwnershipGraphService::class, fn (): OwnershipGraphService => new OwnershipGraphService(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            reverseLimit: (int) config('cnpj.graph.reverse_limit', 25),
+        ));
     }
 
     /**

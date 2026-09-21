@@ -75,4 +75,19 @@ return [
         'history_limit' => (int) env('CNPJ_API_HISTORY_LIMIT', 50),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Grafo societário (V2)
+    |--------------------------------------------------------------------------
+    |
+    | Máximo de empresas trazidas pela aresta reversa por sócio (grupo
+    | econômico), para o grafo não explodir quando um sócio participa de muitas
+    | empresas.
+    |
+    */
+
+    'graph' => [
+        'reverse_limit' => (int) env('CNPJ_GRAPH_REVERSE_LIMIT', 25),
+    ],
+
 ];
