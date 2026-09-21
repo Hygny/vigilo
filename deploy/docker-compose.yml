@@ -43,6 +43,31 @@ services:
       - ./src:/var/www
     networks: [data]
 
+  # Base CNPJ consolidada da Receita (V2) — PostgreSQL proprio, so na rede interna.
+  # Alimentado pelo pipeline de dump (ver docs/vigilo-v2-f1-runbook.md).
+  # Usuario/senha vem de ~/apps/vigilo/.env (o mesmo CNPJ_DB_* do src/.env):
+  #   CNPJ_DB_USERNAME=cnpj
+  #   CNPJ_DB_PASSWORD=<senha forte>
+  postgres:
+    image: postgres:17-alpine
+    container_name: data-postgres-1
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cnpj
+      POSTGRES_USER: ${CNPJ_DB_USERNAME:-cnpj}
+      POSTGRES_PASSWORD: ${CNPJ_DB_PASSWORD:?defina CNPJ_DB_PASSWORD em ~/apps/vigilo/.env}
+    volumes:
+      - cnpj-pgdata:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CNPJ_DB_USERNAME:-cnpj} -d cnpj"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cnpj-pgdata:
+
 networks:
   web:
     external: true

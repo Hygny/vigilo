@@ -101,6 +101,24 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        // Base CNPJ consolidada da Receita (V2) — PostgreSQL próprio, alimentado
+        // pelo pipeline de dump. Lida como somente-leitura pelo app (só SELECTs);
+        // fica inerte até ser usada, então não afeta o fluxo atual (MySQL).
+        'cnpj' => [
+            'driver' => 'pgsql',
+            'url' => env('CNPJ_DB_URL'),
+            'host' => env('CNPJ_DB_HOST', 'data-postgres-1'),
+            'port' => env('CNPJ_DB_PORT', '5432'),
+            'database' => env('CNPJ_DB_DATABASE', 'cnpj'),
+            'username' => env('CNPJ_DB_USERNAME', 'cnpj'),
+            'password' => env('CNPJ_DB_PASSWORD', ''),
+            'charset' => env('CNPJ_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('CNPJ_DB_SSLMODE', 'prefer'),
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
