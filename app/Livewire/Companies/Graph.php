@@ -8,6 +8,7 @@ use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
 use App\Models\MonitoredCompany;
 use App\Services\Graph\OwnershipGraphService;
+use App\Support\Cnpj;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Layout;
@@ -27,26 +28,54 @@ class Graph extends Component
 
     public MonitoredCompany $company;
 
+    /** CNPJ (14 díg) atualmente no centro do grafo. Vazio = a empresa monitorada. */
+    public string $focus = '';
+
     public function mount(MonitoredCompany $company): void
     {
         $this->authorize('view', $company);
         $this->company = $company;
     }
 
+    /**
+     * Recentra o grafo num nó clicado (empresa ou sócio PJ). Lê dado público da
+     * Receita — a página já é autorizada pela empresa monitorada de origem.
+     */
+    public function focus(string $cnpj): void
+    {
+        $digits = preg_replace('/\D/', '', $cnpj) ?? '';
+
+        if (strlen($digits) === Cnpj::LENGTH) {
+            $this->focus = $digits;
+        }
+    }
+
+    public function resetFocus(): void
+    {
+        $this->focus = '';
+    }
+
     public function render(OwnershipGraphService $graphs): View
     {
+        $cnpj = $this->focus !== '' ? $this->focus : $this->company->cnpj;
+        $focused = $this->focus !== '' && $this->focus !== Cnpj::normalize($this->company->cnpj);
+
         $available = true;
         $layout = null;
         $partnerCount = 0;
         $groupCount = 0;
         $beneficiaries = [];
+        $focusLabel = null;
 
         try {
-            $graph = $graphs->for($this->company->cnpj);
+            $graph = $graphs->for($cnpj);
             $layout = $this->buildLayout($graph);
             $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio')));
             $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center));
-            $beneficiaries = $graphs->beneficialOwners($this->company->cnpj);
+            $beneficiaries = $graphs->beneficialOwners($cnpj);
+
+            $center = array_values(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->id === $graph->center));
+            $focusLabel = $center !== [] ? $center[0]->label : null;
         } catch (Throwable $e) {
             report($e);
             $available = false;
@@ -58,6 +87,8 @@ class Graph extends Component
             'partnerCount' => $partnerCount,
             'groupCount' => $groupCount,
             'beneficiaries' => $beneficiaries,
+            'focused' => $focused,
+            'focusLabel' => $focusLabel,
         ]);
     }
 
@@ -103,6 +134,13 @@ class Graph extends Component
             $isCenter = $node->id === $graph->center;
             $isSocio = str_starts_with($node->type, 'socio');
 
+            // Clicável (recentra) quando não é o centro e o documento é um CNPJ
+            // completo (14 díg) — empresa do grupo ou sócio PJ. PF (CPF mascarado)
+            // e o próprio centro não recentram.
+            $clickable = ! $isCenter
+                && $node->document !== null
+                && preg_match('/^\d{14}$/', $node->document) === 1;
+
             $nodes[] = [
                 'x' => $x,
                 'y' => $y,
@@ -111,6 +149,7 @@ class Graph extends Component
                 'title' => $node->label.($node->document !== null ? ' · '.$node->document : ''),
                 'fill' => $this->nodeFill($isCenter, $isSocio, $node->situacao),
                 'kind' => $isCenter ? 'center' : ($isSocio ? 'socio' : 'empresa'),
+                'cnpj' => $clickable ? $node->document : null,
             ];
         }
 

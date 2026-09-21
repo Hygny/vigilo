@@ -12,6 +12,17 @@
                         <span class="text-ink-2">· {{ $partnerCount }} sócio(s) · {{ $groupCount }} empresa(s) no grupo</span>
                     @endif
                 </p>
+
+                @if ($focused)
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-1 rounded-full bg-primary-soft px-3 py-1 text-[12.5px] font-medium text-accent">
+                            <x-ui.icon name="my_location" :size="14" />Focado em {{ $focusLabel ?? 'empresa conectada' }}
+                        </span>
+                        <button wire:click="resetFocus" class="inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-muted hover:text-ink-2 cursor-pointer">
+                            <x-ui.icon name="restart_alt" :size="15" />Voltar à empresa monitorada
+                        </button>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -30,9 +41,14 @@
                         @endforeach
 
                         @foreach ($layout['nodes'] as $node)
-                            @php $stroke = $node['kind'] === 'empresa' ? 'var(--line-strong)' : 'var(--surface)'; @endphp
-                            <g>
-                                <title>{{ $node['title'] }}</title>
+                            @php
+                                $stroke = $node['kind'] === 'empresa' ? 'var(--line-strong)' : 'var(--surface)';
+                                // cnpj já é validado (14 dígitos) no componente → injeção segura.
+                                $clickAttrs = $node['cnpj'] ? 'wire:click="focus(\''.$node['cnpj'].'\')" style="cursor:pointer;"' : '';
+                                $titleSuffix = $node['cnpj'] ? ' — clique para expandir' : '';
+                            @endphp
+                            <g {!! $clickAttrs !!}>
+                                <title>{{ $node['title'].$titleSuffix }}</title>
                                 <circle cx="{{ $node['x'] }}" cy="{{ $node['y'] }}" r="{{ $node['r'] }}"
                                         style="fill: {{ $node['fill'] }}; stroke: {{ $stroke }}; stroke-width: 2.5px;" />
                                 <text x="{{ $node['x'] }}" y="{{ $node['y'] + $node['r'] + 14 }}" text-anchor="middle"
@@ -51,7 +67,7 @@
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
-                    Camada 1: sócios diretos e empresas ligadas por sócio em comum.
+                    Camada 1: sócios diretos e empresas ligadas por sócio em comum. Clique numa empresa ou sócio PJ para expandir a partir dela.
                 </p>
             </x-ui.card>
 

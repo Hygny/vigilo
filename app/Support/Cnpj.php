@@ -71,6 +71,27 @@ final readonly class Cnpj implements Stringable
     }
 
     /**
+     * Monta o CNPJ (14 díg) da MATRIZ a partir do cnpj_basico (8 díg): ordem
+     * 0001 + dígitos verificadores calculados. Determinístico — o DV é função
+     * dos 12 primeiros dígitos. Retorna null se o básico não tiver 8 dígitos.
+     * Útil para tornar "clicável" um nó do grafo que só carrega o básico.
+     */
+    public static function matrizFromBasico(string $basico): ?string
+    {
+        $digits = preg_replace('/\D/', '', $basico) ?? '';
+
+        if (strlen($digits) !== 8) {
+            return null;
+        }
+
+        $twelve = $digits.'0001';
+        $dv1 = self::checkDigit($twelve, 12);
+        $dv2 = self::checkDigit($twelve.$dv1, 13);
+
+        return $twelve.$dv1.$dv2;
+    }
+
+    /**
      * Render as the masked form 00.000.000/0000-00.
      */
     public function formatted(): string

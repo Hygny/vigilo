@@ -59,3 +59,11 @@ it('tryFrom returns a value object or null', function () {
     expect(Cnpj::tryFrom('11222333000181'))->toBeInstanceOf(Cnpj::class)
         ->and(Cnpj::tryFrom('11222333000180'))->toBeNull();
 });
+
+it('builds the matriz CNPJ from a cnpj_basico (ordem 0001 + DV calculado)', function () {
+    // básico 11222333 → matriz 11222333/0001-81 (DV determinístico e válido)
+    expect(Cnpj::matrizFromBasico('11222333'))->toBe('11222333000181')
+        ->and(Cnpj::isValid((string) Cnpj::matrizFromBasico('11222333')))->toBeTrue()
+        ->and(Cnpj::matrizFromBasico('112'))->toBeNull()      // menos de 8 díg
+        ->and(Cnpj::matrizFromBasico('11222333000181'))->toBeNull(); // mais de 8 díg
+});

@@ -101,7 +101,7 @@ final class OwnershipGraphService
                     id: $otherId,
                     type: 'empresa',
                     label: $this->str($o['razao_social'] ?? null) ?? $otherBasico,
-                    document: $otherBasico,
+                    document: Cnpj::matrizFromBasico($otherBasico) ?? $otherBasico,
                 );
                 $edges[$otherId.'|'.$socioId] ??= new GraphEdge($otherId, $socioId, 'socio');
             }
