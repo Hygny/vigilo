@@ -34,11 +34,20 @@ docker compose exec app php artisan config:cache
 
 ## 1. Deploy do código da V2-F1
 
-Primeiro traga o código (conexão + compose + comando) e suba o Postgres:
+O compose que roda em produção é uma **cópia** (`~/apps/vigilo/docker-compose.yml`).
+Como esta fatia adiciona o serviço `postgres`, é preciso **re-copiar** o compose
+depois de puxar o código — senão o serviço novo não aparece:
+
 ```bash
 cd ~/apps/vigilo
-./src/deploy/deploy.sh --build   # --build: o compose ganhou um serviço novo (postgres)
-docker compose up -d postgres
+git -C src pull --ff-only                        # traz o novo compose + código
+cp src/deploy/docker-compose.yml docker-compose.yml   # sincroniza o compose de ops (ganhou o postgres)
+```
+
+Agora o deploy com rebuild (o compose mudou) e sobe o Postgres:
+```bash
+./src/deploy/deploy.sh --build   # --build: recria a imagem e faz up -d de tudo
+docker compose up -d postgres    # garante o serviço novo de pé
 docker compose ps                # postgres deve ficar 'healthy'
 ```
 
