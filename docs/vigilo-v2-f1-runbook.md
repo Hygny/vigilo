@@ -112,19 +112,40 @@ docker compose exec postgres psql -U cnpj -d cnpj \
   -c "SELECT cnpj_basico, nome_socio FROM socios WHERE cnpj_cpf_socio='***123456**' LIMIT 20;"
 ```
 
-## 5. Reimport mensal (upsert)
+## 5. Ativar o driver local (transição — uma vez, V2-F2/F3)
 
-A Receita publica ~1x/mês. Agende o reimport no cron do host (dia 5, 03:00, fora de pico):
+Depois da carga + índices, troque a fonte de dados da BrasilAPI para a base local:
 
-```cron
-0 3 5 * * cd ~/apps/vigilo && docker run --rm --network data -e DATABASE_URL="postgres://cnpj:<senha>@data-postgres-1:5432/cnpj" -e LOADING_STRATEGY=upsert ghcr.io/caiopizzol/cnpj-data-pipeline >> ~/apps/vigilo/cnpj-reimport.log 2>&1
+```bash
+# src/.env:
+#   CNPJ_DRIVER=local
+#   CNPJ_THROTTLE_PER_MINUTE=0      # base local não tem rate limit → sem throttle
+nano ~/apps/vigilo/src/.env
+docker compose exec app php artisan config:cache
 ```
 
-> A **re-coleta da carteira** após cada dump (gerar alertas do que mudou entre um mês e outro) é a **V2-F3** — entra depois do driver local (V2-F2).
+Agora **re-baseline** a carteira UMA vez — grava os snapshots locais **sem** gerar alertas (evita enxurrada de alerta falso por diferença de formato entre BrasilAPI e a base):
 
-## Critério de aceite (V2-F1)
+```bash
+docker compose exec app php artisan vigilo:recoletar-carteira --rebaseline
+```
+
+Confira o consumo da fila em `docker compose logs -f queue`. A partir daí, toda re-coleta normal (sem `--rebaseline`) diff-a contra o baseline local e gera alertas de verdade.
+
+## 6. Reimport + re-coleta mensal (cron)
+
+A Receita publica ~1x/mês. Agende no cron do host: reimport (upsert) **e**, na sequência, a re-coleta da carteira (que gera os alertas do que mudou entre um dump e outro). Dia 5, 03:00, fora de pico:
+
+```cron
+0 3 5 * * cd ~/apps/vigilo && docker run --rm --network data -e DATABASE_URL="postgres://cnpj:<senha>@data-postgres-1:5432/cnpj" -e LOADING_STRATEGY=upsert ghcr.io/caiopizzol/cnpj-data-pipeline >> ~/apps/vigilo/cnpj-reimport.log 2>&1 && docker compose -f ~/apps/vigilo/docker-compose.yml exec -T app php artisan vigilo:recoletar-carteira >> ~/apps/vigilo/cnpj-recoleta.log 2>&1
+```
+
+> A re-coleta mensal roda **sem** `--rebaseline` (queremos os alertas). O `--rebaseline` é só o passo único de transição do item 5.
+
+## Critério de aceite
 - `cnpj:status` retorna contagens reais das três tabelas.
 - Um lookup por CNPJ e a consulta reversa por documento de sócio retornam correto e rápido (com os índices do passo 4).
+- Com `CNPJ_DRIVER=local`, um refresh de empresa monta o `CompanyData` da base local; a re-coleta mensal gera alertas do que mudou entre dumps.
 
 ## Próximo
-**V2-F2** — driver `LocalCnpjProvider` que lê dessa base (em vez da BrasilAPI), montando o mesmo `CompanyData`. Sem rate limit → habilita a re-coleta em lote (V2-F3) e o grafo (V2-F4+).
+**V2-F4** — grafo societário (Camada 1): consulta bidirecional em `socios` (direto + reverso via `idx_socios_documento`), grupo econômico por sócio em comum, até o beneficiário final (F5).

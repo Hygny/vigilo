@@ -127,6 +127,27 @@ it('detects changes on a later refresh and notifies the organization', function 
     );
 });
 
+it('re-baselines silently: stores a snapshot but emits no events or notifications', function () {
+    Notification::fake();
+
+    Http::fake(['https://brasilapi.com.br/*' => Http::sequence()
+        ->push(companyPayload('ATIVA'), 200)
+        ->push(companyPayload('BAIXADA'), 200),
+    ]);
+
+    $company = tenantCompany();
+
+    RefreshMonitoredCompanyJob::dispatchSync($company);        // baseline normal (ATIVA)
+    RefreshMonitoredCompanyJob::dispatchSync($company, true);  // rebaseline: BAIXADA, mas silencioso
+
+    // Snapshot foi gravado, mas a mudança ATIVA→BAIXADA NÃO virou alerta.
+    expect($company->snapshots()->count())->toBe(2)
+        ->and($company->changeEvents()->count())->toBe(0)
+        ->and($company->fresh()->last_refresh_status)->toBe(RefreshStatus::Ok);
+
+    Notification::assertNothingSent();
+});
+
 it('records the attempt but stores nothing when the company is not found', function () {
     Notification::fake();
     Http::fake(['https://brasilapi.com.br/*' => Http::response(['message' => 'not found'], 404)]);

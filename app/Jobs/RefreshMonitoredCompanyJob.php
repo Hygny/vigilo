@@ -50,7 +50,14 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
      */
     public int $uniqueFor = 3600;
 
-    public function __construct(public MonitoredCompany $company) {}
+    /**
+     * @param  bool  $rebaseline  Quando true, grava o snapshot mas NÃO gera
+     *                            change_events nem notificação — usado uma vez ao
+     *                            trocar a fonte de dados (ex.: BrasilAPI → base
+     *                            local), para o novo baseline não disparar alertas
+     *                            de mera diferença de formato.
+     */
+    public function __construct(public MonitoredCompany $company, public bool $rebaseline = false) {}
 
     /**
      * Deduplica o enfileiramento: enquanto já houver um refresh pendente ou em
@@ -97,6 +104,18 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         // Company not found upstream — record the attempt, nothing to diff.
         if ($data === null) {
             $this->markRefreshed(RefreshStatus::NotFound);
+
+            return;
+        }
+
+        // Re-baseline: grava o snapshot como novo ponto de partida, sem diff nem
+        // alerta. Absorve a troca de fonte de dados (a 1ª coleta local não deve
+        // alertar por diferença de formato — ver V2-F2/A3).
+        if ($this->rebaseline) {
+            DB::transaction(function () use ($data, $snapshots): void {
+                $snapshots->store($this->company, $data);
+                $this->markRefreshed(RefreshStatus::Ok);
+            });
 
             return;
         }
