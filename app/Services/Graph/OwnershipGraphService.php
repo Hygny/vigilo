@@ -111,6 +111,57 @@ final class OwnershipGraphService
     }
 
     /**
+     * Grafo centrado numa PESSOA (sócio): a pessoa no centro e todas as empresas
+     * em que ela aparece como sócia (consulta reversa por documento). O documento
+     * é o CPF **mascarado** da Receita (`***NNNNNN**`) — pode, raramente, colidir
+     * entre pessoas distintas com os mesmos 6 dígitos centrais.
+     */
+    public function forPerson(string $document): OwnershipGraph
+    {
+        $db = DB::connection($this->connection);
+        $centerId = 'socio:'.$document;
+
+        $rows = $db->table('socios as s')
+            ->leftJoin('empresas as emp', 's.cnpj_basico', '=', 'emp.cnpj_basico')
+            ->where('s.cnpj_cpf_do_socio', $document)
+            ->limit($this->reverseLimit)
+            ->get(['s.cnpj_basico', 's.nome_socio', 's.identificador_de_socio', 'emp.razao_social']);
+
+        $name = 'Pessoa';
+        $type = 'socio_pf';
+
+        /** @var array<string, GraphNode> $companies */
+        $companies = [];
+        /** @var array<string, GraphEdge> $edges */
+        $edges = [];
+
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $name = $this->str($r['nome_socio'] ?? null) ?? $name;
+            $type = $this->str($r['identificador_de_socio'] ?? null) === '3' ? 'socio_ext' : 'socio_pf';
+
+            $basico = $this->str($r['cnpj_basico'] ?? null);
+
+            if ($basico === null) {
+                continue;
+            }
+
+            $companyId = 'empresa:'.$basico;
+            $companies[$companyId] ??= new GraphNode(
+                id: $companyId,
+                type: 'empresa',
+                label: $this->str($r['razao_social'] ?? null) ?? $basico,
+                document: Cnpj::matrizFromBasico($basico) ?? $basico,
+            );
+            $edges[$companyId.'|'.$centerId] ??= new GraphEdge($companyId, $centerId, 'socio');
+        }
+
+        $center = new GraphNode($centerId, $type, $name, $document);
+
+        return new OwnershipGraph($centerId, array_merge([$center], array_values($companies)), array_values($edges));
+    }
+
+    /**
      * Beneficiários finais **estruturais**: sobe a cadeia societária (sócios PJ →
      * seus sócios → …) até as pessoas físicas no topo. Cycle-safe (não revisita
      * uma empresa) e limitado por profundidade e por um teto de empresas

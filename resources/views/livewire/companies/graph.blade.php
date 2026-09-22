@@ -9,7 +9,11 @@
                 <p class="mt-1 text-[14px] text-ink-muted">
                     {{ $company->latestSnapshot?->razao_social ?? $company->label ?? $company->formattedCnpj() }}
                     @if ($available)
-                        <span class="text-ink-2">· {{ $partnerCount }} sócio(s) · {{ $groupCount }} empresa(s) no grupo</span>
+                        @if ($personMode)
+                            <span class="text-ink-2">· {{ $groupCount }} empresa(s) desta pessoa</span>
+                        @else
+                            <span class="text-ink-2">· {{ $partnerCount }} sócio(s) · {{ $groupCount }} empresa(s) no grupo</span>
+                        @endif
                     @endif
                 </p>
 
@@ -43,9 +47,16 @@
                         @foreach ($layout['nodes'] as $node)
                             @php
                                 $stroke = $node['kind'] === 'empresa' ? 'var(--line-strong)' : 'var(--surface)';
-                                // cnpj já é validado (14 dígitos) no componente → injeção segura.
-                                $clickAttrs = $node['cnpj'] ? 'wire:click="focusOn(\''.$node['cnpj'].'\')" style="cursor:pointer;"' : '';
-                                $titleSuffix = $node['cnpj'] ? ' — clique para expandir' : '';
+                                // cnpj (14 díg) e person (dígitos + `*`) já são validados no
+                                // componente → injeção segura no wire:click.
+                                if ($node['cnpj']) {
+                                    $clickAttrs = 'wire:click="focusOn(\''.$node['cnpj'].'\')" style="cursor:pointer;"';
+                                } elseif ($node['person']) {
+                                    $clickAttrs = 'wire:click="focusPerson(\''.$node['person'].'\')" style="cursor:pointer;"';
+                                } else {
+                                    $clickAttrs = '';
+                                }
+                                $titleSuffix = ($node['cnpj'] || $node['person']) ? ' — clique para expandir' : '';
                             @endphp
                             <g {!! $clickAttrs !!}>
                                 <title>{{ $node['title'].$titleSuffix }}</title>
@@ -67,11 +78,16 @@
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
-                    Camada 1: sócios diretos e empresas ligadas por sócio em comum. Clique numa empresa ou sócio PJ para expandir a partir dela.
+                    @if ($personMode)
+                        Empresas em que esta pessoa aparece como sócia. Clique numa empresa para ver o grafo dela.
+                    @else
+                        Camada 1: sócios diretos e empresas ligadas por sócio em comum. Clique numa empresa, sócio PJ ou pessoa para expandir a partir dela.
+                    @endif
                 </p>
             </x-ui.card>
 
-            {{-- Beneficiários finais (estrutura) --}}
+            {{-- Beneficiários finais (estrutura) — só no grafo centrado em empresa --}}
+            @if (! $personMode)
             <x-ui.card class="p-5">
                 <div class="mb-3 flex items-center gap-2">
                     <x-ui.icon name="account_tree" :size="20" class="text-accent" />
@@ -101,6 +117,7 @@
                     <p class="text-sm text-ink-muted">Nenhuma pessoa física identificada na cadeia dentro da profundidade analisada (pode haver sócios PJ além do limite).</p>
                 @endif
             </x-ui.card>
+            @endif
         @endif
     </div>
 </div>

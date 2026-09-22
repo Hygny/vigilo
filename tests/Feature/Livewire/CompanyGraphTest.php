@@ -89,8 +89,9 @@ it('renders the ownership graph for a monitored company', function () {
         ->assertSee('MARIA')                   // sócia direta
         ->assertSee('EMPRESA GRUPO')           // grupo econômico (aresta reversa)
         ->assertSee('Beneficiários finais')    // painel de beneficiário final
-        ->assertSee('wire:click="focusOn(\''.$grupoCnpj, false) // empresa do grupo é clicável
-        ->assertDontSee("focusOn('***", false);  // PF (CPF mascarado) NÃO é clicável
+        ->assertSee('wire:click="focusOn(\''.$grupoCnpj, false)  // empresa do grupo é clicável
+        ->assertSee('wire:click="focusPerson(\'***111**', false) // a PF é clicável (foca a pessoa)
+        ->assertDontSee("focusOn('***", false);                  // PF não é clicável como empresa
 });
 
 it('shows an unavailable notice when the CNPJ base is down', function () {
@@ -148,4 +149,32 @@ it('ignores a focus with an invalid CNPJ', function () {
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
         ->call('focusOn', '123')
         ->assertSee('EMPRESA CENTRO'); // permanece na empresa monitorada
+});
+
+it('recenters on a person (PF), showing every company they belong to', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // MARIA (***111**) é sócia da CENTRO e da GRUPO
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusPerson', '***111**')
+        ->assertSee('MARIA')                       // pessoa no centro
+        ->assertSee('EMPRESA CENTRO')              // empresa dela
+        ->assertSee('EMPRESA GRUPO')               // outra empresa dela
+        ->assertSee('empresa(s) desta pessoa')     // texto do modo pessoa
+        ->assertDontSee('Beneficiários finais')    // painel oculto no modo pessoa
+        ->call('resetFocus')
+        ->assertSee('Beneficiários finais');       // voltou ao modo empresa
+});
+
+it('ignores a person focus with an invalid document', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusPerson', 'abc')      // sanitiza para vazio → ignora
+        ->assertSee('Beneficiários finais'); // segue no modo empresa
 });

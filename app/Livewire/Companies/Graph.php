@@ -31,6 +31,9 @@ class Graph extends Component
     /** CNPJ (14 díg) atualmente no centro do grafo. Vazio = a empresa monitorada. */
     public string $focus = '';
 
+    /** Documento (CPF mascarado) de uma PESSOA no centro. Vazio = modo empresa. */
+    public string $focusDocument = '';
+
     public function mount(MonitoredCompany $company): void
     {
         $this->authorize('view', $company);
@@ -51,18 +54,35 @@ class Graph extends Component
 
         if (strlen($digits) === Cnpj::LENGTH) {
             $this->focus = $digits;
+            $this->focusDocument = '';
+        }
+    }
+
+    /**
+     * Recentra numa PESSOA (sócio), mostrando todas as empresas dela. O documento
+     * é o CPF mascarado (só dígitos e `*`); qualquer outra coisa é ignorada.
+     */
+    public function focusPerson(string $document): void
+    {
+        $doc = preg_replace('/[^0-9*]/', '', $document) ?? '';
+
+        if ($doc !== '' && mb_strlen($doc) <= 14) {
+            $this->focusDocument = $doc;
+            $this->focus = '';
         }
     }
 
     public function resetFocus(): void
     {
         $this->focus = '';
+        $this->focusDocument = '';
     }
 
     public function render(OwnershipGraphService $graphs): View
     {
+        $personMode = $this->focusDocument !== '';
         $cnpj = $this->focus !== '' ? $this->focus : $this->company->cnpj;
-        $focused = $this->focus !== '' && $this->focus !== Cnpj::normalize($this->company->cnpj);
+        $focused = $personMode || ($this->focus !== '' && $this->focus !== Cnpj::normalize($this->company->cnpj));
 
         $available = true;
         $layout = null;
@@ -72,11 +92,16 @@ class Graph extends Component
         $focusLabel = null;
 
         try {
-            $graph = $graphs->for($cnpj);
+            if ($personMode) {
+                $graph = $graphs->forPerson($this->focusDocument);
+            } else {
+                $graph = $graphs->for($cnpj);
+                $beneficiaries = $graphs->beneficialOwners($cnpj);
+            }
+
             $layout = $this->buildLayout($graph);
-            $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio')));
+            $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio') && $n->id !== $graph->center));
             $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center));
-            $beneficiaries = $graphs->beneficialOwners($cnpj);
 
             $center = array_values(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->id === $graph->center));
             $focusLabel = $center !== [] ? $center[0]->label : null;
@@ -93,6 +118,7 @@ class Graph extends Component
             'beneficiaries' => $beneficiaries,
             'focused' => $focused,
             'focusLabel' => $focusLabel,
+            'personMode' => $personMode,
         ]);
     }
 
@@ -138,12 +164,13 @@ class Graph extends Component
             $isCenter = $node->id === $graph->center;
             $isSocio = str_starts_with($node->type, 'socio');
 
-            // Clicável (recentra) quando não é o centro e o documento é um CNPJ
-            // completo (14 díg) — empresa do grupo ou sócio PJ. PF (CPF mascarado)
-            // e o próprio centro não recentram.
-            $clickable = ! $isCenter
-                && $node->document !== null
-                && preg_match('/^\d{14}$/', $node->document) === 1;
+            // Recentra (clique) quando não é o centro:
+            //  - empresa/sócio PJ (CNPJ completo, 14 díg) → foca a empresa;
+            //  - PF/estrangeiro (CPF mascarado, dígitos + `*`) → foca a pessoa.
+            $doc = (string) ($node->document ?? '');
+            $isCompanyDoc = preg_match('/^\d{14}$/', $doc) === 1;
+            $isPersonDoc = ! $isCompanyDoc && $doc !== '' && $isSocio
+                && preg_match('/^[0-9*]+$/', $doc) === 1 && str_contains($doc, '*');
 
             $nodes[] = [
                 'x' => $x,
@@ -153,7 +180,8 @@ class Graph extends Component
                 'title' => $node->label.($node->document !== null ? ' · '.$node->document : ''),
                 'fill' => $this->nodeFill($isCenter, $isSocio, $node->situacao),
                 'kind' => $isCenter ? 'center' : ($isSocio ? 'socio' : 'empresa'),
-                'cnpj' => $clickable ? $node->document : null,
+                'cnpj' => (! $isCenter && $isCompanyDoc) ? $doc : null,
+                'person' => (! $isCenter && $isPersonDoc) ? $doc : null,
             ];
         }
 
