@@ -87,13 +87,24 @@ function layoutOptions() {
 }
 
 export default function registerGrifo() {
-    document.addEventListener('alpine:init', () => {
-        window.Alpine.data('grifo', (initial) => ({
+    const define = (Alpine) => Alpine.data('grifo', (initial) => ({
             cy: null,
             observer: null,
+            onResize: null,
 
             init() {
-                this.boot(initial);
+                // $nextTick: só inicializa o Cytoscape quando o container já tem
+                // tamanho (evita canvas em branco por medir 0×0 cedo demais).
+                this.$nextTick(() => this.boot(initial));
+
+                // O Cytoscape não reajusta sozinho ao redimensionar a janela.
+                this.onResize = () => {
+                    if (this.cy) {
+                        this.cy.resize();
+                        this.cy.fit(undefined, 40);
+                    }
+                };
+                window.addEventListener('resize', this.onResize);
 
                 // Re-aplica as cores quando o tema (data-theme) muda.
                 this.observer = new MutationObserver(() => this.applyColors());
@@ -103,7 +114,7 @@ export default function registerGrifo() {
                 });
 
                 // Limpa ao sair (navegação SPA do Livewire).
-                this.$el.addEventListener('livewire:navigating', () => this.destroy(), { once: true });
+                this.$el.addEventListener('livewire:navigating', () => this.teardown(), { once: true });
             },
 
             boot(data) {
@@ -120,6 +131,12 @@ export default function registerGrifo() {
                 });
 
                 this.cy.on('tap', 'node', (evt) => this.onTap(evt.target.data()));
+
+                // Reajusta/enquadra assim que o primeiro render terminar.
+                this.cy.ready(() => {
+                    this.cy.resize();
+                    this.cy.fit(undefined, 40);
+                });
             },
 
             refresh(data) {
@@ -186,6 +203,22 @@ export default function registerGrifo() {
                     this.cy = null;
                 }
             },
+
+            teardown() {
+                if (this.onResize) {
+                    window.removeEventListener('resize', this.onResize);
+                }
+                if (this.observer) {
+                    this.observer.disconnect();
+                }
+                this.destroy();
+            },
         }));
-    });
+
+    // Registra já se o Alpine (via Livewire) iniciou; senão, no evento de init.
+    if (window.Alpine) {
+        define(window.Alpine);
+    } else {
+        document.addEventListener('alpine:init', () => define(window.Alpine));
+    }
 }
