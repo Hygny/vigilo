@@ -116,14 +116,22 @@ final class OwnershipGraphService
      * é o CPF **mascarado** da Receita (`***NNNNNN**`) — pode, raramente, colidir
      * entre pessoas distintas com os mesmos 6 dígitos centrais.
      */
-    public function forPerson(string $document): OwnershipGraph
+    public function forPerson(string $document, ?string $name = null): OwnershipGraph
     {
         $db = DB::connection($this->connection);
         $centerId = 'socio:'.$document;
 
-        $rows = $db->table('socios as s')
+        $query = $db->table('socios as s')
             ->leftJoin('empresas as emp', 's.cnpj_basico', '=', 'emp.cnpj_basico')
-            ->where('s.cnpj_cpf_do_socio', $document)
+            ->where('s.cnpj_cpf_do_socio', $document);
+
+        // Refina por nome quando informado: mesmo mascarado + mesmo nome ≈ a
+        // mesma pessoa, reduzindo colisões de CPF mascarado.
+        if ($name !== null && $name !== '') {
+            $query->where('s.nome_socio', $name);
+        }
+
+        $rows = $query
             ->limit($this->reverseLimit)
             ->get(['s.cnpj_basico', 's.nome_socio', 's.identificador_de_socio', 'emp.razao_social']);
 

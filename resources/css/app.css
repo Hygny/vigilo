@@ -41,6 +41,14 @@
     --logo-a: #171712;
     --logo-b: #F2C744;
     --onPrimary: #FFFFFF;
+    /* Grafo societário ("grifo"): cores saturadas para rótulo branco legível
+       nos dois temas (contraste ≥ 4.5:1). Empresa ≠ sócio; negativa em vermelho. */
+    --graph-company: #1D4ED8;
+    --graph-person: #B45309;
+    --graph-negative: #DC2626;
+    --graph-label: #FFFFFF;
+    --graph-center-ring: #171712;
+    --graph-edge: #C9CDD6;
 }
 
 [data-theme="dark"] {
@@ -78,6 +86,9 @@
     --logo-a: #F2C744;
     --logo-b: #171712;
     --onPrimary: #17170F;
+    /* Grafo: fills iguais (rótulo branco), só aresta e anel do centro mudam. */
+    --graph-center-ring: #F2C744;
+    --graph-edge: #3F3E36;
 }
 
 @layer base {

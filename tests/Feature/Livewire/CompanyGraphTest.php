@@ -74,7 +74,7 @@ function monitoredCompanyFor(Organization $org, string $cnpj = '11222333000181')
     return MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => $cnpj]);
 }
 
-it('renders the ownership graph for a monitored company', function () {
+it('renders the ownership graph with clickable company and person data', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
@@ -82,16 +82,24 @@ it('renders the ownership graph for a monitored company', function () {
 
     $grupoCnpj = Cnpj::matrizFromBasico('44555666');
 
-    $this->actingAs($user)->get(route('companies.graph', $company))
-        ->assertOk()
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
         ->assertSee('Grafo societário')
-        ->assertSee('EMPRESA CENTRO')          // nó centro
-        ->assertSee('MARIA')                   // sócia direta
-        ->assertSee('EMPRESA GRUPO')           // grupo econômico (aresta reversa)
-        ->assertSee('Beneficiários finais')    // painel de beneficiário final
-        ->assertSee('wire:click="focusOn(\''.$grupoCnpj, false)  // empresa do grupo é clicável
-        ->assertSee('wire:click="focusPerson(\'***111**', false) // a PF é clicável (foca a pessoa)
-        ->assertDontSee("focusOn('***", false);                  // PF não é clicável como empresa
+        ->assertSee('Beneficiários finais')
+        ->assertViewHas('cyto', function (array $cyto) use ($grupoCnpj): bool {
+            $nodes = collect($cyto['nodes']);
+            $centro = $nodes->firstWhere('data.label', 'EMPRESA CENTRO');
+            $maria = $nodes->firstWhere('data.label', 'MARIA');
+            $grupo = $nodes->firstWhere('data.label', 'EMPRESA GRUPO');
+
+            expect($centro['data']['isCenter'])->toBeTrue()
+                ->and($maria['data']['role'])->toBe('person')      // PF → foca a pessoa
+                ->and($maria['data']['doc'])->toBe('***111**')
+                ->and($maria['data']['cnpj'])->toBeNull()
+                ->and($grupo['data']['role'])->toBe('company')     // empresa → foca a empresa
+                ->and($grupo['data']['cnpj'])->toBe($grupoCnpj);
+
+            return true;
+        });
 });
 
 it('shows an unavailable notice when the CNPJ base is down', function () {
@@ -158,7 +166,7 @@ it('recenters on a person (PF), showing every company they belong to', function 
     bootCompanyGraphBase(); // MARIA (***111**) é sócia da CENTRO e da GRUPO
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
-        ->call('focusPerson', '***111**')
+        ->call('focusPerson', '***111**', 'MARIA')
         ->assertSee('MARIA')                       // pessoa no centro
         ->assertSee('EMPRESA CENTRO')              // empresa dela
         ->assertSee('EMPRESA GRUPO')               // outra empresa dela
@@ -175,7 +183,7 @@ it('ignores a person focus with an invalid document', function () {
     bootCompanyGraphBase();
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
-        ->call('focusPerson', 'abc')      // sanitiza para vazio → ignora
+        ->call('focusPerson', 'abc', 'X') // sanitiza para vazio → ignora
         ->assertSee('Beneficiários finais'); // segue no modo empresa
 });
 
@@ -186,6 +194,6 @@ it('degrades to the unavailable notice in person mode when the base is down', fu
     bootCompanyGraphBase(withData: false); // tabelas ausentes → forPerson falha
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
-        ->call('focusPerson', '***111**')
+        ->call('focusPerson', '***111**', 'MARIA')
         ->assertSee('Grafo indisponível');
 });

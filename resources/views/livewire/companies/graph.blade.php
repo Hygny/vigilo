@@ -36,87 +36,68 @@
                 <p>Grafo indisponível no momento — a base CNPJ não respondeu. Tente novamente em instantes.</p>
             </div>
         @else
-            <x-ui.card class="p-3 sm:p-5">
-                <div class="overflow-x-auto">
-                    <svg viewBox="0 0 {{ $layout['width'] }} {{ $layout['height'] }}" class="mx-auto block h-auto w-full" style="max-width:{{ $layout['width'] }}px;" role="img" aria-label="Grafo societário">
-                        @foreach ($layout['edges'] as $edge)
-                            <line x1="{{ $edge['x1'] }}" y1="{{ $edge['y1'] }}" x2="{{ $edge['x2'] }}" y2="{{ $edge['y2'] }}"
-                                  style="stroke: var(--line-strong); stroke-width: 1.5px;" />
-                        @endforeach
+            <x-ui.card class="p-3 sm:p-4">
+                {{-- Canvas do grafo (Cytoscape). wire:ignore: o Livewire não mexe no
+                     canvas; atualizações chegam pelo evento grifo-update. --}}
+                <div wire:ignore x-data="grifo(@js($cyto))" @grifo-update.window="refresh($event.detail.graph)" class="relative">
+                    <div x-ref="canvas" class="w-full rounded-[12px] bg-surface-2" style="height: 560px;"></div>
 
-                        @foreach ($layout['nodes'] as $node)
-                            @php
-                                $stroke = $node['kind'] === 'empresa' ? 'var(--line-strong)' : 'var(--surface)';
-                                // cnpj (14 díg) e person (dígitos + `*`) já são validados no
-                                // componente → injeção segura no wire:click.
-                                if ($node['cnpj']) {
-                                    $clickAttrs = 'wire:click="focusOn(\''.$node['cnpj'].'\')" style="cursor:pointer;"';
-                                } elseif ($node['person']) {
-                                    $clickAttrs = 'wire:click="focusPerson(\''.$node['person'].'\')" style="cursor:pointer;"';
-                                } else {
-                                    $clickAttrs = '';
-                                }
-                                $titleSuffix = ($node['cnpj'] || $node['person']) ? ' — clique para expandir' : '';
-                            @endphp
-                            <g {!! $clickAttrs !!}>
-                                <title>{{ $node['title'].$titleSuffix }}</title>
-                                <circle cx="{{ $node['x'] }}" cy="{{ $node['y'] }}" r="{{ $node['r'] }}"
-                                        style="fill: {{ $node['fill'] }}; stroke: {{ $stroke }}; stroke-width: 2.5px;" />
-                                <text x="{{ $node['x'] }}" y="{{ $node['y'] + $node['r'] + 14 }}" text-anchor="middle"
-                                      style="fill: var(--ink); font-size: 11px; font-weight: 500;">{{ $node['label'] }}</text>
-                            </g>
-                        @endforeach
-                    </svg>
+                    {{-- Controles de zoom (só o grafo) --}}
+                    <div class="absolute right-3 top-3 flex flex-col overflow-hidden rounded-[10px] border border-line-strong bg-surface shadow-card">
+                        <button type="button" @click="zoomIn()" title="Aproximar" class="flex h-9 w-9 items-center justify-center text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="add" :size="18" /></button>
+                        <button type="button" @click="zoomOut()" title="Afastar" class="flex h-9 w-9 items-center justify-center border-t border-line text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="remove" :size="18" /></button>
+                        <button type="button" @click="fit()" title="Ajustar à tela" class="flex h-9 w-9 items-center justify-center border-t border-line text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="fit_screen" :size="18" /></button>
+                    </div>
                 </div>
 
                 {{-- Legenda --}}
-                <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-[12.5px] text-ink-2">
-                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--primary);"></span>Empresa consultada</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--high);"></span>Sócio</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full border border-line-strong" style="background: var(--surface-3);"></span>Empresa do grupo (sócio em comum)</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--crit);"></span>Situação negativa</span>
+                <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-[12.5px] text-ink-2">
+                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-company);"></span>Empresa</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
                     @if ($personMode)
-                        Empresas em que esta pessoa aparece como sócia. Clique numa empresa para ver o grafo dela.
+                        Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, e clique numa empresa para ver o grafo dela.
                     @else
-                        Camada 1: sócios diretos e empresas ligadas por sócio em comum. Clique numa empresa, sócio PJ ou pessoa para expandir a partir dela.
+                        Arraste os nós, use a roda ou os botões de zoom, e clique numa empresa, sócio PJ ou pessoa para expandir a partir dela.
                     @endif
                 </p>
             </x-ui.card>
 
             {{-- Beneficiários finais (estrutura) — só no grafo centrado em empresa --}}
             @if (! $personMode)
-            <x-ui.card class="p-5">
-                <div class="mb-3 flex items-center gap-2">
-                    <x-ui.icon name="account_tree" :size="20" class="text-accent" />
-                    <h2 class="text-[15px] font-semibold text-ink">Beneficiários finais (estrutura)</h2>
-                </div>
+                <x-ui.card class="p-5">
+                    <div class="mb-3 flex items-center gap-2">
+                        <x-ui.icon name="account_tree" :size="20" class="text-accent" />
+                        <h2 class="text-[15px] font-semibold text-ink">Beneficiários finais (estrutura)</h2>
+                    </div>
 
-                @if (count($beneficiaries) > 0)
-                    <ul class="divide-y divide-line overflow-hidden rounded-btn ring-1 ring-line">
-                        @foreach ($beneficiaries as $owner)
-                            <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-                                <div class="flex items-center gap-2">
-                                    <x-ui.icon name="person" :size="16" class="text-ink-muted" />
-                                    <span class="text-sm font-medium text-ink">{{ $owner->name }}</span>
-                                    @if ($owner->type === 'ext')<span class="text-[11px] text-ink-muted">(estrangeiro)</span>@endif
-                                </div>
-                                <div class="flex items-center gap-3 text-[12.5px] text-ink-muted">
-                                    @if ($owner->document)<span class="font-mono">{{ $owner->document }}</span>@endif
-                                    <span>{{ $owner->depth === 1 ? 'sócio direto' : 'nível '.$owner->depth }}</span>
-                                </div>
-                            </li>
-                        @endforeach
-                    </ul>
-                    <p class="mt-3 text-[12px] text-ink-muted">
-                        Estrutural (sem % de participação): pessoas físicas no topo da cadeia societária. Não aplica o critério legal de ≥25%.
-                    </p>
-                @else
-                    <p class="text-sm text-ink-muted">Nenhuma pessoa física identificada na cadeia dentro da profundidade analisada (pode haver sócios PJ além do limite).</p>
-                @endif
-            </x-ui.card>
+                    @if (count($beneficiaries) > 0)
+                        <ul class="divide-y divide-line overflow-hidden rounded-btn ring-1 ring-line">
+                            @foreach ($beneficiaries as $owner)
+                                <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                                    <div class="flex items-center gap-2">
+                                        <x-ui.icon name="person" :size="16" class="text-ink-muted" />
+                                        <span class="text-sm font-medium text-ink">{{ $owner->name }}</span>
+                                        @if ($owner->type === 'ext')<span class="text-[11px] text-ink-muted">(estrangeiro)</span>@endif
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[12.5px] text-ink-muted">
+                                        @if ($owner->document)<span class="font-mono">{{ $owner->document }}</span>@endif
+                                        <span>{{ $owner->depth === 1 ? 'sócio direto' : 'nível '.$owner->depth }}</span>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <p class="mt-3 text-[12px] text-ink-muted">
+                            Estrutural (sem % de participação): pessoas físicas no topo da cadeia societária. Não aplica o critério legal de ≥25%.
+                        </p>
+                    @else
+                        <p class="text-sm text-ink-muted">Nenhuma pessoa física identificada na cadeia dentro da profundidade analisada (pode haver sócios PJ além do limite).</p>
+                    @endif
+                </x-ui.card>
             @endif
         @endif
     </div>

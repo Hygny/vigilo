@@ -153,6 +153,25 @@ it('builds a person-centered graph: the person and their companies, deduped, for
     expect(collect($graph['nos'])->where('tipo', 'empresa')->count())->toBe(2);
 });
 
+it('refines a person-centered graph by name when the masked CPF collides', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        // mesmo CPF mascarado, pessoas diferentes (nomes distintos)
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 25))->forPerson('***111**', 'MARIA SILVA')->toArray();
+
+    $empresas = collect($graph['nos'])->where('tipo', 'empresa')->pluck('nome');
+    expect($empresas)->toContain('EMPRESA A')
+        ->and($empresas)->not->toContain('EMPRESA B'); // não mistura com o JOAO
+});
+
 it('caps the number of companies in a person-centered graph', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('empresas')->insert([

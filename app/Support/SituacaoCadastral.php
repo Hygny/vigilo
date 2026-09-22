@@ -12,7 +12,12 @@ namespace App\Support;
  */
 final class SituacaoCadastral
 {
-    /** @var array<string, string> */
+    /**
+     * Ao adicionar um código negativo (≠ ATIVA), atualize também o array
+     * `NEGATIVE` em resources/js/grifo.js (pinta o nó de vermelho no grafo).
+     *
+     * @var array<string, string>
+     */
     private const MAP = [
         '01' => 'NULA',
         '02' => 'ATIVA',
