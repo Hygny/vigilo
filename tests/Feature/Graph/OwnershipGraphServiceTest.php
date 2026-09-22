@@ -126,6 +126,52 @@ it('resolves the graph service from the container', function () {
 });
 
 // ---------------------------------------------------------------------------
+// Grafo centrado na PESSOA (forPerson)
+// ---------------------------------------------------------------------------
+
+it('builds a person-centered graph: the person and their companies, deduped, foreigner typed', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        // JOHN (estrangeiro) aparece 2x na mesma empresa (dedup) + em outra
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'JOHN', 'cnpj_cpf_do_socio' => '***999**', 'identificador_de_socio' => '3'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'JOHN', 'cnpj_cpf_do_socio' => '***999**', 'identificador_de_socio' => '3'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'JOHN', 'cnpj_cpf_do_socio' => '***999**', 'identificador_de_socio' => '3'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 25))->forPerson('***999**')->toArray();
+
+    expect($graph['centro'])->toBe('socio:***999**');
+
+    $byId = collect($graph['nos'])->keyBy('id');
+    expect($byId->get('socio:***999**'))->toMatchArray(['tipo' => 'socio_ext', 'nome' => 'JOHN']);
+
+    // 11222333 deduplicada + 44555666 = 2 empresas
+    expect(collect($graph['nos'])->where('tipo', 'empresa')->count())->toBe(2);
+});
+
+it('caps the number of companies in a person-centered graph', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '00000001', 'razao_social' => 'C1'],
+        ['cnpj_basico' => '00000002', 'razao_social' => 'C2'],
+        ['cnpj_basico' => '00000003', 'razao_social' => 'C3'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '00000001', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '00000002', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '00000003', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 2))->forPerson('***111**')->toArray();
+
+    expect(collect($graph['nos'])->where('tipo', 'empresa')->count())->toBe(2); // cap 2 de 3
+});
+
+// ---------------------------------------------------------------------------
 // Beneficiário final estrutural
 // ---------------------------------------------------------------------------
 

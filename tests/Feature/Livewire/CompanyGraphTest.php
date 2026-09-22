@@ -178,3 +178,14 @@ it('ignores a person focus with an invalid document', function () {
         ->call('focusPerson', 'abc')      // sanitiza para vazio → ignora
         ->assertSee('Beneficiários finais'); // segue no modo empresa
 });
+
+it('degrades to the unavailable notice in person mode when the base is down', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(withData: false); // tabelas ausentes → forPerson falha
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusPerson', '***111**')
+        ->assertSee('Grafo indisponível');
+});
