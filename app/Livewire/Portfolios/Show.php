@@ -324,9 +324,10 @@ class Show extends Component
     }
 
     /**
-     * Aplica a busca textual à query da listagem: casa o termo por TAG (label)
-     * e, se houver dígitos, também por CNPJ. Só filtra a lista visível — os
-     * totais de status e os cards de resumo seguem refletindo o portfólio todo.
+     * Aplica a busca textual à query da listagem: casa o termo por TAG (label),
+     * por CNPJ (se houver dígitos) e pela SITUAÇÃO cadastral do último snapshot
+     * (ex.: "ativa", "baixada"). Só filtra a lista visível — os totais de status
+     * e os cards de resumo seguem refletindo o portfólio todo.
      *
      * @param  Builder<MonitoredCompany>  $query
      */
@@ -346,6 +347,11 @@ class Show extends Component
             if ($digits !== '') {
                 $inner->orWhere('cnpj', 'like', "%{$digits}%");
             }
+
+            // Situação do snapshot mais recente (latestOfMany aplica o "último").
+            $inner->orWhereHas('latestSnapshot', function (Builder $snap) use ($term): void {
+                $snap->where('situacao_cadastral', 'like', "%{$term}%");
+            });
         });
     }
 

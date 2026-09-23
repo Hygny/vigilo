@@ -120,7 +120,7 @@
                         <x-ui.icon name="search" :size="18" />
                     </span>
                     <input type="search" wire:model.live.debounce.400ms="search"
-                           placeholder="Buscar por CNPJ ou TAG…"
+                           placeholder="Buscar por CNPJ, TAG ou situação…"
                            class="w-full rounded-full border border-line-strong bg-surface py-2 pl-9 pr-3 text-[13.5px] text-ink placeholder:text-ink-muted focus:border-primary focus:outline-none sm:w-72" />
                 </label>
                 @if ($statusFilter !== 'all')
