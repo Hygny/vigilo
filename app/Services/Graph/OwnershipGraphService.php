@@ -79,6 +79,11 @@ final class OwnershipGraphService
                 continue;
             }
 
+            $socioName = $this->str($s['nome_socio'] ?? null);
+            // CPF mascarado (PF): os 6 dígitos centrais não são únicos, então a
+            // ligação reversa pode casar um xará. CNPJ de sócio PJ é completo/único.
+            $masked = str_contains($document, '*');
+
             // Aresta reversa: outras empresas em que este sócio aparece. leftJoin
             // (simétrico ao centro): não perde empresa conectada que falte em `empresas`.
             $others = $db->table('socios as s2')
@@ -86,7 +91,7 @@ final class OwnershipGraphService
                 ->where('s2.cnpj_cpf_do_socio', $document)
                 ->where('s2.cnpj_basico', '!=', $basico)
                 ->limit($this->reverseLimit)
-                ->get(['s2.cnpj_basico', 'emp2.razao_social']);
+                ->get(['s2.cnpj_basico', 's2.nome_socio', 'emp2.razao_social']);
 
             foreach ($others as $otherRow) {
                 $o = (array) $otherRow;
@@ -103,7 +108,19 @@ final class OwnershipGraphService
                     label: $this->str($o['razao_social'] ?? null) ?? $otherBasico,
                     document: Cnpj::matrizFromBasico($otherBasico) ?? $otherBasico,
                 );
-                $edges[$otherId.'|'.$socioId] ??= new GraphEdge($otherId, $socioId, 'socio');
+
+                // Provável (menor confiança): CPF mascarado + nome divergente →
+                // pode ser homônimo, não o mesmo sócio.
+                $probable = $masked && ! $this->sameName($socioName, $this->str($o['nome_socio'] ?? null));
+
+                // Dedup determinístico: uma linha confiável (nome bate) prevalece
+                // sobre a provável, independente da ordem das linhas do banco.
+                $edgeKey = $otherId.'|'.$socioId;
+                if (! isset($edges[$edgeKey])) {
+                    $edges[$edgeKey] = new GraphEdge($otherId, $socioId, 'socio', null, $probable);
+                } elseif (! $probable && $edges[$edgeKey]->probable) {
+                    $edges[$edgeKey] = new GraphEdge($otherId, $socioId, 'socio', null, false);
+                }
             }
         }
 
@@ -248,6 +265,23 @@ final class OwnershipGraphService
         $id = $document !== null ? 'socio:'.$document : 'socio:n:'.mb_strtolower($nome);
 
         return [$id, new GraphNode($id, $type, $nome, $document)];
+    }
+
+    /**
+     * Dois nomes são "o mesmo sócio" quando batem após normalizar (maiúsculas,
+     * espaços colapsados). Se algum for nulo/vazio, não dá para afirmar → false
+     * (a aresta vira "provável"). Comparação exata de propósito: variação de
+     * grafia é preferível marcar como provável a fundir pessoas distintas.
+     */
+    private function sameName(?string $a, ?string $b): bool
+    {
+        if ($a === null || $b === null) {
+            return false;
+        }
+
+        $norm = static fn (string $v): string => trim((string) preg_replace('/\s+/', ' ', mb_strtoupper($v)));
+
+        return $norm($a) === $norm($b);
     }
 
     private function situacao(mixed $code): ?string

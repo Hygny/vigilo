@@ -40,13 +40,17 @@
                 {{-- Canvas do grafo (Cytoscape). wire:ignore: o Livewire não mexe no
                      canvas; atualizações chegam pelo evento grifo-update. --}}
                 <div wire:ignore x-data="grifo(@js($cyto))" @grifo-update.window="refresh($event.detail.graph)" class="relative">
-                    <div x-ref="canvas" class="w-full rounded-[12px] bg-surface-2" style="height: 560px;"></div>
+                    <div x-ref="canvas" class="w-full rounded-[12px] bg-surface-2" style="height: 560px;" :style="{ height: expanded ? '80vh' : '560px' }"></div>
 
-                    {{-- Controles de zoom (só o grafo) --}}
+                    {{-- Controles de zoom / expandir (só o grafo) --}}
                     <div class="absolute right-3 top-3 flex flex-col overflow-hidden rounded-[10px] border border-line-strong bg-surface shadow-card">
                         <button type="button" @click="zoomIn()" title="Aproximar" class="flex h-9 w-9 items-center justify-center text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="add" :size="18" /></button>
                         <button type="button" @click="zoomOut()" title="Afastar" class="flex h-9 w-9 items-center justify-center border-t border-line text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="remove" :size="18" /></button>
                         <button type="button" @click="fit()" title="Ajustar à tela" class="flex h-9 w-9 items-center justify-center border-t border-line text-ink-2 hover:bg-surface-2 cursor-pointer"><x-ui.icon name="fit_screen" :size="18" /></button>
+                        <button type="button" @click="toggleExpand()" :title="expanded ? 'Reduzir' : 'Expandir'" class="flex h-9 w-9 items-center justify-center border-t border-line text-ink-2 hover:bg-surface-2 cursor-pointer">
+                            <span x-show="!expanded"><x-ui.icon name="open_in_full" :size="18" /></span>
+                            <span x-show="expanded" style="display:none"><x-ui.icon name="close_fullscreen" :size="18" /></span>
+                        </button>
                     </div>
                 </div>
 
@@ -56,13 +60,14 @@
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge); opacity: .7;"></span>Ligação provável (mesmo CPF, nome difere)</span>
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
                     @if ($personMode)
-                        Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, e clique numa empresa para ver o grafo dela.
+                        Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, passe o mouse para ver o CNPJ, e clique numa empresa para ver o grafo dela.
                     @else
-                        Arraste os nós, use a roda ou os botões de zoom, e clique numa empresa, sócio PJ ou pessoa para expandir a partir dela.
+                        Arraste os nós, use a roda ou os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique numa empresa, sócio PJ ou pessoa para expandir a partir dela. Ligações <span class="font-medium">tracejadas</span> casam só pelo CPF mascarado (o nome diverge) — trate como prováveis.
                     @endif
                 </p>
             </x-ui.card>

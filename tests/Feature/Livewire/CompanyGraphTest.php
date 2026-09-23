@@ -102,6 +102,31 @@ it('renders the ownership graph with clickable company and person data', functio
         });
 });
 
+it('marks a reverse edge as probable in the Cytoscape payload when the masked CPF matches but the name differs', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // MARIA (***111**) é sócia da CENTRO e da GRUPO (mesmo nome → confiável)
+
+    // Xará: mesmo CPF mascarado, nome diferente → aresta reversa provável.
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA']);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('cyto', function (array $cyto): bool {
+            $edges = collect($cyto['edges']);
+            $confiavel = $edges->firstWhere('data.source', 'empresa:44555666');
+            $provavel = $edges->firstWhere('data.source', 'empresa:77888999');
+
+            expect($confiavel['data']['probable'])->toBeFalse()
+                ->and($provavel['data']['probable'])->toBeTrue();
+
+            return true;
+        });
+});
+
 it('shows an unavailable notice when the CNPJ base is down', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

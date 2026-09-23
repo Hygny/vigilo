@@ -178,6 +178,7 @@ class Graph extends Component
             $nodes[] = ['data' => [
                 'id' => $node->id,
                 'label' => $this->truncate($node->label),
+                'title' => $node->label,
                 'role' => $isPerson ? 'person' : 'company',
                 'isCenter' => $isCenter,
                 'situacao' => $node->situacao,
@@ -189,7 +190,7 @@ class Graph extends Component
 
         $edges = [];
         foreach ($graph->edges as $i => $edge) {
-            $edges[] = ['data' => ['id' => 'e'.$i, 'source' => $edge->from, 'target' => $edge->to]];
+            $edges[] = ['data' => ['id' => 'e'.$i, 'source' => $edge->from, 'target' => $edge->to, 'probable' => $edge->probable]];
         }
 
         return ['nodes' => $nodes, 'edges' => $edges, 'center' => $graph->center];

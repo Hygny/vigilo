@@ -36,6 +36,23 @@ function fillFor(ele, c) {
     return c.company;
 }
 
+// Formata 14 dígitos como CNPJ (XX.XXX.XXX/XXXX-XX); devolve o original se não for.
+function formatCnpj(value) {
+    const d = String(value || '').replace(/\D/g, '');
+    if (d.length !== 14) {
+        return String(value || '');
+    }
+
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+// Escapa texto antes de ir para innerHTML do tooltip (nome/documento vêm da base).
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+}
+
 function styleSheet(c) {
     return [
         {
@@ -69,6 +86,16 @@ function styleSheet(c) {
                 opacity: 0.85,
             },
         },
+        {
+            // Ligação provável (só CPF mascarado, nome divergente): tracejada e
+            // mais apagada, sinalizando menor confiança (possível xará).
+            selector: 'edge[?probable]',
+            style: {
+                'line-style': 'dashed',
+                'line-dash-pattern': [6, 4],
+                opacity: 0.45,
+            },
+        },
     ];
 }
 
@@ -91,6 +118,8 @@ export default function registerGrifo() {
             cy: null,
             observer: null,
             onResize: null,
+            tip: null,
+            expanded: false,
 
             init() {
                 // $nextTick: só inicializa o Cytoscape quando o container já tem
@@ -125,18 +154,101 @@ export default function registerGrifo() {
                     elements: this.elements(data),
                     style: styleSheet(themeColors()),
                     layout: layoutOptions(),
-                    wheelSensitivity: 0.25,
+                    // Zoom por roda mais rápido/fluido (padrão do Cytoscape é 1;
+                    // 0.25 ficava lento demais).
+                    wheelSensitivity: 0.6,
                     minZoom: 0.2,
                     maxZoom: 3,
                 });
 
                 this.cy.on('tap', 'node', (evt) => this.onTap(evt.target.data()));
 
+                // Tooltip ao passar o mouse: empresa → CNPJ; pessoa → nome/CPF.
+                this.cy.on('mouseover', 'node', (evt) => this.showTip(evt.target));
+                this.cy.on('mouseout', 'node', () => this.hideTip());
+                // Some ao mexer no grafo (evita tooltip "grudado" fora do lugar).
+                this.cy.on('pan zoom drag tapstart', () => this.hideTip());
+
                 // Reajusta/enquadra assim que o primeiro render terminar.
                 this.cy.ready(() => {
                     this.cy.resize();
                     this.cy.fit(undefined, 40);
                 });
+            },
+
+            // Alterna entre altura padrão e expandida (mais espaço para muitas
+            // bolhas). Após o layout mudar, o Cytoscape precisa de resize + fit.
+            toggleExpand() {
+                this.expanded = !this.expanded;
+                this.$nextTick(() => {
+                    if (this.cy) {
+                        this.cy.resize();
+                        this.cy.fit(undefined, 40);
+                    }
+                });
+            },
+
+            showTip(node) {
+                const d = node.data();
+                const lines = [];
+
+                if (d.role === 'company') {
+                    if (d.title) {
+                        lines.push(`<strong>${escapeHtml(d.title)}</strong>`);
+                    }
+                    if (d.cnpj) {
+                        lines.push(escapeHtml(formatCnpj(d.cnpj)));
+                    }
+                } else {
+                    if (d.title) {
+                        lines.push(`<strong>${escapeHtml(d.title)}</strong>`);
+                    }
+                    if (d.doc) {
+                        lines.push(`CPF ${escapeHtml(d.doc)}`);
+                    }
+                }
+
+                if (lines.length === 0) {
+                    return;
+                }
+
+                const el = this.tipEl();
+                el.innerHTML = lines.join('<br>');
+                el.style.display = 'block';
+
+                // Ancorar acima da bolha (renderedPosition = px relativos ao canvas).
+                const pos = node.renderedPosition();
+                const r = (node.renderedHeight ? node.renderedHeight() : 84) / 2;
+                el.style.left = `${pos.x}px`;
+                el.style.top = `${pos.y - r - 8}px`;
+            },
+
+            hideTip() {
+                if (this.tip) {
+                    this.tip.style.display = 'none';
+                }
+            },
+
+            // Cria (uma vez) o elemento de tooltip dentro do wrapper posicionado.
+            tipEl() {
+                if (this.tip) {
+                    return this.tip;
+                }
+
+                const el = document.createElement('div');
+                el.className = 'grifo-tip';
+                el.style.cssText = [
+                    'position:absolute', 'z-index:20', 'display:none',
+                    'transform:translate(-50%,-100%)', 'pointer-events:none',
+                    'max-width:260px', 'padding:6px 9px', 'border-radius:8px',
+                    'font-size:12px', 'line-height:1.35', 'white-space:normal',
+                    'background:var(--ink,#171712)', 'color:var(--surface,#fff)',
+                    'box-shadow:0 4px 14px rgba(0,0,0,.22)',
+                ].join(';');
+                this.$refs.canvas.parentElement.appendChild(el);
+                this.tip = el;
+
+                return el;
             },
 
             refresh(data) {
@@ -210,6 +322,10 @@ export default function registerGrifo() {
                 }
                 if (this.observer) {
                     this.observer.disconnect();
+                }
+                if (this.tip) {
+                    this.tip.remove();
+                    this.tip = null;
                 }
                 this.destroy();
             },
