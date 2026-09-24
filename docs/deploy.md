@@ -1,6 +1,6 @@
 # Manual de deploy — Vigilo (VPS de produção)
 
-Como subir uma nova versão do Vigilo em produção (`https://vigilo.hygnuz.cloud`), com os comandos e **quando usar cada um**. Para a **primeira instalação** do zero, veja `deploy/README.md`.
+Como subir uma nova versão do Vigilo em produção (`https://vigilosecure.com`), com os comandos e **quando usar cada um**. Para a **primeira instalação** do zero, veja `deploy/README.md`.
 
 ---
 
@@ -129,7 +129,7 @@ docker compose exec app php artisan tinker --execute="\App\Models\User::whereEma
 docker compose ps                          # todos os serviços 'Up'
 docker compose logs -f --tail=50 app       # erros do app (Ctrl+C para sair)
 docker compose logs -f --tail=50 queue     # fila processando jobs
-curl -I https://vigilo.hygnuz.cloud/up     # healthcheck do Laravel → 200
+curl -I https://vigilosecure.com/up     # healthcheck do Laravel → 200
 ```
 
 Abra o site, faça login, confira a tela que mudou.
@@ -156,7 +156,7 @@ cd ~/apps/vigilo
 
 - **VPS:** Hostinger Ubuntu, `lucas@148.230.77.119`.
 - **Layout:** `~/apps/vigilo/` contém `docker-compose.yml` (cópia de `src/deploy/`) e `src/` (o git clone de `Hygny/vigilo`).
-- **Serviços (Docker Compose):** `app` (php-fpm), `nginx` (Traefik → `vigilo.hygnuz.cloud`), `queue` (`queue:work`), `scheduler` (`schedule:work`).
+- **Serviços (Docker Compose):** `app` (php-fpm), `nginx` (Traefik → `vigilosecure.com`), `queue` (`queue:work`), `scheduler` (`schedule:work`).
 - **Infra compartilhada (externa):** Traefik (TLS `le`), `data-mysql-1`, `data-redis-1`, redes `web`/`data`.
 - **Proxy:** `bootstrap/app.php` tem `trustProxies(at:'*')` — necessário atrás do Traefik.
 

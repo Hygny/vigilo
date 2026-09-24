@@ -20,9 +20,13 @@ services:
     networks: [web, data]
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.vigilo.rule=Host(`vigilo.hygnuz.cloud`)"
+      - "traefik.http.routers.vigilo.rule=Host(`vigilosecure.com`) || Host(`www.vigilosecure.com`) || Host(`vigilo.hygnuz.cloud`)"
       - "traefik.http.routers.vigilo.entrypoints=websecure"
       - "traefik.http.routers.vigilo.tls.certresolver=le"
+      - "traefik.http.routers.vigilo.middlewares=vigilo-redir"
+      - "traefik.http.middlewares.vigilo-redir.redirectregex.regex=^https://(www\\.vigilosecure\\.com|vigilo\\.hygnuz\\.cloud)/(.*)"
+      - "traefik.http.middlewares.vigilo-redir.redirectregex.replacement=https://vigilosecure.com/$${2}"
+      - "traefik.http.middlewares.vigilo-redir.redirectregex.permanent=true"
       - "traefik.docker.network=web"
 
   queue:

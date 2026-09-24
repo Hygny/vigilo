@@ -32,7 +32,7 @@
 
 ## Deploy
 
-Precisa de assets (novas classes Tailwind) e roda migration: **`./deploy.sh --assets`**. Depois, no painel Asaas, configurar a URL do webhook (`https://vigilo.hygnuz.cloud/webhooks/asaas`) + o token, e preencher `ASAAS_API_KEY`/`ASAAS_WEBHOOK_TOKEN` no `.env` do VPS.
+Precisa de assets (novas classes Tailwind) e roda migration: **`./deploy.sh --assets`**. Depois, no painel Asaas, configurar a URL do webhook (`https://vigilosecure.com/webhooks/asaas`) + o token, e preencher `ASAAS_API_KEY`/`ASAAS_WEBHOOK_TOKEN` no `.env` do VPS.
 
 ## Nota
 

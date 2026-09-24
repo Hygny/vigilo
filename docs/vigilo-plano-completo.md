@@ -10,7 +10,7 @@
 **Vigilo** é um **SaaS B2B de KYB** (Know Your Business) — *due diligence contínua de CNPJ*. A organização sobe sua carteira de CNPJs (fornecedores, clientes, franqueados) e o Vigilo **detecta e alerta** mudanças relevantes no cadastro da Receita: situação cadastral, sócios/administradores, endereço, CNAE, porte, razão social.
 
 - **Não é lead-gen** — disciplina LGPD (dado de sócio só para monitorar a carteira própria).
-- **Estágio:** MVP **em produção** (`https://vigilo.hygnuz.cloud`). **21 fatias**, **204 testes verdes**, PHPStan nível 8, Pint limpo.
+- **Estágio:** MVP **em produção** (`https://vigilosecure.com`). **21 fatias**, **204 testes verdes**, PHPStan nível 8, Pint limpo.
 
 ## 1.2 Stack & padrões
 | Camada | Tecnologia |
