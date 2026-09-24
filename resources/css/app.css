@@ -49,6 +49,11 @@
     --graph-label: #FFFFFF;
     --graph-center-ring: #171712;
     --graph-edge: #C9CDD6;
+    /* Aresta "provável" (só CPF mascarado): laranja distinto das demais cores. */
+    --graph-edge-probable: #EA580C;
+    /* Tooltip do grafo: fundo escuro + texto claro no tema claro. */
+    --graph-tip-bg: #171712;
+    --graph-tip-fg: #FFFFFF;
 }
 
 [data-theme="dark"] {
@@ -89,6 +94,11 @@
     /* Grafo: fills iguais (rótulo branco), só aresta e anel do centro mudam. */
     --graph-center-ring: #F2C744;
     --graph-edge: #3F3E36;
+    /* Aresta provável: laranja mais claro p/ contraste no fundo escuro. */
+    --graph-edge-probable: #FB923C;
+    /* Tooltip: fundo escuro elevado + texto ÂMBAR (legível no dark). */
+    --graph-tip-bg: #24221A;
+    --graph-tip-fg: #F2C744;
 }
 
 @layer base {

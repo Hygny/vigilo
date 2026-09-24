@@ -22,6 +22,9 @@ function themeColors() {
         label: v('--graph-label', '#ffffff'),
         ring: v('--graph-center-ring', '#f2c744'),
         edge: v('--graph-edge', '#cbd5e1'),
+        edgeProbable: v('--graph-edge-probable', '#ea580c'),
+        tipBg: v('--graph-tip-bg', '#171712'),
+        tipFg: v('--graph-tip-fg', '#ffffff'),
     };
 }
 
@@ -87,13 +90,16 @@ function styleSheet(c) {
             },
         },
         {
-            // Ligação provável (só CPF mascarado, nome divergente): tracejada e
-            // mais apagada, sinalizando menor confiança (possível xará).
+            // Ligação provável (só CPF mascarado, nome divergente): tracejada,
+            // laranja e um pouco mais grossa — sinaliza menor confiança (xará)
+            // sem sumir no fundo.
             selector: 'edge[?probable]',
             style: {
                 'line-style': 'dashed',
                 'line-dash-pattern': [6, 4],
-                opacity: 0.45,
+                'line-color': c.edgeProbable,
+                width: 2,
+                opacity: 0.95,
             },
         },
     ];
@@ -242,7 +248,9 @@ export default function registerGrifo() {
                     'transform:translate(-50%,-100%)', 'pointer-events:none',
                     'max-width:260px', 'padding:6px 9px', 'border-radius:8px',
                     'font-size:12px', 'line-height:1.35', 'white-space:normal',
-                    'background:var(--ink,#171712)', 'color:var(--surface,#fff)',
+                    // Tokens próprios: no dark o texto vira âmbar (antes herdava
+                    // uma cor escura e sumia no fundo escuro).
+                    'background:var(--graph-tip-bg,#171712)', 'color:var(--graph-tip-fg,#fff)',
                     'box-shadow:0 4px 14px rgba(0,0,0,.22)',
                 ].join(';');
                 this.$refs.canvas.parentElement.appendChild(el);

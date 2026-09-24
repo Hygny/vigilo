@@ -10,6 +10,7 @@ use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
 use App\Support\Cnpj;
 use App\Support\SituacaoCadastral;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,6 +24,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class OwnershipGraphService
 {
+    /** Ordem do estabelecimento matriz na base da Receita (a situação-referência da empresa). */
+    private const ORDEM_MATRIZ = '0001';
+
     public function __construct(
         private readonly string $connection,
         private readonly int $reverseLimit,
@@ -85,13 +89,19 @@ final class OwnershipGraphService
             $masked = str_contains($document, '*');
 
             // Aresta reversa: outras empresas em que este sócio aparece. leftJoin
-            // (simétrico ao centro): não perde empresa conectada que falte em `empresas`.
+            // (simétrico ao centro): não perde empresa conectada que falte em
+            // `empresas`. leftJoin na matriz (ordem 0001) traz a situação para o
+            // nó do grupo ficar vermelho quando BAIXADA já na visão geral.
             $others = $db->table('socios as s2')
                 ->leftJoin('empresas as emp2', 's2.cnpj_basico', '=', 'emp2.cnpj_basico')
+                ->leftJoin('estabelecimentos as est2', function (JoinClause $join): void {
+                    $join->on('est2.cnpj_basico', '=', 's2.cnpj_basico')
+                        ->where('est2.cnpj_ordem', '=', self::ORDEM_MATRIZ);
+                })
                 ->where('s2.cnpj_cpf_do_socio', $document)
                 ->where('s2.cnpj_basico', '!=', $basico)
                 ->limit($this->reverseLimit)
-                ->get(['s2.cnpj_basico', 's2.nome_socio', 'emp2.razao_social']);
+                ->get(['s2.cnpj_basico', 's2.nome_socio', 'emp2.razao_social', 'est2.situacao_cadastral']);
 
             foreach ($others as $otherRow) {
                 $o = (array) $otherRow;
@@ -107,11 +117,14 @@ final class OwnershipGraphService
                     type: 'empresa',
                     label: $this->str($o['razao_social'] ?? null) ?? $otherBasico,
                     document: Cnpj::matrizFromBasico($otherBasico) ?? $otherBasico,
+                    situacao: $this->situacao($o['situacao_cadastral'] ?? null),
                 );
 
-                // Provável (menor confiança): CPF mascarado + nome divergente →
-                // pode ser homônimo, não o mesmo sócio.
-                $probable = $masked && ! $this->sameName($socioName, $this->str($o['nome_socio'] ?? null));
+                // Provável (menor confiança): CPF mascarado + primeiro E último
+                // nome divergentes → provável xará. Casar primeiro+último (em vez
+                // de nome inteiro) evita marcar como provável a mesma pessoa com
+                // grafia diferente (nome do meio abreviado/omitido).
+                $probable = $masked && ! $this->sameCoreName($socioName, $this->str($o['nome_socio'] ?? null));
 
                 // Dedup determinístico: uma linha confiável (nome bate) prevalece
                 // sobre a provável, independente da ordem das linhas do banco.
@@ -140,6 +153,10 @@ final class OwnershipGraphService
 
         $query = $db->table('socios as s')
             ->leftJoin('empresas as emp', 's.cnpj_basico', '=', 'emp.cnpj_basico')
+            ->leftJoin('estabelecimentos as est', function (JoinClause $join): void {
+                $join->on('est.cnpj_basico', '=', 's.cnpj_basico')
+                    ->where('est.cnpj_ordem', '=', self::ORDEM_MATRIZ);
+            })
             ->where('s.cnpj_cpf_do_socio', $document);
 
         // Refina por nome quando informado: mesmo mascarado + mesmo nome ≈ a
@@ -150,7 +167,7 @@ final class OwnershipGraphService
 
         $rows = $query
             ->limit($this->reverseLimit)
-            ->get(['s.cnpj_basico', 's.nome_socio', 's.identificador_de_socio', 'emp.razao_social']);
+            ->get(['s.cnpj_basico', 's.nome_socio', 's.identificador_de_socio', 'emp.razao_social', 'est.situacao_cadastral']);
 
         $name = 'Pessoa';
         $type = 'socio_pf';
@@ -177,6 +194,7 @@ final class OwnershipGraphService
                 type: 'empresa',
                 label: $this->str($r['razao_social'] ?? null) ?? $basico,
                 document: Cnpj::matrizFromBasico($basico) ?? $basico,
+                situacao: $this->situacao($r['situacao_cadastral'] ?? null),
             );
             $edges[$companyId.'|'.$centerId] ??= new GraphEdge($companyId, $centerId, 'socio');
         }
@@ -268,20 +286,44 @@ final class OwnershipGraphService
     }
 
     /**
-     * Dois nomes são "o mesmo sócio" quando batem após normalizar (maiúsculas,
-     * espaços colapsados). Se algum for nulo/vazio, não dá para afirmar → false
-     * (a aresta vira "provável"). Comparação exata de propósito: variação de
-     * grafia é preferível marcar como provável a fundir pessoas distintas.
+     * Dois nomes são "provavelmente o mesmo sócio" quando o PRIMEIRO e o ÚLTIMO
+     * nome batem (após normalizar: maiúsculas, espaços colapsados). Ignora nomes
+     * do meio, que a Receita às vezes abrevia/omite entre empresas — assim a
+     * mesma pessoa com grafia diferente ("MARIA A. SILVA" × "MARIA APARECIDA
+     * SILVA") não vira "provável" à toa, reduzindo falsos positivos. Ainda exige
+     * o sobrenome bater, então dois primeiros nomes iguais com sobrenome distinto
+     * ("MARIA SILVA" × "MARIA SOUZA") seguem prováveis. Nulo/vazio → false.
      */
-    private function sameName(?string $a, ?string $b): bool
+    private function sameCoreName(?string $a, ?string $b): bool
     {
-        if ($a === null || $b === null) {
+        $partsA = $this->nameParts($a);
+        $partsB = $this->nameParts($b);
+
+        if ($partsA === [] || $partsB === []) {
             return false;
         }
 
-        $norm = static fn (string $v): string => trim((string) preg_replace('/\s+/', ' ', mb_strtoupper($v)));
+        $firstMatches = $partsA[0] === $partsB[0];
+        $lastMatches = end($partsA) === end($partsB);
 
-        return $norm($a) === $norm($b);
+        return $firstMatches && $lastMatches;
+    }
+
+    /**
+     * Normaliza um nome em tokens em maiúsculas (espaços colapsados). Nulo/vazio
+     * → lista vazia.
+     *
+     * @return list<string>
+     */
+    private function nameParts(?string $name): array
+    {
+        if ($name === null) {
+            return [];
+        }
+
+        $normalized = trim((string) preg_replace('/\s+/', ' ', mb_strtoupper($name)));
+
+        return $normalized === '' ? [] : explode(' ', $normalized);
     }
 
     private function situacao(mixed $code): ?string
