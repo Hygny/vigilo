@@ -95,6 +95,35 @@ it('returns the ownership graph for a monitored CNPJ', function () {
         ->assertJsonPath('beneficiarios.0.nivel', 1);
 });
 
+it('excludes probable companies by default and includes them with ?provaveis=1', function () {
+    [$org, $token] = orgWithToken();
+    MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+    seedGraphCenterBase(); // centro 11222333 + sócia MARIA (***111**)
+
+    // Empresa confiável (MARIA) e xará (JOAO), ambas com o mesmo CPF mascarado.
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CONFIAVEL'],
+        ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $ids = fn (array $nos): array => array_column($nos, 'id');
+
+    // Padrão: só a confiável; a xará (provável) fica de fora.
+    $default = $this->withHeaders(['Authorization' => 'Bearer '.$token])
+        ->getJson('/api/cnpj/11222333000181/grafo')->assertOk()->json('nos');
+    expect($ids($default))->toContain('empresa:44555666')
+        ->and($ids($default))->not->toContain('empresa:77888999');
+
+    // ?provaveis=1: a xará também entra.
+    $withProbable = $this->withHeaders(['Authorization' => 'Bearer '.$token])
+        ->getJson('/api/cnpj/11222333000181/grafo?provaveis=1')->assertOk()->json('nos');
+    expect($ids($withProbable))->toContain('empresa:77888999');
+});
+
 it('validates the CNPJ length', function () {
     [, $token] = orgWithToken();
 

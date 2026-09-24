@@ -54,20 +54,39 @@
                     </div>
                 </div>
 
+                {{-- Alternador das ligações prováveis: off por padrão (só as
+                     certeiras). Só no modo empresa — o modo pessoa filtra por nome. --}}
+                @if (! $personMode)
+                    <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                        <button type="button" wire:click="toggleProbable"
+                                @class([
+                                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors cursor-pointer',
+                                    'border-primary bg-primary-soft text-accent' => $showProbable,
+                                    'border-line-strong bg-surface text-ink-2 hover:bg-surface-2' => ! $showProbable,
+                                ])>
+                            <x-ui.icon :name="$showProbable ? 'visibility' : 'visibility_off'" :size="15" />
+                            {{ $showProbable ? 'Ocultar ligações prováveis' : 'Mostrar ligações prováveis' }}
+                        </button>
+                        <span class="text-[12px] text-ink-muted">Prováveis = mesmo CPF mascarado com nome diferente (possível xará). Ocultas por padrão.</span>
+                    </div>
+                @endif
+
                 {{-- Legenda --}}
-                <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-[12.5px] text-ink-2">
+                <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 {{ $personMode ? 'border-t border-line pt-3' : '' }} text-[12.5px] text-ink-2">
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-company);"></span>Empresa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Ligação provável (mesmo CPF, nome difere)</span>
+                    @if (! $personMode && $showProbable)
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Ligação provável (mesmo CPF, nome difere)</span>
+                    @endif
                 </div>
 
                 <p class="mt-3 text-[12.5px] text-ink-muted">
                     @if ($personMode)
                         Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, passe o mouse para ver o CNPJ, e clique numa empresa para ver o grafo dela.
                     @else
-                        Arraste os nós, use a roda ou os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique numa empresa, sócio PJ ou pessoa para expandir a partir dela. Ligações <span class="font-medium">tracejadas</span> casam só pelo CPF mascarado (o nome diverge) — trate como prováveis.
+                        Por padrão o grupo econômico mostra só as ligações <span class="font-medium">certeiras</span> (mesmo CPF mascarado <span class="font-medium">e</span> primeiro/último nome). Arraste os nós, use a roda ou os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique para expandir. Use <span class="font-medium">"Mostrar ligações prováveis"</span> para também ver as de mesmo CPF com nome diferente (tracejadas — possíveis xarás).
                     @endif
                 </p>
             </x-ui.card>

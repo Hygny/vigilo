@@ -38,6 +38,13 @@ class Graph extends Component
     /** Nome da pessoa focada — junto com o documento identifica melhor o sócio. */
     public string $focusName = '';
 
+    /**
+     * Incluir ligações "prováveis" no grupo econômico (mesmo CPF mascarado, nome
+     * divergente — possível xará). Off por padrão: o grafo mostra só as certeiras
+     * (CPF + primeiro/último nome), reduzindo falsos positivos.
+     */
+    public bool $showProbable = false;
+
     /** @var array<string, mixed>|null Cache do grafo por request (ação + render). */
     private ?array $graphCache = null;
 
@@ -91,6 +98,16 @@ class Graph extends Component
         $this->emitGraph($graphs);
     }
 
+    /**
+     * Liga/desliga as ligações prováveis (só no modo empresa — o modo pessoa já
+     * filtra por nome exato) e reemite o grafo.
+     */
+    public function toggleProbable(OwnershipGraphService $graphs): void
+    {
+        $this->showProbable = ! $this->showProbable;
+        $this->emitGraph($graphs);
+    }
+
     public function render(OwnershipGraphService $graphs): View
     {
         return view('livewire.companies.graph', $this->graphData($graphs));
@@ -133,7 +150,7 @@ class Graph extends Component
             if ($personMode) {
                 $graph = $graphs->forPerson($this->focusDocument, $this->focusName);
             } else {
-                $graph = $graphs->for($cnpj);
+                $graph = $graphs->for($cnpj, $this->showProbable);
                 $beneficiaries = $graphs->beneficialOwners($cnpj);
             }
 
@@ -157,6 +174,7 @@ class Graph extends Component
             'focused' => $focused,
             'focusLabel' => $focusLabel,
             'personMode' => $personMode,
+            'showProbable' => $this->showProbable,
         ];
     }
 

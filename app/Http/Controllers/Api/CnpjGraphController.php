@@ -46,8 +46,10 @@ final class CnpjGraphController extends Controller
             return response()->json(['message' => 'CNPJ não monitorado pela organização.'], 404);
         }
 
+        // Por padrão só ligações certeiras; ?provaveis=1 inclui as prováveis
+        // (mesmo CPF mascarado, nome divergente), marcadas com "provavel": true.
         return response()->json([
-            ...$graph->for($digits)->toArray(),
+            ...$graph->for($digits, $request->boolean('provaveis'))->toArray(),
             'beneficiarios' => array_map(
                 fn (BeneficialOwner $owner): array => $owner->toArray(),
                 $graph->beneficialOwners($digits),

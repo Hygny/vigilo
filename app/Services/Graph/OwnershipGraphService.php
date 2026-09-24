@@ -34,7 +34,13 @@ final class OwnershipGraphService
         private readonly int $maxCompanies = 300,
     ) {}
 
-    public function for(string $cnpj): OwnershipGraph
+    /**
+     * Grafo Camada 1 de uma empresa. Por padrão só inclui ligações **confiáveis**
+     * do grupo econômico (mesmo CPF mascarado **e** primeiro+último nome). Passe
+     * $includeProbable = true para também trazer as **prováveis** (mesmo CPF
+     * mascarado, nome divergente — possível xará), marcadas como tal.
+     */
+    public function for(string $cnpj, bool $includeProbable = false): OwnershipGraph
     {
         $digits = Cnpj::normalize($cnpj); // 14 dígitos (lookup, sem exigir mod-11)
         $basico = substr($digits, 0, 8);
@@ -111,6 +117,19 @@ final class OwnershipGraphService
                     continue;
                 }
 
+                // Provável (menor confiança): CPF mascarado + primeiro E último
+                // nome divergentes → provável xará. Casar primeiro+último (em vez
+                // de nome inteiro) evita marcar como provável a mesma pessoa com
+                // grafia diferente (nome do meio abreviado/omitido).
+                $probable = $masked && ! $this->sameCoreName($socioName, $this->str($o['nome_socio'] ?? null));
+
+                // Por padrão só entram ligações confiáveis; as prováveis só quando
+                // pedidas. (Uma linha confiável para a MESMA empresa, se houver,
+                // ainda a inclui e mantém a aresta cheia — ver dedup abaixo.)
+                if ($probable && ! $includeProbable) {
+                    continue;
+                }
+
                 $otherId = 'empresa:'.$otherBasico;
                 $nodes[$otherId] ??= new GraphNode(
                     id: $otherId,
@@ -119,12 +138,6 @@ final class OwnershipGraphService
                     document: Cnpj::matrizFromBasico($otherBasico) ?? $otherBasico,
                     situacao: $this->situacao($o['situacao_cadastral'] ?? null),
                 );
-
-                // Provável (menor confiança): CPF mascarado + primeiro E último
-                // nome divergentes → provável xará. Casar primeiro+último (em vez
-                // de nome inteiro) evita marcar como provável a mesma pessoa com
-                // grafia diferente (nome do meio abreviado/omitido).
-                $probable = $masked && ! $this->sameCoreName($socioName, $this->str($o['nome_socio'] ?? null));
 
                 // Dedup determinístico: uma linha confiável (nome bate) prevalece
                 // sobre a provável, independente da ordem das linhas do banco.

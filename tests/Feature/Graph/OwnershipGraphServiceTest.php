@@ -98,13 +98,66 @@ it('flags a reverse edge as probable when the masked CPF matches but the name di
         ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
+    // Prováveis ficam ocultas por padrão → includeProbable p/ o xará aparecer.
+    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
 
     $confiavel = $edges->firstWhere('de', 'empresa:44555666');
     $provavel = $edges->firstWhere('de', 'empresa:77888999');
 
     expect($confiavel['provavel'])->toBeFalse()
         ->and($provavel['provavel'])->toBeTrue();
+});
+
+it('hides probable companies by default and includes them only when asked', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CONFIAVEL'],
+        ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $service = new OwnershipGraphService('cnpj', 25);
+
+    // Padrão: só a confiável (44555666); a xará (77888999) fica de fora.
+    $default = collect($service->for('11222333000181')->toArray()['nos'])->pluck('id');
+    expect($default)->toContain('empresa:44555666')
+        ->and($default)->not->toContain('empresa:77888999');
+
+    // Com includeProbable: a xará entra também.
+    $withProbable = collect($service->for('11222333000181', includeProbable: true)->toArray()['nos'])->pluck('id');
+    expect($withProbable)->toContain('empresa:44555666')
+        ->and($withProbable)->toContain('empresa:77888999');
+});
+
+it('keeps a company with a confident row even when it also has a probable row (default off)', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        // 44555666 tem uma linha xará (JOAO) E uma confiável (MARIA SILVA)
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    // Default off: a empresa entra (tem linha confiável) e a aresta fica cheia.
+    $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray();
+
+    expect(collect($graph['nos'])->firstWhere('id', 'empresa:44555666'))->not->toBeNull()
+        ->and(collect($graph['arestas'])->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
 });
 
 it('resolves a deduped reverse edge to confident when any target row matches the name (order-independent)', function () {
@@ -125,7 +178,8 @@ it('resolves a deduped reverse edge to confident when any target row matches the
         ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
+    // includeProbable p/ exercitar as duas linhas (a confiável prevalece).
+    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
 
     expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
 });
@@ -187,7 +241,8 @@ it('still flags as probable when the first name matches but the surname differs'
         ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
+    // includeProbable p/ o xará de sobrenome diferente aparecer (tracejado).
+    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
 
     expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeTrue();
 });
