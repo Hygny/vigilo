@@ -8,6 +8,7 @@
         <title>{{ config('app.name', 'Vigilo') }} · Admin</title>
 
         @include('partials.theme-bootstrap')
+        @include('partials.favicons')
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

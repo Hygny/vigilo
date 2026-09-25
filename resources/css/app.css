@@ -38,8 +38,6 @@
     --ok-soft: #E9E4D5;
     --shadow-sm: 0 1px 2px rgba(23,23,15,.06), 0 1px 3px rgba(23,23,15,.07);
     --shadow-md: 0 6px 18px rgba(23,23,15,.10), 0 2px 6px rgba(23,23,15,.06);
-    --logo-a: #171712;
-    --logo-b: #F2C744;
     --onPrimary: #FFFFFF;
     /* Grafo societário ("grifo"): cores saturadas para rótulo branco legível
        nos dois temas (contraste ≥ 4.5:1). Empresa ≠ sócio; negativa em vermelho. */
@@ -88,8 +86,6 @@
     --ok-soft: #24221A;
     --shadow-sm: 0 1px 2px rgba(0,0,0,.40);
     --shadow-md: 0 10px 28px rgba(0,0,0,.55);
-    --logo-a: #F2C744;
-    --logo-b: #171712;
     --onPrimary: #17170F;
     /* Grafo: fills iguais (rótulo branco), só aresta e anel do centro mudam. */
     --graph-center-ring: #F2C744;
@@ -100,6 +96,11 @@
     --graph-tip-bg: #24221A;
     --graph-tip-fg: #F2C744;
 }
+
+/* Marca (logo/badge): alterna a arte conforme o tema ativo (data-theme sempre
+   presente via partials/theme-bootstrap, então sem flash). */
+[data-theme="light"] .brand-on-dark { display: none; }
+[data-theme="dark"] .brand-on-light { display: none; }
 
 @layer base {
     html {

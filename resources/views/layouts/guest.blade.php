@@ -8,6 +8,7 @@
         <title>{{ config('app.name', 'Vigilo') }}</title>
 
         @include('partials.theme-bootstrap')
+        @include('partials.favicons')
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,10 +20,9 @@
     </head>
     <body class="font-sans text-ink antialiased">
         <div class="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-            <a href="/" wire:navigate class="mb-7 flex items-center gap-3">
-                <span class="flex h-11 w-11 items-center justify-center rounded-[12px] text-lg font-bold text-white shadow-card"
-                      style="background:linear-gradient(135deg,var(--logo-a),var(--logo-b));">V</span>
-                <span class="text-2xl font-semibold tracking-tight text-ink">Vigilo</span>
+            <a href="/" wire:navigate class="mb-7 inline-flex items-center">
+                <img src="{{ asset('brand/vigilo-logo-light.png') }}" alt="Vigilo" width="365" height="128" class="brand-on-light h-12 w-auto">
+                <img src="{{ asset('brand/vigilo-logo-dark.png') }}" alt="Vigilo" width="365" height="128" class="brand-on-dark h-12 w-auto">
             </a>
 
             <div class="w-full overflow-hidden rounded-card border border-line bg-surface px-7 py-8 shadow-float sm:max-w-md">

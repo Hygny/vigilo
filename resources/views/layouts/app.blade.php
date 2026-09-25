@@ -8,6 +8,7 @@
         <title>{{ config('app.name', 'Vigilo') }}</title>
 
         @include('partials.theme-bootstrap')
+        @include('partials.favicons')
 
         {{-- Fontes: Geist (UI), Geist Mono (dados), Material Symbols (ícones) --}}
         <link rel="preconnect" href="https://fonts.googleapis.com">

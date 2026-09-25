@@ -1,0 +1,13 @@
+{
+    "name": "Vigilo",
+    "short_name": "Vigilo",
+    "description": "Due diligence contínua de CNPJ",
+    "icons": [
+        { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+        { "src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    ],
+    "theme_color": "#F2C744",
+    "background_color": "#FBF8F1",
+    "display": "standalone",
+    "start_url": "/"
+}

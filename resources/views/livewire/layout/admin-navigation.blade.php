@@ -24,8 +24,8 @@ new class extends Component
         class="sticky top-0 z-20 border-b border-line bg-surface shadow-card">
     <div class="mx-auto flex h-[62px] max-w-[1200px] items-center gap-6 px-5 sm:px-8">
         <a href="{{ route('admin.organizations.index') }}" wire:navigate class="flex shrink-0 items-center gap-2.5">
-            <span class="flex h-[33px] w-[33px] items-center justify-center rounded-[9px] text-[17px] font-bold text-white shadow-card"
-                  style="background:linear-gradient(135deg,var(--logo-a),var(--logo-b));">V</span>
+            <img src="{{ asset('brand/vigilo-badge-light.png') }}" alt="" width="128" height="128" class="brand-on-light h-[33px] w-[33px]">
+            <img src="{{ asset('brand/vigilo-badge-dark.png') }}" alt="" width="128" height="128" class="brand-on-dark h-[33px] w-[33px]">
             <span class="text-[17px] font-semibold tracking-tight text-ink">Vigilo</span>
             <span class="rounded-md bg-primary-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">Admin</span>
         </a>
