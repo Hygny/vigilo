@@ -24,6 +24,9 @@ function bootGraphBase(): void
         $t->string('cnpj_ordem');
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
+        $t->string('nome_fantasia')->nullable();
+        $t->string('municipio')->nullable();
+        $t->string('uf')->nullable();
     });
     $schema->create('empresas', function (Blueprint $t): void {
         $t->string('cnpj_basico');
@@ -40,9 +43,13 @@ function bootGraphBase(): void
         $t->string('codigo');
         $t->string('descricao')->nullable();
     });
+    $schema->create('municipios', function (Blueprint $t): void {
+        $t->string('codigo');
+        $t->string('descricao')->nullable();
+    });
 }
 
-it('builds a Camada 1 graph: center, partners and the economic group (reverse), deduped', function () {
+it('builds a Camada 1 graph: direct partners + the PJ economic group (reverse), by default', function () {
     bootGraphBase();
 
     DB::connection('cnpj')->table('estabelecimentos')->insert([
@@ -54,11 +61,11 @@ it('builds a Camada 1 graph: center, partners and the economic group (reverse), 
     ]);
     DB::connection('cnpj')->table('qualificacoes_socios')->insert([['codigo' => '49', 'descricao' => 'Sócio-Administrador']]);
     DB::connection('cnpj')->table('socios')->insert([
-        // sócios diretos da empresa A
+        // sócios diretos de A: MARIA (PF) e a HOLDING X (PJ)
         ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2', 'qualificacao_do_socio' => '49'],
         ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '49'],
-        // MARIA também é sócia da empresa B (grupo econômico via aresta reversa)
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2', 'qualificacao_do_socio' => '49'],
+        // a HOLDING X (PJ, CNPJ completo) também é sócia de B → grupo via reversa CERTA
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '49'],
     ]);
 
     $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray();
@@ -73,71 +80,61 @@ it('builds a Camada 1 graph: center, partners and the economic group (reverse), 
         ->and($byId->get('empresa:44555666'))->toMatchArray(['tipo' => 'empresa', 'nome' => 'EMPRESA B']);
 
     $edges = collect($graph['arestas']);
-    // direta: A → MARIA (com qualificação); reversa: B → MARIA (sócio em comum)
+    // direta: A → MARIA (com qualificação); reversa CERTA: B → HOLDING X (PJ em comum), sólida
     expect($edges->contains(fn (array $e): bool => $e['de'] === 'empresa:11222333' && $e['para'] === 'socio:***111**' && $e['qualificacao'] === 'Sócio-Administrador'))->toBeTrue()
-        ->and($edges->contains(fn (array $e): bool => $e['de'] === 'empresa:44555666' && $e['para'] === 'socio:***111**'))->toBeTrue();
+        ->and($edges->first(fn (array $e): bool => $e['de'] === 'empresa:44555666' && $e['para'] === 'socio:99888777000166')['provavel'])->toBeFalse();
 });
 
-it('flags a reverse edge as probable when the masked CPF matches but the name differs', function () {
-    bootGraphBase();
-
-    DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
-    ]);
-    DB::connection('cnpj')->table('empresas')->insert([
-        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
-        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CONFIAVEL'],
-        ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
-    ]);
-    DB::connection('cnpj')->table('socios')->insert([
-        // sócia direta de A
-        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        // mesmo CPF mascarado + mesmo nome → ligação confiável (não provável)
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        // mesmo CPF mascarado + nome diferente → provável (xará)
-        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-    ]);
-
-    // Prováveis ficam ocultas por padrão → includeProbable p/ o xará aparecer.
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
-
-    $confiavel = $edges->firstWhere('de', 'empresa:44555666');
-    $provavel = $edges->firstWhere('de', 'empresa:77888999');
-
-    expect($confiavel['provavel'])->toBeFalse()
-        ->and($provavel['provavel'])->toBeTrue();
-});
-
-it('hides probable companies by default and includes them only when asked', function () {
+it('hides the PF economic group by default and shows it (as probable) with the toggle', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
         ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
-        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CONFIAVEL'],
-        ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
     ]);
     DB::connection('cnpj')->table('socios')->insert([
         ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
         ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
     $service = new OwnershipGraphService('cnpj', 25);
 
-    // Padrão: só a confiável (44555666); a xará (77888999) fica de fora.
-    $default = collect($service->for('11222333000181')->toArray()['nos'])->pluck('id');
-    expect($default)->toContain('empresa:44555666')
-        ->and($default)->not->toContain('empresa:77888999');
+    // Padrão: sócio PF não traz grupo reverso → B fica de fora.
+    expect(collect($service->for('11222333000181')->toArray()['nos'])->pluck('id'))
+        ->not->toContain('empresa:44555666');
 
-    // Com includeProbable: a xará entra também.
-    $withProbable = collect($service->for('11222333000181', includeProbable: true)->toArray()['nos'])->pluck('id');
-    expect($withProbable)->toContain('empresa:44555666')
-        ->and($withProbable)->toContain('empresa:77888999');
+    // Com includePfGroup: B entra, marcada como provável (menor certeza).
+    $edges = collect($service->for('11222333000181', includePfGroup: true)->toArray()['arestas']);
+    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeTrue();
 });
 
-it('keeps a company with a confident row even when it also has a probable row (default off)', function () {
+it('filters the PF reverse by first name: a different first name (xará) is excluded', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CERTA'],
+        ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
+    ]);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        // mesmo nome → entra
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        // mesmo CPF mascarado, PRIMEIRO nome diferente → filtrado já na query
+        ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+
+    $ids = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includePfGroup: true)->toArray()['nos'])->pluck('id');
+
+    expect($ids)->toContain('empresa:44555666')
+        ->and($ids)->not->toContain('empresa:77888999');
+});
+
+it('excludes a PF match with the same first name but a different surname', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
@@ -148,66 +145,16 @@ it('keeps a company with a confident row even when it also has a probable row (d
     ]);
     DB::connection('cnpj')->table('socios')->insert([
         ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        // 44555666 tem uma linha xará (JOAO) E uma confiável (MARIA SILVA)
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        // 1º nome igual (passa no SQL) mas sobrenome diferente → cortado no PHP
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    // Default off: a empresa entra (tem linha confiável) e a aresta fica cheia.
-    $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray();
+    $ids = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includePfGroup: true)->toArray()['nos'])->pluck('id');
 
-    expect(collect($graph['nos'])->firstWhere('id', 'empresa:44555666'))->not->toBeNull()
-        ->and(collect($graph['arestas'])->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
+    expect($ids)->not->toContain('empresa:44555666');
 });
 
-it('resolves a deduped reverse edge to confident when any target row matches the name (order-independent)', function () {
-    bootGraphBase();
-
-    DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
-    ]);
-    DB::connection('cnpj')->table('empresas')->insert([
-        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
-        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
-    ]);
-    DB::connection('cnpj')->table('socios')->insert([
-        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        // na empresa B o mesmo CPF mascarado aparece em 2 linhas: uma diverge (JOAO),
-        // outra bate (MARIA). A confiável deve prevalecer, não importa a ordem.
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-    ]);
-
-    // includeProbable p/ exercitar as duas linhas (a confiável prevalece).
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
-
-    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
-});
-
-it('never flags a PJ reverse edge as probable (full CNPJ is unique)', function () {
-    bootGraphBase();
-
-    DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
-    ]);
-    DB::connection('cnpj')->table('empresas')->insert([
-        ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA A'],
-        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
-    ]);
-    DB::connection('cnpj')->table('socios')->insert([
-        // sócio PJ da empresa A (CNPJ completo, sem máscara)
-        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
-        // a mesma holding aparece em B com a razão grafada diferente — ainda assim
-        // é o mesmo CNPJ, então NÃO é provável.
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING X SA', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
-    ]);
-
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
-
-    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
-});
-
-it('does not flag as probable the same person with a dropped middle name (first+last match)', function () {
+it('keeps a PF match for the same person with a dropped middle name', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
@@ -218,17 +165,18 @@ it('does not flag as probable the same person with a dropped middle name (first+
     ]);
     DB::connection('cnpj')->table('socios')->insert([
         ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA APARECIDA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        // mesma pessoa, nome do meio omitido → primeiro+último batem → confiável
+        // nome do meio omitido: 1º (MARIA) casa no SQL, 1º+último (MARIA/SILVA) casam → entra
         ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
+    $ids = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includePfGroup: true)->toArray()['nos'])->pluck('id');
 
-    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
+    expect($ids)->toContain('empresa:44555666');
 });
 
-it('still flags as probable when the first name matches but the surname differs', function () {
+it('always includes the PJ reverse group (solid, not probable), even by default', function () {
     bootGraphBase();
+
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
     ]);
@@ -237,21 +185,21 @@ it('still flags as probable when the first name matches but the surname differs'
         ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
     ]);
     DB::connection('cnpj')->table('socios')->insert([
-        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SILVA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING X SA', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
     ]);
 
-    // includeProbable p/ o xará de sobrenome diferente aparecer (tracejado).
-    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeProbable: true)->toArray()['arestas']);
+    // PJ aparece no padrão (sem toggle) e a aresta é sólida (provavel=false).
+    $edges = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['arestas']);
 
-    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeTrue();
+    expect($edges->firstWhere('de', 'empresa:44555666')['provavel'])->toBeFalse();
 });
 
-it('carries the situação of reverse-group companies (negative shows even off-center)', function () {
+it('carries the situação of the PJ reverse-group companies (negative shows off-center)', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
-        // a matriz da empresa do grupo está BAIXADA (08)
+        // a matriz da empresa do grupo (via sócio PJ) está BAIXADA (08)
         ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '55', 'situacao_cadastral' => '08'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
@@ -259,13 +207,59 @@ it('carries the situação of reverse-group companies (negative shows even off-c
         ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA B'],
     ]);
     DB::connection('cnpj')->table('socios')->insert([
-        ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
-        ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING X', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
     ]);
 
     $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray();
 
     expect(collect($graph['nos'])->firstWhere('id', 'empresa:44555666')['situacao'])->toBe('BAIXADA');
+});
+
+it('lists the filiais (sibling establishments) with situação and city, excluding the center', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'nome_fantasia' => 'MATRIZ SP', 'municipio' => '7107', 'uf' => 'SP'],
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62', 'situacao_cadastral' => '08', 'nome_fantasia' => 'FILIAL RJ', 'municipio' => '6001', 'uf' => 'RJ'],
+    ]);
+    DB::connection('cnpj')->table('municipios')->insert([
+        ['codigo' => '7107', 'descricao' => 'SAO PAULO'],
+        ['codigo' => '6001', 'descricao' => 'RIO DE JANEIRO'],
+    ]);
+
+    $branches = (new OwnershipGraphService('cnpj', 25))->branches('11222333000181');
+
+    // Só a filial 0002 — o centro (0001) é excluído.
+    expect($branches)->toHaveCount(1);
+    expect($branches[0]->cnpj)->toBe('11222333000262')
+        ->and($branches[0]->isMatriz)->toBeFalse()
+        ->and($branches[0]->situacao)->toBe('BAIXADA')
+        ->and($branches[0]->municipio)->toBe('RIO DE JANEIRO')
+        ->and($branches[0]->uf)->toBe('RJ');
+});
+
+it('returns no filiais when the company has a single establishment', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+    ]);
+
+    expect((new OwnershipGraphService('cnpj', 25))->branches('11222333000181'))->toBe([]);
+});
+
+it('marks the matriz with isMatriz=true when centering on a filial', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'nome_fantasia' => 'MATRIZ', 'municipio' => null, 'uf' => 'SP'],
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62', 'situacao_cadastral' => '02', 'nome_fantasia' => 'FILIAL', 'municipio' => null, 'uf' => 'RJ'],
+    ]);
+
+    // Centrado na FILIAL (ordem 0002): a matriz (0001) volta marcada como matriz.
+    $branches = (new OwnershipGraphService('cnpj', 25))->branches('11222333000262');
+
+    expect($branches)->toHaveCount(1);
+    expect($branches[0]->cnpj)->toBe('11222333000181')
+        ->and($branches[0]->isMatriz)->toBeTrue();
 });
 
 it('carries the situação of a person-centered graph companies', function () {
@@ -304,8 +298,8 @@ it('caps the reverse expansion per partner', function () {
         ['cnpj_basico' => '00000003', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
-    // limite reverso = 2 → só 2 das 3 empresas de MARIA entram
-    $graph = (new OwnershipGraphService('cnpj', 2))->for('11222333000181')->toArray();
+    // limite reverso = 2 → só 2 das 3 empresas de MARIA entram (grupo PF opt-in)
+    $graph = (new OwnershipGraphService('cnpj', 2))->for('11222333000181', includePfGroup: true)->toArray();
 
     $empresasReversas = collect($graph['nos'])
         ->filter(fn (array $n): bool => $n['tipo'] === 'empresa' && $n['id'] !== 'empresa:11222333')

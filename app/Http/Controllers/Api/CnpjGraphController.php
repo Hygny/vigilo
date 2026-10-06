@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\DTO\Graph\BeneficialOwner;
+use App\DTO\Graph\CompanyBranch;
 use App\Http\Controllers\Controller;
 use App\Models\MonitoredCompany;
 use App\Models\User;
@@ -46,10 +47,15 @@ final class CnpjGraphController extends Controller
             return response()->json(['message' => 'CNPJ não monitorado pela organização.'], 404);
         }
 
-        // Por padrão só ligações certeiras; ?provaveis=1 inclui as prováveis
-        // (mesmo CPF mascarado, nome divergente), marcadas com "provavel": true.
+        // Por padrão só ligações certas (sócios diretos + grupo via sócio PJ);
+        // ?provaveis=1 inclui também as conexões por sócio PF (CPF mascarado),
+        // marcadas com "provavel": true. As filiais (mesmo CNPJ base) sempre vêm.
         return response()->json([
             ...$graph->for($digits, $request->boolean('provaveis'))->toArray(),
+            'filiais' => array_map(
+                fn (CompanyBranch $branch): array => $branch->toArray(),
+                $graph->branches($digits),
+            ),
             'beneficiarios' => array_map(
                 fn (BeneficialOwner $owner): array => $owner->toArray(),
                 $graph->beneficialOwners($digits),

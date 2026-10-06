@@ -92,6 +92,8 @@ return [
         'max_depth' => (int) env('CNPJ_GRAPH_MAX_DEPTH', 5),
         // Teto de empresas visitadas na recursão (rede de segurança).
         'max_companies' => (int) env('CNPJ_GRAPH_MAX_COMPANIES', 300),
+        // Teto de filiais (mesmo cnpj_basico) listadas no painel.
+        'branch_limit' => (int) env('CNPJ_GRAPH_BRANCH_LIMIT', 60),
     ],
 
 ];

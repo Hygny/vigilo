@@ -54,8 +54,8 @@
                     </div>
                 </div>
 
-                {{-- Alternador das ligações prováveis: off por padrão (só as
-                     certeiras). Só no modo empresa — o modo pessoa filtra por nome. --}}
+                {{-- Conexões por sócio PF: off por padrão (muito falso positivo
+                     pelo CPF mascarado). Só no modo empresa. --}}
                 @if (! $personMode)
                     <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
                         <button type="button" wire:click="toggleProbable"
@@ -65,9 +65,9 @@
                                     'border-line-strong bg-surface text-ink-2 hover:bg-surface-2' => ! $showProbable,
                                 ])>
                             <x-ui.icon :name="$showProbable ? 'visibility' : 'visibility_off'" :size="15" />
-                            {{ $showProbable ? 'Ocultar ligações prováveis' : 'Mostrar ligações prováveis' }}
+                            {{ $showProbable ? 'Ocultar conexões por sócio PF' : 'Mostrar conexões por sócio PF' }}
                         </button>
-                        <span class="text-[12px] text-ink-muted">Prováveis = mesmo CPF mascarado com nome diferente (possível xará). Ocultas por padrão.</span>
+                        <span class="text-[12px] text-ink-muted">Ligações por pessoa física (CPF mascarado) — menor certeza. Ocultas por padrão.</span>
                     </div>
                 @endif
 
@@ -78,7 +78,7 @@
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
                     @if (! $personMode && $showProbable)
-                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Ligação provável (mesmo CPF, nome difere)</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Conexão por sócio PF (CPF mascarado)</span>
                     @endif
                 </div>
 
@@ -86,10 +86,45 @@
                     @if ($personMode)
                         Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, passe o mouse para ver o CNPJ, e clique numa empresa para ver o grafo dela.
                     @else
-                        Por padrão o grupo econômico mostra só as ligações <span class="font-medium">certeiras</span> (mesmo CPF mascarado <span class="font-medium">e</span> primeiro/último nome). Arraste os nós, use a roda ou os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique para expandir. Use <span class="font-medium">"Mostrar ligações prováveis"</span> para também ver as de mesmo CPF com nome diferente (tracejadas — possíveis xarás).
+                        O grupo econômico mostra por padrão só as ligações <span class="font-medium">certas</span> — sócios diretos e empresas ligadas por <span class="font-medium">sócio PJ</span> (CNPJ completo). As <span class="font-medium">filiais</span> (mesma empresa) estão no painel abaixo. Arraste os nós, use a roda/os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique para expandir. Use <span class="font-medium">"Mostrar conexões por sócio PF"</span> para ver também as ligações por pessoa física (CPF mascarado — menor certeza, tracejadas).
                     @endif
                 </p>
             </x-ui.card>
+
+            {{-- Filiais (mesma empresa, por CNPJ) — relação 100% certa. Só no modo empresa. --}}
+            @if (! $personMode)
+                <x-ui.card class="p-5">
+                    <div class="mb-3 flex items-center gap-2">
+                        <x-ui.icon name="store" :size="20" class="text-accent" />
+                        <h2 class="text-[15px] font-semibold text-ink">Filiais</h2>
+                        <span class="text-[12.5px] text-ink-muted">· mesma empresa (mesmo CNPJ base)</span>
+                    </div>
+
+                    @if (count($branches) > 0)
+                        <ul class="divide-y divide-line overflow-hidden rounded-btn ring-1 ring-line">
+                            @foreach ($branches as $branch)
+                                <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                                    <div class="flex min-w-0 items-center gap-2">
+                                        <x-ui.icon :name="$branch->isMatriz ? 'home_work' : 'store'" :size="16" class="shrink-0 text-ink-muted" />
+                                        <span class="truncate text-sm font-medium text-ink">{{ $branch->nomeFantasia ?? ($branch->isMatriz ? 'Matriz' : 'Filial') }}</span>
+                                        @if ($branch->isMatriz)<span class="shrink-0 rounded-md bg-primary-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent">matriz</span>@endif
+                                        @if ($branch->situacao && $branch->situacao !== 'ATIVA')<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-danger ring-1 ring-inset ring-line">{{ $branch->situacao }}</span>@endif
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[12.5px] text-ink-muted">
+                                        @if ($branch->municipio)<span>{{ $branch->municipio }}{{ $branch->uf ? '/'.$branch->uf : '' }}</span>@endif
+                                        <span class="font-mono">{{ \App\Support\Cnpj::tryFrom($branch->cnpj)?->formatted() ?? $branch->cnpj }}</span>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <p class="mt-3 text-[12px] text-ink-muted">
+                            Estabelecimentos com o mesmo CNPJ base (matriz + filiais) — relação certa pelo CNPJ completo.
+                        </p>
+                    @else
+                        <p class="text-sm text-ink-muted">Sem filiais — a empresa tem um único estabelecimento.</p>
+                    @endif
+                </x-ui.card>
+            @endif
 
             {{-- Beneficiários finais (estrutura) — só no grafo centrado em empresa --}}
             @if (! $personMode)

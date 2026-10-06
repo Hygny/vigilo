@@ -56,6 +56,7 @@ class AppServiceProvider extends ServiceProvider
             reverseLimit: (int) config('cnpj.graph.reverse_limit', 25),
             maxDepth: (int) config('cnpj.graph.max_depth', 5),
             maxCompanies: (int) config('cnpj.graph.max_companies', 300),
+            maxBranches: (int) config('cnpj.graph.branch_limit', 60),
         ));
     }
 

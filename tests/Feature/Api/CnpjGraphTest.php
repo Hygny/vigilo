@@ -31,6 +31,9 @@ function seedGraphCenterBase(): void
         $t->string('cnpj_ordem');
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
+        $t->string('nome_fantasia')->nullable();
+        $t->string('municipio')->nullable();
+        $t->string('uf')->nullable();
     });
     $schema->create('empresas', function (Blueprint $t): void {
         $t->string('cnpj_basico');
@@ -44,6 +47,10 @@ function seedGraphCenterBase(): void
         $t->string('qualificacao_do_socio')->nullable();
     });
     $schema->create('qualificacoes_socios', function (Blueprint $t): void {
+        $t->string('codigo');
+        $t->string('descricao')->nullable();
+    });
+    $schema->create('municipios', function (Blueprint $t): void {
         $t->string('codigo');
         $t->string('descricao')->nullable();
     });
@@ -95,14 +102,14 @@ it('returns the ownership graph for a monitored CNPJ', function () {
         ->assertJsonPath('beneficiarios.0.nivel', 1);
 });
 
-it('excludes probable companies by default and includes them with ?provaveis=1', function () {
+it('hides the PF group by default and includes name-matching PF companies with ?provaveis=1', function () {
     [$org, $token] = orgWithToken();
     MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
     seedGraphCenterBase(); // centro 11222333 + sócia MARIA (***111**)
 
-    // Empresa confiável (MARIA) e xará (JOAO), ambas com o mesmo CPF mascarado.
+    // Empresa de mesmo nome (MARIA) e xará de 1º nome diferente (JOAO), mesmo CPF.
     DB::connection('cnpj')->table('empresas')->insert([
-        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA CONFIAVEL'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA PF'],
         ['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA'],
     ]);
     DB::connection('cnpj')->table('socios')->insert([
@@ -112,16 +119,36 @@ it('excludes probable companies by default and includes them with ?provaveis=1',
 
     $ids = fn (array $nos): array => array_column($nos, 'id');
 
-    // Padrão: só a confiável; a xará (provável) fica de fora.
+    // Padrão: sócio PF não traz grupo → nenhuma das duas entra.
     $default = $this->withHeaders(['Authorization' => 'Bearer '.$token])
         ->getJson('/api/cnpj/11222333000181/grafo')->assertOk()->json('nos');
-    expect($ids($default))->toContain('empresa:44555666')
+    expect($ids($default))->not->toContain('empresa:44555666')
         ->and($ids($default))->not->toContain('empresa:77888999');
 
-    // ?provaveis=1: a xará também entra.
-    $withProbable = $this->withHeaders(['Authorization' => 'Bearer '.$token])
+    // ?provaveis=1: entra a de mesmo nome; a xará (1º nome difere) segue filtrada.
+    $withPf = $this->withHeaders(['Authorization' => 'Bearer '.$token])
         ->getJson('/api/cnpj/11222333000181/grafo?provaveis=1')->assertOk()->json('nos');
-    expect($ids($withProbable))->toContain('empresa:77888999');
+    expect($ids($withPf))->toContain('empresa:44555666')
+        ->and($ids($withPf))->not->toContain('empresa:77888999');
+});
+
+it('includes the filiais (same CNPJ base) in the API response', function () {
+    [$org, $token] = orgWithToken();
+    MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+    seedGraphCenterBase(); // matriz 11222333/0001
+
+    // Uma filial (mesmo cnpj_basico, outra ordem).
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62', 'situacao_cadastral' => '08', 'nome_fantasia' => 'FILIAL RJ', 'municipio' => null, 'uf' => 'RJ'],
+    ]);
+
+    $filiais = $this->withHeaders(['Authorization' => 'Bearer '.$token])
+        ->getJson('/api/cnpj/11222333000181/grafo')->assertOk()->json('filiais');
+
+    expect($filiais)->toHaveCount(1)
+        ->and($filiais[0]['cnpj'])->toBe('11222333000262')
+        ->and($filiais[0]['situacao'])->toBe('BAIXADA')
+        ->and($filiais[0]['uf'])->toBe('RJ');
 });
 
 it('validates the CNPJ length', function () {

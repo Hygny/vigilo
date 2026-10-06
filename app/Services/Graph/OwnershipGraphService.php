@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Services\Graph;
 
 use App\DTO\Graph\BeneficialOwner;
+use App\DTO\Graph\CompanyBranch;
 use App\DTO\Graph\GraphEdge;
 use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
 use App\Support\Cnpj;
 use App\Support\SituacaoCadastral;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
@@ -32,15 +34,19 @@ final class OwnershipGraphService
         private readonly int $reverseLimit,
         private readonly int $maxDepth = 5,
         private readonly int $maxCompanies = 300,
+        private readonly int $maxBranches = 60,
     ) {}
 
     /**
-     * Grafo Camada 1 de uma empresa. Por padrão só inclui ligações **confiáveis**
-     * do grupo econômico (mesmo CPF mascarado **e** primeiro+último nome). Passe
-     * $includeProbable = true para também trazer as **prováveis** (mesmo CPF
-     * mascarado, nome divergente — possível xará), marcadas como tal.
+     * Grafo Camada 1 de uma empresa. Por padrão o grupo econômico só traz as
+     * ligações **certas** — as por sócio **PJ** (CNPJ completo, único). As ligações
+     * por sócio **PF** (CPF mascarado `***NNNNNN**`, 6 dígitos que colidem entre
+     * pessoas) ficam de fora e só entram com $includePfGroup = true, marcadas como
+     * "prováveis" (menor certeza). Mesmo então, a reversa de PF é filtrada pelo
+     * primeiro nome na própria query (e o sobrenome conferido depois), cortando os
+     * xarás com os mesmos 6 dígitos mas nome diferente.
      */
-    public function for(string $cnpj, bool $includeProbable = false): OwnershipGraph
+    public function for(string $cnpj, bool $includePfGroup = false): OwnershipGraph
     {
         $digits = Cnpj::normalize($cnpj); // 14 dígitos (lookup, sem exigir mod-11)
         $basico = substr($digits, 0, 8);
@@ -90,22 +96,36 @@ final class OwnershipGraphService
             }
 
             $socioName = $this->str($s['nome_socio'] ?? null);
-            // CPF mascarado (PF): os 6 dígitos centrais não são únicos, então a
-            // ligação reversa pode casar um xará. CNPJ de sócio PJ é completo/único.
+            // CPF mascarado (PF): os 6 dígitos centrais não são únicos → a reversa
+            // pode casar um xará. CNPJ de sócio PJ é completo/único → sempre certo.
             $masked = str_contains($document, '*');
 
+            // Sócio PF: grupo reverso só sob demanda (muito falso positivo), e
+            // precisa do nome p/ filtrar. Sócio PJ: sempre (ligação certa).
+            if ($masked && (! $includePfGroup || $socioName === null)) {
+                continue;
+            }
+
             // Aresta reversa: outras empresas em que este sócio aparece. leftJoin
-            // (simétrico ao centro): não perde empresa conectada que falte em
-            // `empresas`. leftJoin na matriz (ordem 0001) traz a situação para o
-            // nó do grupo ficar vermelho quando BAIXADA já na visão geral.
-            $others = $db->table('socios as s2')
+            // na matriz (ordem 0001) traz a situação p/ o nó do grupo já refletir
+            // BAIXADA na visão geral.
+            $query = $db->table('socios as s2')
                 ->leftJoin('empresas as emp2', 's2.cnpj_basico', '=', 'emp2.cnpj_basico')
                 ->leftJoin('estabelecimentos as est2', function (JoinClause $join): void {
                     $join->on('est2.cnpj_basico', '=', 's2.cnpj_basico')
                         ->where('est2.cnpj_ordem', '=', self::ORDEM_MATRIZ);
                 })
                 ->where('s2.cnpj_cpf_do_socio', $document)
-                ->where('s2.cnpj_basico', '!=', $basico)
+                ->where('s2.cnpj_basico', '!=', $basico);
+
+            if ($masked) {
+                // "Pega o primeiro nome" na própria query: a reversa só traz
+                // empresas do MESMO 1º nome (não xarás quaisquer com os 6 dígitos),
+                // aproveitando o teto. O sobrenome é conferido no PHP abaixo.
+                $query->where('s2.nome_socio', 'like', $this->firstNameLike($socioName));
+            }
+
+            $others = $query
                 ->limit($this->reverseLimit)
                 ->get(['s2.cnpj_basico', 's2.nome_socio', 'emp2.razao_social', 'est2.situacao_cadastral']);
 
@@ -117,16 +137,9 @@ final class OwnershipGraphService
                     continue;
                 }
 
-                // Provável (menor confiança): CPF mascarado + primeiro E último
-                // nome divergentes → provável xará. Casar primeiro+último (em vez
-                // de nome inteiro) evita marcar como provável a mesma pessoa com
-                // grafia diferente (nome do meio abreviado/omitido).
-                $probable = $masked && ! $this->sameCoreName($socioName, $this->str($o['nome_socio'] ?? null));
-
-                // Por padrão só entram ligações confiáveis; as prováveis só quando
-                // pedidas. (Uma linha confiável para a MESMA empresa, se houver,
-                // ainda a inclui e mantém a aresta cheia — ver dedup abaixo.)
-                if ($probable && ! $includeProbable) {
+                // PF: 1º nome já casou no SQL; exige o ÚLTIMO também (senão é xará
+                // de mesmo 1º nome). Casar 1º+último tolera nome do meio omitido.
+                if ($masked && ! $this->sameCoreName($socioName, $this->str($o['nome_socio'] ?? null))) {
                     continue;
                 }
 
@@ -139,18 +152,63 @@ final class OwnershipGraphService
                     situacao: $this->situacao($o['situacao_cadastral'] ?? null),
                 );
 
-                // Dedup determinístico: uma linha confiável (nome bate) prevalece
-                // sobre a provável, independente da ordem das linhas do banco.
-                $edgeKey = $otherId.'|'.$socioId;
-                if (! isset($edges[$edgeKey])) {
-                    $edges[$edgeKey] = new GraphEdge($otherId, $socioId, 'socio', null, $probable);
-                } elseif (! $probable && $edges[$edgeKey]->probable) {
-                    $edges[$edgeKey] = new GraphEdge($otherId, $socioId, 'socio', null, false);
-                }
+                // PF (CPF mascarado) = ligação de menor certeza → "provável"
+                // (tracejada). PJ (CNPJ completo) = certa → sólida.
+                $edges[$otherId.'|'.$socioId] ??= new GraphEdge($otherId, $socioId, 'socio', null, $masked);
             }
         }
 
         return new OwnershipGraph($centerId, array_values($nodes), array_values($edges));
+    }
+
+    /**
+     * Filiais (e matriz) da MESMA empresa — estabelecimentos com o mesmo
+     * `cnpj_basico`, exceto o próprio centro. Relação 100% certa pelo CNPJ
+     * completo (sem o problema do CPF mascarado). Traz situação + município/UF
+     * para a due diligence (ex.: matriz ATIVA, filial em outra UF BAIXADA).
+     *
+     * @return list<CompanyBranch>
+     */
+    public function branches(string $cnpj): array
+    {
+        $digits = Cnpj::normalize($cnpj);
+        $basico = substr($digits, 0, 8);
+        $ordem = substr($digits, 8, 4);
+        $dv = substr($digits, 12, 2);
+
+        $rows = DB::connection($this->connection)
+            ->table('estabelecimentos as e')
+            ->leftJoin('municipios as m', 'e.municipio', '=', 'm.codigo')
+            ->where('e.cnpj_basico', $basico)
+            ->whereNot(function (Builder $q) use ($ordem, $dv): void {
+                $q->where('e.cnpj_ordem', $ordem)->where('e.cnpj_dv', $dv);
+            })
+            ->orderBy('e.cnpj_ordem')
+            ->limit($this->maxBranches)
+            ->get(['e.cnpj_ordem', 'e.cnpj_dv', 'e.nome_fantasia', 'e.situacao_cadastral', 'e.uf', 'm.descricao as municipio']);
+
+        $branches = [];
+
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $o = $this->str($r['cnpj_ordem'] ?? null);
+            $d = $this->str($r['cnpj_dv'] ?? null);
+
+            if ($o === null || $d === null) {
+                continue;
+            }
+
+            $branches[] = new CompanyBranch(
+                cnpj: $basico.$o.$d,
+                isMatriz: $o === self::ORDEM_MATRIZ,
+                nomeFantasia: $this->str($r['nome_fantasia'] ?? null),
+                situacao: $this->situacao($r['situacao_cadastral'] ?? null),
+                municipio: $this->str($r['municipio'] ?? null),
+                uf: $this->str($r['uf'] ?? null),
+            );
+        }
+
+        return $branches;
     }
 
     /**
@@ -296,6 +354,16 @@ final class OwnershipGraphService
         $id = $document !== null ? 'socio:'.$document : 'socio:n:'.mb_strtolower($nome);
 
         return [$id, new GraphNode($id, $type, $nome, $document)];
+    }
+
+    /**
+     * Padrão LIKE pelo PRIMEIRO nome (`MARIA%`) para filtrar a reversa na query —
+     * a base da Receita é maiúscula, então o 1º token normalizado casa. Nome
+     * vazio → `%` (não restringe; o chamador já garante nome != null para PF).
+     */
+    private function firstNameLike(string $name): string
+    {
+        return ($this->nameParts($name)[0] ?? '').'%';
     }
 
     /**

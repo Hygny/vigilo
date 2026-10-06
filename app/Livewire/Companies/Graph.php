@@ -39,9 +39,9 @@ class Graph extends Component
     public string $focusName = '';
 
     /**
-     * Incluir ligações "prováveis" no grupo econômico (mesmo CPF mascarado, nome
-     * divergente — possível xará). Off por padrão: o grafo mostra só as certeiras
-     * (CPF + primeiro/último nome), reduzindo falsos positivos.
+     * Incluir no grupo econômico as **conexões por sócio PF** (CPF mascarado —
+     * menor certeza). Off por padrão: o grafo mostra só o certo (sócios diretos +
+     * grupo via sócio PJ) e as filiais ficam no painel. Reduz falso positivo.
      */
     public bool $showProbable = false;
 
@@ -144,6 +144,7 @@ class Graph extends Component
         $partnerCount = 0;
         $groupCount = 0;
         $beneficiaries = [];
+        $branches = [];
         $focusLabel = null;
 
         try {
@@ -152,6 +153,7 @@ class Graph extends Component
             } else {
                 $graph = $graphs->for($cnpj, $this->showProbable);
                 $beneficiaries = $graphs->beneficialOwners($cnpj);
+                $branches = $graphs->branches($cnpj);
             }
 
             $cyto = $this->toCytoscape($graph);
@@ -171,6 +173,7 @@ class Graph extends Component
             'partnerCount' => $partnerCount,
             'groupCount' => $groupCount,
             'beneficiaries' => $beneficiaries,
+            'branches' => $branches,
             'focused' => $focused,
             'focusLabel' => $focusLabel,
             'personMode' => $personMode,

@@ -39,6 +39,9 @@ function bootCompanyGraphBase(bool $withData = true): void
         $t->string('cnpj_ordem');
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
+        $t->string('nome_fantasia')->nullable();
+        $t->string('municipio')->nullable();
+        $t->string('uf')->nullable();
     });
     $schema->create('empresas', function (Blueprint $t): void {
         $t->string('cnpj_basico');
@@ -55,6 +58,10 @@ function bootCompanyGraphBase(bool $withData = true): void
         $t->string('codigo');
         $t->string('descricao')->nullable();
     });
+    $schema->create('municipios', function (Blueprint $t): void {
+        $t->string('codigo');
+        $t->string('descricao')->nullable();
+    });
 
     DB::connection('cnpj')->table('estabelecimentos')->insert([
         'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02',
@@ -64,8 +71,12 @@ function bootCompanyGraphBase(bool $withData = true): void
         ['cnpj_basico' => '44555666', 'razao_social' => 'EMPRESA GRUPO'],
     ]);
     DB::connection('cnpj')->table('socios')->insert([
+        // MARIA (PF) liga centro+grupo mas só sob demanda; a HOLDING (PJ) liga
+        // os dois de forma CERTA → o grupo aparece no padrão.
         ['cnpj_basico' => '11222333', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
         ['cnpj_basico' => '44555666', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING', 'cnpj_cpf_do_socio' => '99888777000166', 'identificador_de_socio' => '1'],
     ]);
 }
 
@@ -102,33 +113,58 @@ it('renders the ownership graph with clickable company and person data', functio
         });
 });
 
-it('hides probable edges by default and reveals them (dashed) via the toggle', function () {
+it('shows the filiais panel with the sibling establishments', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // MARIA (***111**) é sócia da CENTRO e da GRUPO (mesmo nome → confiável)
+    bootCompanyGraphBase();
 
-    // Xará: mesmo CPF mascarado, nome diferente → ligação provável.
+    // Filial da empresa monitorada (mesmo cnpj_basico, outra ordem), BAIXADA.
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62', 'situacao_cadastral' => '08', 'nome_fantasia' => 'FILIAL RJ', 'municipio' => null, 'uf' => 'RJ'],
+    ]);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertSee('Filiais')
+        ->assertSee('FILIAL RJ')
+        ->assertSee('BAIXADA');
+});
+
+it('hides the PF economic group by default and reveals it (dashed) via the toggle, filtering xarás', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // grupo 44555666 ligado por HOLDING (PJ) → sempre visível
+
+    // Empresa ligada SÓ por MARIA (PF, mesmo nome) → oculta por padrão.
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '55667788', 'razao_social' => 'EMPRESA PF']);
+    DB::connection('cnpj')->table('socios')->insert([
+        ['cnpj_basico' => '55667788', 'nome_socio' => 'MARIA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
+    ]);
+    // Xará: mesmo CPF mascarado, PRIMEIRO nome diferente → nunca aparece.
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '77888999', 'razao_social' => 'EMPRESA XARA']);
     DB::connection('cnpj')->table('socios')->insert([
         ['cnpj_basico' => '77888999', 'nome_socio' => 'JOAO SOUZA', 'cnpj_cpf_do_socio' => '***111**', 'identificador_de_socio' => '2'],
     ]);
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
-        // Padrão: a confiável aparece; o xará (provável) fica oculto.
+        // Padrão: grupo PJ (44555666) visível; conexão só-PF (55667788) oculta.
         ->assertViewHas('cyto', function (array $cyto): bool {
             $edges = collect($cyto['edges']);
-            expect($edges->firstWhere('data.source', 'empresa:44555666'))->not->toBeNull()
-                ->and($edges->firstWhere('data.source', 'empresa:77888999'))->toBeNull();
+            expect($edges->firstWhere('data.source', 'empresa:44555666'))->not->toBeNull()   // PJ sempre
+                ->and($edges->firstWhere('data.source', 'empresa:55667788'))->toBeNull();     // PF oculto
 
             return true;
         })
-        // Liga as prováveis: o xará aparece marcado como provável (tracejado).
+        // Liga as conexões por sócio PF: a 55667788 aparece (provável/tracejada);
+        // o xará (77888999, outro 1º nome) continua filtrado.
         ->call('toggleProbable')
         ->assertViewHas('cyto', function (array $cyto): bool {
-            $provavel = collect($cyto['edges'])->firstWhere('data.source', 'empresa:77888999');
-            expect($provavel)->not->toBeNull()
-                ->and($provavel['data']['probable'])->toBeTrue();
+            $edges = collect($cyto['edges']);
+            $pf = $edges->firstWhere('data.source', 'empresa:55667788');
+            expect($pf)->not->toBeNull()
+                ->and($pf['data']['probable'])->toBeTrue()
+                ->and($edges->firstWhere('data.source', 'empresa:77888999'))->toBeNull();
 
             return true;
         });
