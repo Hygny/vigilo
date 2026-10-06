@@ -40,6 +40,11 @@ export default {
                 // Severidade / status
                 crit: 'var(--crit)',
                 'crit-soft': 'var(--crit-soft)',
+                // Destrutivo/erro como cor de 1º plano (texto/ícone/borda), legível
+                // nos dois temas — ao contrário do par `crit` (só p/ badge bg+fg).
+                // `danger-soft` é o contraste sobre fundo danger (hover).
+                danger: 'var(--danger)',
+                'danger-soft': 'var(--danger-soft)',
                 high: 'var(--high)',
                 'high-soft': 'var(--high-soft)',
                 med: 'var(--med)',

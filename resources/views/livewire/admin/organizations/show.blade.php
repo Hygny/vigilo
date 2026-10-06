@@ -46,7 +46,7 @@
         </div>
         <div class="rounded-card border border-line bg-surface px-4 py-3.5 shadow-card">
             <div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Empresas</div>
-            <div class="mt-1 text-2xl font-bold {{ $companiesTotal > $maxCompanies ? 'text-crit' : 'text-ink' }}">
+            <div class="mt-1 text-2xl font-bold {{ $companiesTotal > $maxCompanies ? 'text-danger' : 'text-ink' }}">
                 {{ $companiesTotal }} <span class="text-base font-medium text-ink-muted">/ {{ $maxCompanies }}</span>
             </div>
         </div>
@@ -75,7 +75,7 @@
             </div>
         </div>
         @if ($companiesTotal > $maxCompanies)
-            <p class="mt-3 rounded-btn border border-crit bg-crit-soft px-3 py-2 text-[12.5px] text-crit">
+            <p class="mt-3 rounded-btn border border-danger bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
                 Esta organização já monitora mais CNPJs do que o plano atual permite ({{ $companiesTotal }} de {{ $maxCompanies }}). Ela não conseguirá adicionar novos até fazer upgrade.
             </p>
         @endif
@@ -86,7 +86,7 @@
         <div class="overflow-hidden rounded-card border border-line bg-surface shadow-card">
             <div class="border-b border-line px-5 py-3.5">
                 <h2 class="text-[15px] font-semibold text-ink">Usuários</h2>
-                @error('role') <span class="mt-1 block text-xs text-crit">{{ $message }}</span> @enderror
+                @error('role') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
             </div>
             <table class="w-full text-left">
                 <tbody>

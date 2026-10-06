@@ -16,8 +16,8 @@
                 <x-ui.icon name="check_circle" :size="18" class="text-ok" />{{ session('status') }}
             </div>
         @endif
-        @error('delete') <div class="rounded-btn border border-crit bg-surface px-4 py-3 text-sm text-crit">{{ $message }}</div> @enderror
-        @error('role') <div class="rounded-btn border border-crit bg-surface px-4 py-3 text-sm text-crit">{{ $message }}</div> @enderror
+        @error('delete') <div class="rounded-btn border border-danger bg-surface px-4 py-3 text-sm text-danger">{{ $message }}</div> @enderror
+        @error('role') <div class="rounded-btn border border-danger bg-surface px-4 py-3 text-sm text-danger">{{ $message }}</div> @enderror
 
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
             {{-- Criar usuário --}}
@@ -26,17 +26,17 @@
                 <div>
                     <label for="u-name" class="mb-1.5 block text-[13px] font-semibold text-ink">Nome</label>
                     <div class="ui-input-wrap"><x-ui.icon name="badge" :size="19" class="text-ink-muted" /><input wire:model="name" id="u-name" type="text" placeholder="Ex.: Maria Silva" class="ui-input" /></div>
-                    @error('name') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                    @error('name') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label for="u-email" class="mb-1.5 block text-[13px] font-semibold text-ink">E-mail</label>
                     <div class="ui-input-wrap"><x-ui.icon name="mail" :size="19" class="text-ink-muted" /><input wire:model="email" id="u-email" type="email" placeholder="maria@empresa.com" class="ui-input" /></div>
-                    @error('email') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                    @error('email') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label for="u-password" class="mb-1.5 block text-[13px] font-semibold text-ink">Senha</label>
                     <div class="ui-input-wrap"><x-ui.icon name="lock" :size="19" class="text-ink-muted" /><input wire:model="password" id="u-password" type="text" placeholder="mínimo 8 caracteres" class="ui-input" /></div>
-                    @error('password') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                    @error('password') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="mb-1.5 block text-[13px] font-semibold text-ink">Papel</label>
@@ -114,7 +114,7 @@
                                     <div class="flex justify-end">
                                         @if ($u->id !== $me)
                                             <button wire:click="deleteUser({{ $u->id }})" wire:confirm="Remover {{ $u->name }} desta organização?" title="Remover"
-                                                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-danger bg-transparent text-danger transition-colors hover:bg-danger hover:text-danger-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
                                         @else
                                             <span class="text-xs text-ink-muted">—</span>
                                         @endif

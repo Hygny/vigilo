@@ -28,6 +28,10 @@
     --ring: rgba(242,199,68,.35);
     --crit: #F2C744;
     --crit-soft: #171712;
+    /* Vermelho de erro/destrutivo como 1º plano (texto/ícone/borda). danger-soft
+       = contraste sobre fundo danger (hover). Legível nos dois temas. */
+    --danger: #C81E1E;
+    --danger-soft: #FFFFFF;
     --high: #171712;
     --high-soft: #F4CE3F;
     --med: #4A473E;
@@ -76,6 +80,9 @@
     --ring: rgba(242,199,68,.35);
     --crit: #17140A;
     --crit-soft: #F2C744;
+    /* Vermelho claro p/ ler no fundo escuro; contraste = quase-preto. */
+    --danger: #F87171;
+    --danger-soft: #1B1A13;
     --high: #F4CE3F;
     --high-soft: #33301B;
     --med: #CFC9B6;

@@ -59,7 +59,7 @@
                 <div>
                     <label class="mb-1 block text-[12.5px] font-medium text-ink-2">Nome da organização</label>
                     <div class="ui-input-wrap"><input type="text" wire:model="orgName" class="ui-input" placeholder="Acme Ltda"></div>
-                    @error('orgName') <span class="mt-1 block text-xs text-crit">{{ $message }}</span> @enderror
+                    @error('orgName') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
                 </div>
                 <div class="border-t border-line pt-3">
                     <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Primeiro administrador</p>
@@ -67,17 +67,17 @@
                         <div>
                             <label class="mb-1 block text-[12.5px] font-medium text-ink-2">Nome</label>
                             <div class="ui-input-wrap"><input type="text" wire:model="adminName" class="ui-input" placeholder="Maria Silva"></div>
-                            @error('adminName') <span class="mt-1 block text-xs text-crit">{{ $message }}</span> @enderror
+                            @error('adminName') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
                         </div>
                         <div>
                             <label class="mb-1 block text-[12.5px] font-medium text-ink-2">E-mail</label>
                             <div class="ui-input-wrap"><input type="email" wire:model="adminEmail" class="ui-input" placeholder="maria@acme.com"></div>
-                            @error('adminEmail') <span class="mt-1 block text-xs text-crit">{{ $message }}</span> @enderror
+                            @error('adminEmail') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
                         </div>
                         <div>
                             <label class="mb-1 block text-[12.5px] font-medium text-ink-2">Senha</label>
                             <div class="ui-input-wrap"><input type="text" wire:model="adminPassword" class="ui-input" placeholder="senha para repassar"></div>
-                            @error('adminPassword') <span class="mt-1 block text-xs text-crit">{{ $message }}</span> @enderror
+                            @error('adminPassword') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
                         </div>
                     </div>
                 </div>

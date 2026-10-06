@@ -1,5 +1,5 @@
 @php
-    $counterColor = ['total' => 'text-ink', 'ok' => 'text-ok', 'not_found' => 'text-high', 'errors' => 'text-crit', 'pending' => 'text-high'];
+    $counterColor = ['total' => 'text-ink', 'ok' => 'text-ok', 'not_found' => 'text-high', 'errors' => 'text-danger', 'pending' => 'text-high'];
 @endphp
 
 <div class="py-8">
@@ -55,14 +55,14 @@
                     </div>
                     @php $pct = $planUsage['max'] > 0 ? min(100, (int) round($planUsage['used'] / $planUsage['max'] * 100)) : 100; @endphp
                     <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
-                        <div class="h-full rounded-full {{ $pct >= 100 ? 'bg-crit' : ($pct >= 80 ? 'bg-hl' : 'bg-primary') }}" style="width: {{ $pct }}%"></div>
+                        <div class="h-full rounded-full {{ $pct >= 100 ? 'bg-danger' : ($pct >= 80 ? 'bg-hl' : 'bg-primary') }}" style="width: {{ $pct }}%"></div>
                     </div>
                 </div>
 
                 <div>
                     <label for="cnpj" class="mb-1.5 block text-[13px] font-semibold text-ink">CNPJ</label>
                     <div class="ui-input-wrap"><x-ui.icon name="badge" :size="19" class="text-ink-muted" /><input wire:model="cnpj" id="cnpj" type="text" placeholder="00.000.000/0001-91" class="ui-input" /></div>
-                    @error('cnpj') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                    @error('cnpj') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label for="label" class="mb-1.5 block text-[13px] font-semibold text-ink">Rótulo (opcional)</label>
@@ -76,7 +76,7 @@
                 <p class="text-[13.5px] text-ink-2">Colunas: <code class="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12.5px] text-ink-2 ring-1 ring-line">cnpj</code>, <code class="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12.5px] text-ink-2 ring-1 ring-line">label</code> (opcional).</p>
                 <input wire:model="csv" type="file" accept=".csv,.txt"
                        class="block w-full text-sm text-ink-2 file:mr-4 file:cursor-pointer file:rounded-btn file:border-0 file:bg-surface-2 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-surface-3" />
-                @error('csv') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                @error('csv') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                 <div wire:loading wire:target="csv" class="text-sm text-ink-muted">Enviando arquivo…</div>
                 <x-ui.button type="submit" variant="secondary" icon="file_upload">Importar</x-ui.button>
 
@@ -168,7 +168,7 @@
                                     @else
                                         <x-ui.badge :tone="$company->last_refresh_status->tone()" :icon="$company->last_refresh_status->icon()">{{ $company->last_refresh_status->label() }}</x-ui.badge>
                                         @if ($company->last_refresh_error)
-                                            <p class="mt-1 max-w-xs truncate text-xs text-crit" title="{{ $company->last_refresh_error }}">{{ $company->last_refresh_error }}</p>
+                                            <p class="mt-1 max-w-xs truncate text-xs text-danger" title="{{ $company->last_refresh_error }}">{{ $company->last_refresh_error }}</p>
                                         @endif
                                     @endif
                                 </td>
@@ -178,7 +178,7 @@
                                         <button wire:click="queueRefresh({{ $company->id }})" title="Atualizar" class="ui-icon-btn"><x-ui.icon name="refresh" :size="18" /></button>
                                         @if ($canRemoveCompanies)
                                             <button wire:click="removeCompany({{ $company->id }})" wire:confirm="Remover esta empresa do monitoramento?" title="Remover"
-                                                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-danger bg-transparent text-danger transition-colors hover:bg-danger hover:text-danger-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
                                         @endif
                                     </div>
                                 </td>
@@ -249,7 +249,7 @@
                     <div class="mb-3 flex items-center justify-between">
                         <p class="text-[11.5px] font-semibold uppercase tracking-wide text-ink-muted">Dias do mês</p>
                         @if (count($sel) > 0)
-                            <button type="button" wire:click="clearScheduleDays" class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-ink-muted transition-colors hover:text-crit">
+                            <button type="button" wire:click="clearScheduleDays" class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-ink-muted transition-colors hover:text-danger">
                                 <x-ui.icon name="close" :size="14" />Limpar
                             </button>
                         @endif

@@ -18,7 +18,7 @@
                     <x-ui.icon name="create_new_folder" :size="19" class="text-ink-muted" />
                     <input wire:model="name" id="name" type="text" placeholder="Ex.: Rede Yázigi" class="ui-input" />
                 </div>
-                @error('name') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                @error('name') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
             </div>
             <x-ui.button type="submit" icon="add">Criar</x-ui.button>
         </form>
@@ -35,7 +35,7 @@
                             <x-ui.button wire:click="saveEdit" size="sm" icon="check">Salvar</x-ui.button>
                             <x-ui.button wire:click="cancelEdit" variant="secondary" size="sm">Cancelar</x-ui.button>
                         </div>
-                        @error('editingName') <p class="mt-1 text-sm text-crit">{{ $message }}</p> @enderror
+                        @error('editingName') <p class="mt-1 text-sm text-danger">{{ $message }}</p> @enderror
                     </div>
                 @else
                     <div class="rounded-card border border-line bg-surface p-[22px] shadow-card transition-shadow hover:shadow-float">
@@ -52,7 +52,7 @@
                                 <button wire:click="startEdit({{ $portfolio->id }})" title="Renomear" class="ui-icon-btn"><x-ui.icon name="edit" :size="18" /></button>
                                 @can('delete', $portfolio)
                                     <button wire:click="delete({{ $portfolio->id }})" wire:confirm="Remover este portfólio e todas as empresas nele?" title="Excluir"
-                                            class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-crit bg-transparent text-crit transition-colors hover:bg-crit hover:text-crit-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
+                                            class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-danger bg-transparent text-danger transition-colors hover:bg-danger hover:text-danger-soft cursor-pointer"><x-ui.icon name="delete" :size="18" /></button>
                                 @endcan
                             </div>
                         </div>
@@ -60,7 +60,7 @@
                             <div class="rounded-[10px] border border-line bg-surface-2 px-3 py-2.5"><div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Atualiz.</div><div class="mt-0.5 text-[19px] font-bold text-ok">{{ $portfolio->ok_count }}</div></div>
                             <div class="rounded-[10px] border border-line bg-surface-2 px-3 py-2.5"><div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Pendentes</div><div class="mt-0.5 text-[19px] font-bold text-ink">{{ $portfolio->pending_count }}</div></div>
                             <div class="rounded-[10px] border border-line bg-surface-2 px-3 py-2.5"><div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">N/ enc.</div><div class="mt-0.5 text-[19px] font-bold text-high">{{ $portfolio->not_found_count }}</div></div>
-                            <div class="rounded-[10px] border border-line bg-surface-2 px-3 py-2.5"><div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Erros</div><div class="mt-0.5 text-[19px] font-bold text-crit">{{ $portfolio->error_count }}</div></div>
+                            <div class="rounded-[10px] border border-line bg-surface-2 px-3 py-2.5"><div class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Erros</div><div class="mt-0.5 text-[19px] font-bold text-danger">{{ $portfolio->error_count }}</div></div>
                         </div>
                     </div>
                 @endif

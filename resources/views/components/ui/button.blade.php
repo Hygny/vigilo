@@ -14,7 +14,7 @@
         'primary'   => 'bg-primary text-onprimary shadow-card hover:bg-primary-hover',
         'secondary' => 'bg-surface text-ink border border-line-strong hover:bg-surface-2',
         'ghost'     => 'bg-transparent text-accent hover:bg-primary-soft',
-        'danger'    => 'bg-transparent text-crit border border-crit hover:bg-crit hover:text-crit-soft',
+        'danger'    => 'bg-transparent text-danger border border-danger hover:bg-danger hover:text-danger-soft',
     ];
     $classes = 'inline-flex items-center justify-center gap-2 rounded-btn font-semibold transition-colors cursor-pointer'
         .' focus:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-60 disabled:cursor-not-allowed'
