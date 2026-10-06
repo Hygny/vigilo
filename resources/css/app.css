@@ -80,8 +80,9 @@
     --ring: rgba(242,199,68,.35);
     --crit: #17140A;
     --crit-soft: #F2C744;
-    /* Vermelho claro p/ ler no fundo escuro; contraste = quase-preto. */
-    --danger: #F87171;
+    /* No dark usamos o âmbar da marca (pedido do usuário) p/ destrutivo/erro —
+       alto contraste no fundo escuro; contraste do hover = quase-preto. */
+    --danger: #F2C744;
     --danger-soft: #1B1A13;
     --high: #F4CE3F;
     --high-soft: #33301B;
