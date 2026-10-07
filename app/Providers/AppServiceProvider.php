@@ -9,6 +9,7 @@ use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Graph\OwnershipGraphService;
+use App\Services\Vigilancia\EmpresaLookup;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -58,6 +59,10 @@ class AppServiceProvider extends ServiceProvider
             maxCompanies: (int) config('cnpj.graph.max_companies', 300),
             maxBranches: (int) config('cnpj.graph.branch_limit', 60),
         ));
+
+        $this->app->singleton(EmpresaLookup::class, fn (): EmpresaLookup => new EmpresaLookup(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
     }
 
     /**
@@ -77,6 +82,15 @@ class AppServiceProvider extends ServiceProvider
         // keyed by the authenticated token owner.
         RateLimiter::for('cnpj-api', function (Request $request): Limit {
             $perMinute = (int) config('cnpj.api.rate_per_minute');
+            $key = (string) ($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return $perMinute > 0 ? Limit::perMinute($perMinute)->by($key) : Limit::none();
+        });
+
+        // Per-consumer cap on the OSINT API (/api/v1/vigilancia), keyed by the
+        // authenticated token owner. 0 desativa o teto.
+        RateLimiter::for('vigilancia-api', function (Request $request): Limit {
+            $perMinute = (int) config('vigilancia.rate_per_minute');
             $key = (string) ($request->user()?->getAuthIdentifier() ?? $request->ip());
 
             return $perMinute > 0 ? Limit::perMinute($perMinute)->by($key) : Limit::none();
