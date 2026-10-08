@@ -27,8 +27,8 @@ use Livewire\Component;
 #[Layout('layouts.admin')]
 class Index extends Component
 {
-    /** Dias sem rodada bem-sucedida da base CNPJ para o card virar alerta (ciclo é mensal). */
-    private const MAINTENANCE_STALE_DAYS = 35;
+    /** Dias sem nenhuma rodada da base CNPJ para o card virar alerta (o cron é semanal). */
+    private const MAINTENANCE_STALE_DAYS = 10;
 
     public string $orgName = '';
 

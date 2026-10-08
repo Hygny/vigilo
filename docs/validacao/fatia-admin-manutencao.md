@@ -16,9 +16,12 @@ Dá ao super-admin visibilidade da rodada mensal da base CNPJ: **quando** foi o
   badge de status, data do último reimport (+ "há X"), os 3 passos com ✓/✗,
   a mensagem de erro se houve, e um histórico das últimas execuções.
 - **Alerta de atraso:** se a última execução (qualquer status) for de **mais de
-  35 dias** atrás, o card fica **âmbar "Atrasado"** com aviso. Pega o pior caso
-  — o cron parar em silêncio (que não gera erro, só deixa de rodar). Uma falha
-  recente aparece como **"Falhou"** (vermelho), não como atraso.
+  10 dias** atrás, o card fica **âmbar "Atrasado"** com aviso (o cron é semanal,
+  então >10 dias = perdeu ≥1 semana). Pega o pior caso — o cron parar em
+  silêncio (que não gera erro, só deixa de rodar). Uma falha recente aparece
+  como **"Falhou"** (vermelho), não como atraso. O `reimport-mensal.sh` grava um
+  run **toda semana** (mesmo "sem dump novo"), então o card prova a liveness do
+  cron.
 
 Arquivos: migration `…_create_maintenance_runs_table`, `app/Models/MaintenanceRun.php`,
 `app/Console/Commands/RecordMaintenanceRun.php`, `app/Livewire/Admin/Organizations/Index.php`

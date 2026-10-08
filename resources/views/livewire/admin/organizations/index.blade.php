@@ -27,7 +27,7 @@
         @else
             @if ($maintenanceStale)
                 <div class="mt-3 rounded-card border border-high bg-high-soft px-4 py-3 text-sm font-medium text-high">
-                    A última execução foi há mais de 35 dias — o agendamento mensal pode ter parado. Verifique o cron do servidor.
+                    A última execução foi há mais de 10 dias — o agendamento pode ter parado. Verifique o cron do servidor.
                 </div>
             @endif
 

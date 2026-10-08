@@ -54,11 +54,11 @@ it('shows a failed run with its message', function () {
         ->assertSee('reimport falhou');
 });
 
-it('flags a stale run when the last success is older than the window', function () {
+it('flags a stale run when the last run is older than the window', function () {
     $super = User::factory()->superAdmin()->create();
-    recordMaintenance(['finished_at' => now()->subDays(40)]);
+    recordMaintenance(['finished_at' => now()->subDays(14)]);
 
     Livewire::actingAs($super)->test(Index::class)
         ->assertSee('Atrasado')
-        ->assertSee('agendamento mensal pode ter parado');
+        ->assertSee('agendamento pode ter parado');
 });

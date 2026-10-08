@@ -132,29 +132,30 @@ docker compose exec app php artisan vigilo:recoletar-carteira --rebaseline
 
 Confira o consumo da fila em `docker compose logs -f queue`. A partir daí, toda re-coleta normal (sem `--rebaseline`) diff-a contra o baseline local e gera alertas de verdade.
 
-## 6. Reimport + re-coleta + normalização mensal (cron)
+## 6. Reimport + re-coleta + normalização (cron SEMANAL)
 
-A Receita publica ~1x/mês. A manutenção mensal faz três coisas em sequência:
-reimport (upsert) → re-coleta da carteira (alertas do que mudou) → normalização
-de sócios (`socios.nome_norm`, da busca por sócio da API OSINT). Tudo isso está
-no script `src/deploy/reimport-mensal.sh` (aborta se o reimport falhar; a
-re-coleta e a normalização são independentes entre si). Agende o script no cron
-do host (dia 5, 03:00, fora de pico):
+A Receita publica ~1x/mês, **sem dia fixo**. Por isso o cron roda **toda semana**:
+o `src/deploy/reimport-mensal.sh` faz o reimport (upsert) e **só dispara
+re-coleta + normalização quando o reimport trouxe dump novo** (detecta pela
+contagem de `processed_files` antes/depois). Nas semanas sem novidade é um no-op
+de segundos — assim você pega o dump novo em até 7 dias sem depender de acertar
+o dia da publicação. Agende toda **segunda, 03:00**:
 
 ```cron
-0 3 5 * * /usr/bin/bash ~/apps/vigilo/src/deploy/reimport-mensal.sh >> ~/apps/vigilo/cnpj-mensal.log 2>&1
+0 3 * * 1 /usr/bin/bash ~/apps/vigilo/src/deploy/reimport-mensal.sh >> ~/apps/vigilo/cnpj-mensal.log 2>&1
 ```
 
 O script lê `CNPJ_DB_USERNAME`/`CNPJ_DB_PASSWORD` de `~/apps/vigilo/.env` (os
 mesmos do compose) — não precisa repetir a senha no cron.
 
-Ao final (e se o reimport abortar), o script grava uma linha em
-`maintenance_runs` via `vigilo:maintenance-record` — o **super-admin vê em
-`/admin`** a data da última execução, o status de cada passo e eventual erro,
-com aviso **"Atrasado"** se nada rodar por mais de 35 dias (cron parado).
+Toda execução (inclusive as "sem dump novo", e também quando o reimport aborta)
+grava uma linha em `maintenance_runs` via `vigilo:maintenance-record` — o
+**super-admin vê em `/admin`** a data da última execução, o status de cada passo
+e eventual erro. Como grava toda semana, o card prova que o cron está vivo; se
+nada rodar por mais de **10 dias**, vira aviso **"Atrasado"** (cron parado).
 
 > Notas:
-> - A re-coleta mensal roda **sem** `--rebaseline` (queremos os alertas). O `--rebaseline` é só o passo único de transição do item 5.
+> - A re-coleta roda **sem** `--rebaseline` (queremos os alertas). O `--rebaseline` é só o passo único de transição do item 5.
 > - Os **índices persistem** (o reimport é `upsert`, não dropa tabela). O que a normalização mensal refresca é só o **dado** de `socios.nome_norm` (sócio novo entra vazio; nome alterado fica defasado — o pipeline não conhece a coluna). Os índices de `cep`/documento não precisam de manutenção.
 > - O índice `idx_socios_nome_norm` é criado pelo próprio `vigilo:normalizar-socios` (`CREATE INDEX IF NOT EXISTS`), então na 1ª execução ele já nasce.
 
