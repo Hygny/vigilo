@@ -45,7 +45,10 @@ docker compose exec -T app php artisan migrate --force
 docker compose exec -T app php artisan optimize
 
 echo "==> restart dos servicos"
-docker compose restart app queue scheduler
-[ "$DO_BUILD" = 1 ] && docker compose restart nginx
+# O nginx entra SEMPRE no restart: quando o app reinicia e ganha um IP interno
+# novo, o nginx preso ao IP antigo derruba o site com timeout (mesmo com o
+# resolver). Reiniciar os dois juntos recarrega o opcache do FPM e re-resolve o
+# upstream. Custa um blip de ~1s por deploy — barato perto de uma queda.
+docker compose restart app queue scheduler nginx
 
 echo "==> deploy OK ✅"
