@@ -10,6 +10,72 @@
         </div>
     @endif
 
+    {{-- Observabilidade da manutenção mensal da base CNPJ --}}
+    <div class="mb-6 rounded-card border border-line bg-surface p-5 shadow-card">
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <span class="text-ink-muted"><x-ui.icon name="database" :size="18" /></span>
+                <h2 class="text-[15px] font-semibold text-ink">Base CNPJ — manutenção mensal</h2>
+            </div>
+            @if ($maintenanceLabel)
+                <x-ui.badge :tone="$maintenanceTone" dot>{{ $maintenanceLabel }}</x-ui.badge>
+            @endif
+        </div>
+
+        @if (! $lastMaintenance)
+            <p class="mt-3 text-sm text-ink-muted">Nenhuma execução registrada ainda. A primeira roda no próximo ciclo mensal (dia 5) ou quando o script de manutenção for executado.</p>
+        @else
+            @if ($maintenanceStale)
+                <div class="mt-3 rounded-card border border-high bg-high-soft px-4 py-3 text-sm font-medium text-high">
+                    A última execução foi há mais de 35 dias — o agendamento mensal pode ter parado. Verifique o cron do servidor.
+                </div>
+            @endif
+
+            <div class="mt-3 text-sm">
+                <span class="text-ink-muted">Último reimport:</span>
+                <span class="font-medium text-ink">{{ $lastMaintenance->finished_at?->format('d/m/Y H:i') }}</span>
+                <span class="text-ink-muted">({{ $lastMaintenance->finished_at?->diffForHumans() }})</span>
+            </div>
+
+            @php
+                $stepMeta = [
+                    'ok' => ['tone' => 'ok', 'icon' => 'check'],
+                    'fail' => ['tone' => 'crit', 'icon' => 'close'],
+                ];
+                $steps = [
+                    'Reimport' => $lastMaintenance->reimport_status,
+                    'Re-coleta' => $lastMaintenance->recoleta_status,
+                    'Normalizar sócios' => $lastMaintenance->normalizar_status,
+                ];
+            @endphp
+            <div class="mt-3 flex flex-wrap gap-2">
+                @foreach ($steps as $stepLabel => $stepStatus)
+                    @php $meta = $stepMeta[$stepStatus] ?? ['tone' => 'muted', 'icon' => 'remove']; @endphp
+                    <x-ui.badge :tone="$meta['tone']" :icon="$meta['icon']">{{ $stepLabel }}</x-ui.badge>
+                @endforeach
+            </div>
+
+            @if ($lastMaintenance->message)
+                <p class="mt-3 rounded-card bg-surface-2 px-3 py-2 text-[13px] text-ink-2"><span class="font-semibold">Mensagem:</span> {{ $lastMaintenance->message }}</p>
+            @endif
+
+            @if ($maintenanceHistory->count() > 1)
+                <details class="mt-4 text-sm">
+                    <summary class="cursor-pointer select-none text-ink-muted hover:text-ink">Execuções anteriores</summary>
+                    <ul class="mt-2 space-y-1.5">
+                        @foreach ($maintenanceHistory->slice(1) as $run)
+                            <li class="flex flex-wrap items-center gap-2 text-[13px]">
+                                <span class="font-mono text-ink-muted">{{ $run->finished_at?->format('d/m/Y H:i') }}</span>
+                                <x-ui.badge :tone="$run->isSuccess() ? 'ok' : 'crit'">{{ $run->isSuccess() ? 'ok' : 'falhou' }}</x-ui.badge>
+                                @if ($run->message)<span class="text-ink-muted">· {{ $run->message }}</span>@endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </details>
+            @endif
+        @endif
+    </div>
+
     <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
         {{-- Lista --}}
         <div class="overflow-hidden rounded-card border border-line bg-surface shadow-card">

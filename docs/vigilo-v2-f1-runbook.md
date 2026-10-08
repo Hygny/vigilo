@@ -148,6 +148,11 @@ do host (dia 5, 03:00, fora de pico):
 O script lê `CNPJ_DB_USERNAME`/`CNPJ_DB_PASSWORD` de `~/apps/vigilo/.env` (os
 mesmos do compose) — não precisa repetir a senha no cron.
 
+Ao final (e se o reimport abortar), o script grava uma linha em
+`maintenance_runs` via `vigilo:maintenance-record` — o **super-admin vê em
+`/admin`** a data da última execução, o status de cada passo e eventual erro,
+com aviso **"Atrasado"** se nada rodar por mais de 35 dias (cron parado).
+
 > Notas:
 > - A re-coleta mensal roda **sem** `--rebaseline` (queremos os alertas). O `--rebaseline` é só o passo único de transição do item 5.
 > - Os **índices persistem** (o reimport é `upsert`, não dropa tabela). O que a normalização mensal refresca é só o **dado** de `socios.nome_norm` (sócio novo entra vazio; nome alterado fica defasado — o pipeline não conhece a coluna). Os índices de `cep`/documento não precisam de manutenção.

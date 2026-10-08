@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Admin\Organizations;
 
 use App\Enums\Role;
+use App\Models\MaintenanceRun;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -26,6 +27,9 @@ use Livewire\Component;
 #[Layout('layouts.admin')]
 class Index extends Component
 {
+    /** Dias sem rodada bem-sucedida da base CNPJ para o card virar alerta (ciclo é mensal). */
+    private const MAINTENANCE_STALE_DAYS = 35;
+
     public string $orgName = '';
 
     public string $adminName = '';
@@ -89,9 +93,32 @@ class Index extends Component
             ->orderByDesc('id')
             ->get();
 
+        // Observabilidade da manutenção mensal da base CNPJ (só o super-admin vê).
+        $lastMaintenance = MaintenanceRun::cnpjMensal()->first();
+
+        // "Atrasado" = a ÚLTIMA execução (de qualquer status) é velha demais —
+        // ou seja, nada rodou no último ciclo. Pega o cron morto em silêncio,
+        // que não gera erro. Uma falha recente aparece como "Falhou" (vermelho),
+        // não como atraso.
+        $maintenanceStale = $lastMaintenance !== null
+            && $lastMaintenance->finished_at !== null
+            && $lastMaintenance->finished_at->lt(now()->subDays(self::MAINTENANCE_STALE_DAYS));
+
+        [$maintenanceTone, $maintenanceLabel] = match (true) {
+            $lastMaintenance === null => [null, null],
+            $maintenanceStale => ['high', 'Atrasado'],
+            $lastMaintenance->isSuccess() => ['ok', 'Sucesso'],
+            default => ['crit', 'Falhou'],
+        };
+
         return view('livewire.admin.organizations.index', [
             'organizations' => $organizations,
             'companyCounts' => $companyCounts,
+            'lastMaintenance' => $lastMaintenance,
+            'maintenanceStale' => $maintenanceStale,
+            'maintenanceTone' => $maintenanceTone,
+            'maintenanceLabel' => $maintenanceLabel,
+            'maintenanceHistory' => MaintenanceRun::cnpjMensal()->limit(6)->get(),
         ]);
     }
 
