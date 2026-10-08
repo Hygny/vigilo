@@ -10,6 +10,7 @@ use App\DTO\Vigilancia\Socio;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -25,6 +26,14 @@ use Illuminate\Support\Facades\DB;
  */
 final class EmpresaLookup
 {
+    /**
+     * Teto de estabelecimentos lidos por CEP antes do filtro de número. Um CEP
+     * específico tem poucos estabelecimentos; o teto só protege contra CEP
+     * "geral" patológico. Ordenamos por abertura desc, então pega-se os mais
+     * novos — coerente com a ordenação do contrato.
+     */
+    private const CANDIDATE_SCAN = 2000;
+
     public function __construct(private readonly string $connection) {}
 
     /**
@@ -44,31 +53,117 @@ final class EmpresaLookup
 
         $db = DB::connection($this->connection);
 
-        $row = $db->table('estabelecimentos as e')
-            ->leftJoin('empresas as emp', 'e.cnpj_basico', '=', 'emp.cnpj_basico')
-            ->leftJoin('municipios as m', 'e.municipio', '=', 'm.codigo')
-            ->leftJoin('cnaes as c', 'e.cnae_fiscal_principal', '=', 'c.codigo')
+        $row = $this->baseQuery($db)
             ->where('e.cnpj_basico', $basico)
             ->where('e.cnpj_ordem', $ordem)
             ->where('e.cnpj_dv', $dv)
-            ->first([
-                'e.*',
-                'emp.razao_social',
-                'm.descricao as municipio_nome',
-                'c.descricao as cnae_descricao',
-            ]);
+            ->first($this->columns());
 
         if ($row === null) {
             return null;
         }
 
-        return $this->hydrate((array) $row, $db, $basico, $digits);
+        $e = (array) $row;
+        $socios = $this->sociosPorBasico($db, [$basico]);
+
+        return $this->build($e, $digits, $socios[$basico] ?? []);
+    }
+
+    /**
+     * Empresas no mesmo CEP + número (match por CEP exato + número normalizado;
+     * complemento NÃO entra — salas diferentes do mesmo prédio contam). Ordena
+     * por abertura desc e corta em `$limite`. CEP só-zeros ("00000000", quando o
+     * workflow não tem endereço) devolve lista vazia sem tocar na base.
+     *
+     * @return list<Empresa>
+     */
+    public function porEndereco(string $cepDigits, string $numeroRaw, ?string $situacaoCode, int $limite): array
+    {
+        if (ltrim($cepDigits, '0') === '') {
+            return [];
+        }
+
+        $db = DB::connection($this->connection);
+
+        $query = $this->baseQuery($db)->where('e.cep', $cepDigits);
+
+        if ($situacaoCode !== null) {
+            $query->where('e.situacao_cadastral', $situacaoCode);
+        }
+
+        $rows = $query
+            ->orderBy('e.data_inicio_atividade', 'desc')
+            ->orderBy('e.cnpj_basico') // desempate estável em datas iguais
+            ->limit(self::CANDIDATE_SCAN)
+            ->get($this->columns());
+
+        $alvo = $this->normalizeNumero($numeroRaw);
+        $matched = [];
+
+        foreach ($rows as $row) {
+            $e = (array) $row;
+
+            if ($this->normalizeNumero($this->strRaw($e['numero'] ?? null)) !== $alvo) {
+                continue;
+            }
+
+            $matched[] = $e;
+
+            if (count($matched) >= $limite) {
+                break;
+            }
+        }
+
+        if ($matched === []) {
+            return [];
+        }
+
+        $basicos = array_values(array_unique(array_map(
+            fn (array $e): string => $this->strRaw($e['cnpj_basico'] ?? null),
+            $matched,
+        )));
+        $sociosPorBasico = $this->sociosPorBasico($db, $basicos);
+
+        $empresas = [];
+
+        foreach ($matched as $e) {
+            $basico = $this->strRaw($e['cnpj_basico'] ?? null);
+            $cnpj = $basico.$this->strRaw($e['cnpj_ordem'] ?? null).$this->strRaw($e['cnpj_dv'] ?? null);
+            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? []);
+        }
+
+        return $empresas;
+    }
+
+    /**
+     * Query base de estabelecimento + razão social + nome de município + CNAE.
+     */
+    private function baseQuery(ConnectionInterface $db): Builder
+    {
+        return $db->table('estabelecimentos as e')
+            ->leftJoin('empresas as emp', 'e.cnpj_basico', '=', 'emp.cnpj_basico')
+            ->leftJoin('municipios as m', 'e.municipio', '=', 'm.codigo')
+            ->leftJoin('cnaes as c', 'e.cnae_fiscal_principal', '=', 'c.codigo');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function columns(): array
+    {
+        return [
+            'e.*',
+            'emp.razao_social',
+            'm.descricao as municipio_nome',
+            'c.descricao as cnae_descricao',
+        ];
     }
 
     /**
      * @param  array<string, mixed>  $e
+     * @param  list<Socio>  $socios
      */
-    private function hydrate(array $e, ConnectionInterface $db, string $basico, string $cnpj): Empresa
+    private function build(array $e, string $cnpj, array $socios): Empresa
     {
         return new Empresa(
             cnpj: $cnpj,
@@ -89,32 +184,42 @@ final class EmpresaLookup
                 uf: $this->str($e['uf'] ?? null),
                 cep: $this->cep($e['cep'] ?? null),
             ),
-            socios: $this->socios($db, $basico),
+            socios: $socios,
         );
     }
 
     /**
-     * @return list<Socio>
+     * Sócios de vários cnpj_basico em UMA consulta (evita N+1), agrupados por
+     * basico. Ordem estável por nome.
+     *
+     * @param  list<string>  $basicos
+     * @return array<string, list<Socio>>
      */
-    private function socios(ConnectionInterface $db, string $basico): array
+    private function sociosPorBasico(ConnectionInterface $db, array $basicos): array
     {
+        if ($basicos === []) {
+            return [];
+        }
+
         $rows = $db->table('socios as s')
             ->leftJoin('qualificacoes_socios as q', 's.qualificacao_do_socio', '=', 'q.codigo')
-            ->where('s.cnpj_basico', $basico)
+            ->whereIn('s.cnpj_basico', $basicos)
             ->orderBy('s.nome_socio') // ordem estável p/ o consumidor (a base não garante)
             ->get([
+                's.cnpj_basico',
                 's.nome_socio',
                 's.cnpj_cpf_do_socio',
                 's.data_entrada_sociedade',
                 'q.descricao as qualificacao',
             ]);
 
-        $socios = [];
+        $porBasico = [];
 
         foreach ($rows as $row) {
             $s = (array) $row;
+            $basico = $this->strRaw($s['cnpj_basico'] ?? null);
 
-            $socios[] = new Socio(
+            $porBasico[$basico][] = new Socio(
                 nome: $this->str($s['nome_socio'] ?? null),
                 qualificacao: $this->str($s['qualificacao'] ?? null),
                 dataEntrada: $this->date($s['data_entrada_sociedade'] ?? null),
@@ -122,7 +227,19 @@ final class EmpresaLookup
             );
         }
 
-        return $socios;
+        return $porBasico;
+    }
+
+    /**
+     * Normaliza um número de logradouro para comparação: caixa alta, sem o
+     * prefixo "Nº"/"N°" e sem espaços. "Nº 320" e "320" casam.
+     */
+    private function normalizeNumero(string $value): string
+    {
+        $upper = mb_strtoupper(trim($value));
+        $upper = str_replace(['Nº', 'N°', 'N.º', 'N.°', 'Nº.', 'N º', 'N °'], '', $upper);
+
+        return preg_replace('/\s+/', '', $upper) ?? $upper;
     }
 
     private function cep(mixed $value): ?string
@@ -156,5 +273,10 @@ final class EmpresaLookup
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
+    }
+
+    private function strRaw(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 }

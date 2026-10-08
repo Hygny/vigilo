@@ -30,4 +30,14 @@ final class SituacaoCadastral
     {
         return self::MAP[trim((string) ($code ?? ''))] ?? '';
     }
+
+    /**
+     * Inverso de {@see label()}: do rótulo (ATIVA/BAIXADA/…) para o código da
+     * Receita. Null quando o rótulo não existe — usado para filtrar por situação
+     * na base (que guarda o código, não o texto).
+     */
+    public static function code(string $label): ?string
+    {
+        return array_flip(self::MAP)[mb_strtoupper(trim($label))] ?? null;
+    }
 }
