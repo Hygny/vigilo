@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CnpjGraphController;
 use App\Http\Controllers\Api\CnpjLookupController;
 use App\Http\Controllers\Api\Vigilancia\CnpjController as VigilanciaCnpjController;
 use App\Http\Controllers\Api\Vigilancia\PorEnderecoController as VigilanciaPorEnderecoController;
+use App\Http\Controllers\Api\Vigilancia\PorSocioController as VigilanciaPorSocioController;
 use App\Http\Middleware\EnsureOsintAbility;
 use App\Http\Middleware\OsintAuditLog;
 use Illuminate\Support\Facades\Route;
@@ -36,4 +37,5 @@ Route::middleware([
 ])->prefix('v1/vigilancia')->group(function (): void {
     Route::get('/cnpjs/{cnpj}', VigilanciaCnpjController::class)->name('api.vigilancia.cnpj');
     Route::get('/empresas/por-endereco', VigilanciaPorEnderecoController::class)->name('api.vigilancia.por-endereco');
+    Route::post('/empresas/por-socio', VigilanciaPorSocioController::class)->name('api.vigilancia.por-socio');
 });

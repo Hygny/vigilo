@@ -8,6 +8,7 @@ use App\DTO\Vigilancia\Empresa;
 use App\DTO\Vigilancia\Endereco;
 use App\DTO\Vigilancia\Socio;
 use App\Providers\Cnpj\LocalCnpjProvider;
+use App\Support\NomeSocio;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
@@ -33,6 +34,9 @@ final class EmpresaLookup
      * novos — coerente com a ordenação do contrato.
      */
     private const CANDIDATE_SCAN = 2000;
+
+    /** Ordem do estabelecimento matriz (a empresa, para a busca por sócio). */
+    private const ORDEM_MATRIZ = '0001';
 
     public function __construct(private readonly string $connection) {}
 
@@ -123,6 +127,65 @@ final class EmpresaLookup
             $matched,
         )));
         $sociosPorBasico = $this->sociosPorBasico($db, $basicos);
+
+        $empresas = [];
+
+        foreach ($matched as $e) {
+            $basico = $this->strRaw($e['cnpj_basico'] ?? null);
+            $cnpj = $basico.$this->strRaw($e['cnpj_ordem'] ?? null).$this->strRaw($e['cnpj_dv'] ?? null);
+            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? []);
+        }
+
+        return $empresas;
+    }
+
+    /**
+     * Empresas (matriz) em que algum sócio casa, por NOME completo normalizado
+     * (coluna `socios.nome_norm`). Devolve cada empresa com o QSA completo — a
+     * checagem fina de homônimo/parente é do consumidor. Nomes já vêm
+     * normalizados (via {@see NomeSocio::norm()}).
+     *
+     * @param  list<string>  $nomesNorm
+     * @return list<Empresa>
+     */
+    public function porSocio(array $nomesNorm, ?string $situacaoCode, int $limite): array
+    {
+        if ($nomesNorm === []) {
+            return [];
+        }
+
+        $db = DB::connection($this->connection);
+
+        // Subquery dos cnpj_basico cujos sócios casam pelo nome: deixa o corte
+        // (order by abertura desc + limite) acontecer sobre o conjunto INTEIRO
+        // no banco — sem teto arbitrário que distorceria "mais novos primeiro".
+        $query = $this->baseQuery($db)
+            ->whereIn('e.cnpj_basico', function (Builder $sub) use ($nomesNorm): void {
+                $sub->from('socios')->select('cnpj_basico')->whereIn('nome_norm', $nomesNorm);
+            })
+            ->where('e.cnpj_ordem', self::ORDEM_MATRIZ);
+
+        if ($situacaoCode !== null) {
+            $query->where('e.situacao_cadastral', $situacaoCode);
+        }
+
+        $rows = $query
+            ->orderBy('e.data_inicio_atividade', 'desc')
+            ->orderBy('e.cnpj_basico') // desempate estável
+            ->limit($limite)
+            ->get($this->columns());
+
+        $matched = array_map(fn (object $row): array => (array) $row, $rows->all());
+
+        if ($matched === []) {
+            return [];
+        }
+
+        $matchedBasicos = array_values(array_unique(array_map(
+            fn (array $e): string => $this->strRaw($e['cnpj_basico'] ?? null),
+            $matched,
+        )));
+        $sociosPorBasico = $this->sociosPorBasico($db, $matchedBasicos);
 
         $empresas = [];
 
