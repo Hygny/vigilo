@@ -31,12 +31,15 @@ Arquivos: `app/Http/Controllers/Api/Vigilancia/PorEnderecoController.php`,
 
 O `estabelecimentos` **não tem** índice em `cep` (só PK + cnae/municipio/
 situacao/uf). Sem ele, `WHERE cep = ?` vira seq scan em 73M → estoura o SLA.
-Rodar uma vez (e **recriar após cada reimport mensal**, junto com o
-`idx_socios_documento`):
+Rodar **uma única vez**:
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_estabelecimentos_cep ON estabelecimentos (cep);
 ```
+
+> O reimport mensal usa `LOADING_STRATEGY=upsert` (não dropa a tabela), então o
+> índice **persiste** — não precisa recriar todo mês. `cep` é coluna que o
+> próprio pipeline preenche, então o índice fica sempre consistente.
 
 Com o CEP indexado (altamente seletivo), o filtro de número roda no punhado de
 linhas daquele CEP, em memória — sem precisar de coluna normalizada nem batch.

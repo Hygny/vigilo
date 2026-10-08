@@ -31,8 +31,7 @@ Arquivos: `app/Http/Controllers/Api/Vigilancia/PorSocioController.php`,
 
 A busca depende da coluna `socios.nome_norm` + índice. O comando faz tudo
 (ADD COLUMN + popular + CREATE INDEX). **É PESADO na 1ª vez (28M linhas)** —
-rodar em horário de baixo uso, e **de novo após cada reimport mensal** (o
-pipeline recria a tabela):
+rodar em horário de baixo uso:
 
 ```bash
 cd ~/apps/vigilo && docker compose exec -T app php artisan vigilo:normalizar-socios
@@ -40,6 +39,14 @@ cd ~/apps/vigilo && docker compose exec -T app php artisan vigilo:normalizar-soc
 
 Enquanto o comando não roda, o endpoint responde (nome_norm = null → nenhum
 match), então sobe sem quebrar; mas só começa a achar depois do populate.
+
+**Após cada reimport mensal, re-rodar o comando.** O reimport usa
+`LOADING_STRATEGY=upsert` (não dropa a tabela), então a **coluna e o índice
+persistem** — o que precisa é **refrescar o dado**: sócios novos entram com
+`nome_norm` vazio (o pipeline não conhece a coluna) e nomes alterados ficam
+defasados. Re-rodar recalcula tudo (o `CREATE INDEX IF NOT EXISTS` vira no-op).
+É só o `nome_norm` que envelhece; os índices de `cep`/documento não precisam de
+nada (colunas que o pipeline preenche).
 
 ## Portões
 

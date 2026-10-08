@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * Popula `socios.nome_norm` (nome normalizado para a busca por sócio da API
  * OSINT) e cria o índice. Roda na base CNPJ (PostgreSQL): 1x após a carga e de
- * novo após cada reimport mensal (o pipeline recria a tabela). É PESADO na
- * primeira vez (28M linhas) — rode em horário de baixo uso.
+ * novo após cada reimport mensal. O reimport usa `upsert` (não dropa a tabela),
+ * então a coluna e o índice persistem — re-rodar só RE-FRESCA o dado: sócio
+ * novo entra com nome_norm vazio e nome alterado fica defasado (o pipeline não
+ * conhece a coluna). É PESADO na primeira vez (28M linhas) — rode fora de pico.
  *
  * A normalização usa a MESMA função {@see NomeSocio::norm()} que a API aplica na
  * entrada — é o que garante o match.
