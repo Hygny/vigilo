@@ -42,11 +42,13 @@ match), então sobe sem quebrar; mas só começa a achar depois do populate.
 
 **Após cada reimport mensal, re-rodar o comando.** O reimport usa
 `LOADING_STRATEGY=upsert` (não dropa a tabela), então a **coluna e o índice
-persistem** — o que precisa é **refrescar o dado**: sócios novos entram com
-`nome_norm` vazio (o pipeline não conhece a coluna) e nomes alterados ficam
-defasados. Re-rodar recalcula tudo (o `CREATE INDEX IF NOT EXISTS` vira no-op).
-É só o `nome_norm` que envelhece; os índices de `cep`/documento não precisam de
-nada (colunas que o pipeline preenche).
+persistem** — o que precisa é **refrescar o dado** dos sócios que o upsert
+inseriu. Por isso o comando é **incremental por padrão** (`nome_norm IS NULL`):
+na 1ª carga processa tudo, nas mensais só os novos — e é **retomável** (cancelar
+não recomeça do zero; o índice em `nome_norm` torna o scan de pendentes barato).
+`--all` força varredura completa (raro: só se nomes forem corrigidos na origem,
+pois o upsert não mexe no `nome_norm` de uma linha existente). É só o `nome_norm`
+que envelhece; os índices de `cep`/documento não precisam de nada.
 
 ## Portões
 
