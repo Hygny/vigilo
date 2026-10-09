@@ -6,6 +6,7 @@ use App\Enums\ChangeType;
 use App\Enums\RefreshStatus;
 use App\Enums\Severity;
 use App\Jobs\RefreshMonitoredCompanyJob;
+use App\Jobs\SendWebhookNotification;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -125,6 +126,39 @@ it('detects changes on a later refresh and notifies the organization', function 
         $company->portfolio->organization->users->first(),
         CompanyChangeDetected::class
     );
+});
+
+it('dispatches the outbound webhook when the organization has one configured', function () {
+    Notification::fake();
+    Queue::fake([SendWebhookNotification::class]); // não executa o webhook; só verifica o enfileiramento
+    Http::fake(['https://brasilapi.com.br/*' => Http::response(companyPayload('BAIXADA'), 200)]);
+
+    $company = tenantCompany();
+    $company->portfolio->organization->forceFill([
+        'webhook_url' => 'https://consumidor.test/hook',
+        'webhook_secret' => 'segredo-super-secreto-123',
+    ])->save();
+
+    RefreshMonitoredCompanyJob::dispatchSync($company);
+
+    Queue::assertPushed(SendWebhookNotification::class, function (SendWebhookNotification $job) use ($company): bool {
+        return $job->organizationId === $company->portfolio->organization->id
+            && ($job->payload['cnpj'] ?? null) === '11222333000181'
+            && is_array($job->payload['mudancas'] ?? null)
+            && count($job->payload['mudancas']) === 1;
+    });
+});
+
+it('does not dispatch the webhook when none is configured', function () {
+    Notification::fake();
+    Queue::fake([SendWebhookNotification::class]);
+    Http::fake(['https://brasilapi.com.br/*' => Http::response(companyPayload('BAIXADA'), 200)]);
+
+    $company = tenantCompany(); // organização sem webhook
+
+    RefreshMonitoredCompanyJob::dispatchSync($company);
+
+    Queue::assertNotPushed(SendWebhookNotification::class);
 });
 
 it('re-baselines silently: stores a snapshot but emits no events or notifications', function () {

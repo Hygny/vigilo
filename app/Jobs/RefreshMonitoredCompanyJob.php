@@ -24,6 +24,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -140,6 +141,7 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
 
         if ($events->isNotEmpty()) {
             $this->notifyOrganization($data->razaoSocial, $events);
+            $this->dispatchWebhook($data->razaoSocial, $events);
         }
     }
 
@@ -200,6 +202,36 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
             $users,
             new CompanyChangeDetected($this->company, $razaoSocial, $events)
         );
+    }
+
+    /**
+     * Dispara o webhook de saída da organização (se configurado) com as mudanças
+     * detectadas. A entrega assinada/retry fica no job dedicado.
+     *
+     * @param  EloquentCollection<int, ChangeEvent>  $events
+     */
+    private function dispatchWebhook(string $razaoSocial, EloquentCollection $events): void
+    {
+        $organization = $this->company->portfolio->organization;
+
+        if (! $organization->hasWebhook()) {
+            return;
+        }
+
+        SendWebhookNotification::dispatch($organization->id, [
+            'event_id' => (string) Str::uuid(),
+            'event' => 'company.changes',
+            'cnpj' => $this->company->cnpj,
+            'razao_social' => $razaoSocial,
+            'detectado_em' => Carbon::now()->toIso8601String(),
+            'mudancas' => $events->map(fn (ChangeEvent $event): array => [
+                'tipo' => $event->type->value,
+                'campo' => $event->field,
+                'de' => $event->old_value,
+                'para' => $event->new_value,
+                'severidade' => $event->severity->value,
+            ])->values()->all(),
+        ]);
     }
 
     private function markRefreshed(RefreshStatus $status): void

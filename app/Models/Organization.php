@@ -21,6 +21,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $asaas_subscription_id
  * @property BillingStatus $billing_status
  * @property Carbon|null $suspended_at
+ * @property string|null $webhook_url
+ * @property string|null $webhook_secret
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, User> $users
@@ -55,6 +57,14 @@ class Organization extends Model
     public function isSuspended(): bool
     {
         return $this->suspended_at !== null;
+    }
+
+    /**
+     * Tem webhook de saída configurado (URL + segredo).
+     */
+    public function hasWebhook(): bool
+    {
+        return $this->webhook_url !== null && $this->webhook_secret !== null;
     }
 
     /**
@@ -109,7 +119,16 @@ class Organization extends Model
             'plan' => Plan::class,
             'billing_status' => BillingStatus::class,
             'suspended_at' => 'datetime',
+            'webhook_secret' => 'encrypted',
         ];
+    }
+
+    /**
+     * @return HasMany<WebhookDelivery, $this>
+     */
+    public function webhookDeliveries(): HasMany
+    {
+        return $this->hasMany(WebhookDelivery::class);
     }
 
     /**

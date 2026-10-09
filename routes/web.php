@@ -12,6 +12,7 @@ use App\Livewire\Billing\Index as Billing;
 use App\Livewire\Companies\Graph as CompanyGraph;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
+use App\Livewire\Integrations\Index as Integrations;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
 use App\Livewire\Portfolios\Show as PortfolioShow;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Assinatura da organização — só o admin do tenant gerencia a cobrança.
     Route::get('assinatura', Billing::class)->name('billing.index')->middleware('admin');
+
+    // Integrações (webhook de saída) — só o admin do tenant configura.
+    Route::get('integracoes', Integrations::class)->name('integrations.index')->middleware('admin');
 });
 
 // Webhook de pagamento do Asaas: público (sem sessão), autenticado pelo token no
