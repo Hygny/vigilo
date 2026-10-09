@@ -27,7 +27,7 @@ class Dashboard extends Component
 
         $openAlerts = ChangeEvent::query()
             ->whereIn('monitored_company_id', $companyIds)
-            ->whereNull('acknowledged_at');
+            ->open();
 
         $recentChanges = ChangeEvent::query()
             ->whereIn('monitored_company_id', $companyIds)

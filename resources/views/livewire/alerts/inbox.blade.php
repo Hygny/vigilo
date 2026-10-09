@@ -1,19 +1,15 @@
+@use('App\Enums\TriageStatus')
+
 <div class="py-8">
     <div class="mx-auto max-w-[1200px] space-y-6 px-5 sm:px-8">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-[28px] font-bold tracking-[-0.03em] text-ink">Alertas</h1>
-                <p class="mt-1 text-[14.5px] text-ink-muted">Mudanças detectadas que ainda não foram revisadas.</p>
+                <p class="mt-1 text-[14.5px] text-ink-muted">Triagem das mudanças detectadas: novo → em análise → descartado ou caso.</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <x-ui.button variant="secondary" size="sm" icon="download" wire:click="export">
-                    Exportar Excel
-                </x-ui.button>
-                <x-ui.button variant="secondary" size="sm" icon="done_all"
-                             wire:click="acknowledgeAll" wire:confirm="Marcar como vistos todos os alertas do filtro atual?">
-                    Marcar todos como vistos
-                </x-ui.button>
-            </div>
+            <x-ui.button variant="secondary" size="sm" icon="download" wire:click="export">
+                Exportar Excel
+            </x-ui.button>
         </div>
 
         @if (session('status'))
@@ -22,13 +18,28 @@
             </div>
         @endif
 
+        {{-- Filtro de triagem --}}
         <div class="flex flex-wrap gap-2">
-            @foreach (['all' => 'Todos', 'critical' => 'Críticos', 'high' => 'Altos', 'medium' => 'Médios', 'low' => 'Baixos'] as $value => $label)
-                <button wire:click="setSeverity('{{ $value }}')"
+            @foreach (['abertos' => 'Em aberto', 'casos' => 'Casos', 'descartados' => 'Descartados', 'todos' => 'Todos'] as $value => $label)
+                <button wire:click="setTriage('{{ $value }}')"
                         @class([
                             'rounded-full px-4 py-2 text-[13.5px] font-semibold transition-colors border cursor-pointer',
-                            'bg-primary text-onprimary border-primary' => $severity === $value,
-                            'bg-surface text-ink-2 border-line-strong hover:bg-surface-2' => $severity !== $value,
+                            'bg-primary text-onprimary border-primary' => $triage === $value,
+                            'bg-surface text-ink-2 border-line-strong hover:bg-surface-2' => $triage !== $value,
+                        ])>
+                    {{ $label }}
+                </button>
+            @endforeach
+        </div>
+
+        {{-- Filtro de severidade --}}
+        <div class="flex flex-wrap gap-2">
+            @foreach (['all' => 'Todas severidades', 'critical' => 'Críticos', 'high' => 'Altos', 'medium' => 'Médios', 'low' => 'Baixos'] as $value => $label)
+                <button wire:click="setSeverity('{{ $value }}')"
+                        @class([
+                            'rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors border cursor-pointer',
+                            'bg-ink text-surface border-ink' => $severity === $value,
+                            'bg-surface text-ink-muted border-line hover:bg-surface-2' => $severity !== $value,
                         ])>
                     {{ $label }}
                 </button>
@@ -37,31 +48,74 @@
 
         <div class="flex flex-col gap-3">
             @forelse ($events as $event)
-                @php $tone = $event->severity->tone(); @endphp
-                <div class="flex items-center gap-4 rounded-[14px] border border-line bg-surface p-4 shadow-card sm:px-5"
+                @php $tone = $event->severity->tone(); $st = $event->triage_status; @endphp
+                <div class="rounded-[14px] border border-line bg-surface p-4 shadow-card sm:px-5"
                      style="border-left:3px solid var(--{{ $tone }});">
-                    <div class="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[11px]"
-                         style="background:var(--{{ $tone }}-soft);color:var(--{{ $tone }});">
-                        <x-ui.icon :name="$event->type->icon()" :size="23" />
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                            <span class="text-[15px] font-semibold text-ink">{{ $event->monitoredCompany->label ?? $event->monitoredCompany->formattedCnpj() }}</span>
-                            <span class="font-mono text-[11.5px] text-ink-muted">{{ $event->monitoredCompany->formattedCnpj() }}</span>
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[11px]"
+                             style="background:var(--{{ $tone }}-soft);color:var(--{{ $tone }});">
+                            <x-ui.icon :name="$event->type->icon()" :size="23" />
                         </div>
-                        <p class="mt-0.5 text-[13.5px] text-ink-2">
-                            {{ $event->type->label() }}:
-                            <span class="text-ink-muted">{{ $event->old_value ?? '—' }}</span>
-                            <x-ui.icon name="arrow_right_alt" :size="15" class="align-middle text-ink-muted" />
-                            <span class="font-medium text-ink">{{ $event->new_value ?? '—' }}</span>
-                        </p>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                                <span class="text-[15px] font-semibold text-ink">{{ $event->monitoredCompany->label ?? $event->monitoredCompany->formattedCnpj() }}</span>
+                                <span class="font-mono text-[11.5px] text-ink-muted">{{ $event->monitoredCompany->formattedCnpj() }}</span>
+                                <x-ui.badge :tone="$st->tone()" :icon="$st->icon()">{{ $st->label() }}</x-ui.badge>
+                            </div>
+                            <p class="mt-0.5 text-[13.5px] text-ink-2">
+                                {{ $event->type->label() }}:
+                                <span class="text-ink-muted">{{ $event->old_value ?? '—' }}</span>
+                                <x-ui.icon name="arrow_right_alt" :size="15" class="align-middle text-ink-muted" />
+                                <span class="font-medium text-ink">{{ $event->new_value ?? '—' }}</span>
+                            </p>
+                            @if ($st === TriageStatus::Descartado && $event->triage_reason)
+                                <p class="mt-1 text-[12.5px] text-ink-muted"><span class="font-semibold">Motivo:</span> {{ $event->triage_reason }}</p>
+                            @endif
+                        </div>
+                        <x-ui.badge :tone="$tone" dot class="hidden sm:inline-flex">{{ $event->severity->label() }}</x-ui.badge>
+                        <span class="hidden shrink-0 font-mono text-xs text-ink-muted md:inline">{{ $event->detected_at->format('d/m/Y H:i') }}</span>
+
+                        {{-- Ações de triagem --}}
+                        <div class="flex shrink-0 items-center gap-1.5">
+                            @if ($st === TriageStatus::Novo)
+                                <button wire:click="startAnalysis({{ $event->id }})" title="Iniciar análise"
+                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-ink-2 transition-colors hover:bg-surface-2 cursor-pointer">
+                                    <x-ui.icon name="search" :size="18" />
+                                </button>
+                            @endif
+                            @if ($st->isOpen())
+                                <button wire:click="promoteToCase({{ $event->id }})" title="Virar caso"
+                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-crit transition-colors hover:bg-crit-soft cursor-pointer">
+                                    <x-ui.icon name="flag" :size="18" />
+                                </button>
+                                <button wire:click="beginDismiss({{ $event->id }})" title="Descartar"
+                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-ink-muted transition-colors hover:bg-surface-2 cursor-pointer">
+                                    <x-ui.icon name="block" :size="18" />
+                                </button>
+                            @else
+                                <button wire:click="reopen({{ $event->id }})" title="Reabrir"
+                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-ink-2 transition-colors hover:bg-surface-2 cursor-pointer">
+                                    <x-ui.icon name="undo" :size="18" />
+                                </button>
+                            @endif
+                        </div>
                     </div>
-                    <x-ui.badge :tone="$tone" dot class="hidden sm:inline-flex">{{ $event->severity->label() }}</x-ui.badge>
-                    <span class="hidden shrink-0 font-mono text-xs text-ink-muted md:inline">{{ $event->detected_at->format('d/m/Y H:i') }}</span>
-                    <button wire:click="acknowledge({{ $event->id }})" title="Marcar como visto"
-                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-ink-2 transition-colors hover:bg-surface-2 cursor-pointer">
-                        <x-ui.icon name="done" :size="19" />
-                    </button>
+
+                    {{-- Formulário de descarte (motivo obrigatório) --}}
+                    @if ($dismissingId === $event->id)
+                        <div class="mt-3 border-t border-line pt-3">
+                            <label class="mb-1 block text-[12.5px] font-medium text-ink-2">Motivo do descarte</label>
+                            <div class="flex flex-col gap-2 sm:flex-row">
+                                <input type="text" wire:model="dismissReason" wire:keydown.enter="confirmDismiss"
+                                       class="ui-input flex-1" placeholder="Ex.: filial encerrada, matriz ativa" autofocus>
+                                <div class="flex gap-2">
+                                    <x-ui.button size="sm" variant="danger" wire:click="confirmDismiss">Descartar</x-ui.button>
+                                    <x-ui.button size="sm" variant="secondary" wire:click="cancelDismiss">Cancelar</x-ui.button>
+                                </div>
+                            </div>
+                            @error('dismissReason') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
+                        </div>
+                    @endif
                 </div>
             @empty
                 <div class="flex flex-col items-center justify-center gap-3 rounded-card border border-line bg-surface p-16 text-center shadow-card">
@@ -69,7 +123,7 @@
                         <x-ui.icon name="task_alt" :size="30" class="text-ok" />
                     </div>
                     <div class="text-[15px] font-semibold text-ink">Nenhum alerta neste filtro</div>
-                    <div class="text-[13.5px] text-ink-muted">Tudo revisado por aqui.</div>
+                    <div class="text-[13.5px] text-ink-muted">Nada por aqui com os filtros atuais.</div>
                 </div>
             @endforelse
         </div>

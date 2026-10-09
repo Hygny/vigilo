@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Enums\ChangeType;
 use App\Enums\Severity;
+use App\Enums\TriageStatus;
 use App\Models\ChangeEvent;
 use App\Models\CompanySnapshot;
 use App\Models\MonitoredCompany;
@@ -32,6 +33,7 @@ class ChangeEventFactory extends Factory
             'severity' => Severity::Critical,
             'detected_at' => now(),
             'acknowledged_at' => null,
+            'triage_status' => TriageStatus::Novo,
         ];
     }
 

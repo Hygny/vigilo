@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\ChangeType;
 use App\Enums\Severity;
+use App\Enums\TriageStatus;
 use App\Livewire\Alerts\Inbox;
 use App\Models\ChangeEvent;
 use App\Models\MonitoredCompany;
@@ -20,17 +21,72 @@ function ownedCompany(User $user): MonitoredCompany
         ->create();
 }
 
-it('lists open alerts and acknowledges one', function () {
+it('starts analysis on an alert', function () {
     $user = User::factory()->for(Organization::factory())->create();
     $company = ownedCompany($user);
     $event = ChangeEvent::factory()->for($company, 'monitoredCompany')->create();
 
     Livewire::actingAs($user)->test(Inbox::class)
         ->assertOk()
-        ->call('acknowledge', $event->id)
+        ->call('startAnalysis', $event->id)
         ->assertHasNoErrors();
 
-    expect($event->fresh()->acknowledged_at)->not->toBeNull();
+    $event->refresh();
+    expect($event->triage_status)->toBe(TriageStatus::EmAnalise)
+        ->and($event->triaged_at)->not->toBeNull()
+        ->and($event->triaged_by_id)->toBe($user->id);
+});
+
+it('promotes an alert to a case', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create();
+
+    Livewire::actingAs($user)->test(Inbox::class)->call('promoteToCase', $event->id);
+
+    expect($event->fresh()->triage_status)->toBe(TriageStatus::Caso);
+});
+
+it('requires a reason to dismiss an alert', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create();
+
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->call('beginDismiss', $event->id)
+        ->set('dismissReason', '')
+        ->call('confirmDismiss')
+        ->assertHasErrors('dismissReason');
+
+    expect($event->fresh()->triage_status)->toBe(TriageStatus::Novo);
+});
+
+it('dismisses an alert with a reason', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create();
+
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->call('beginDismiss', $event->id)
+        ->set('dismissReason', 'filial encerrada, matriz ativa')
+        ->call('confirmDismiss')
+        ->assertHasNoErrors();
+
+    $event->refresh();
+    expect($event->triage_status)->toBe(TriageStatus::Descartado)
+        ->and($event->triage_reason)->toBe('filial encerrada, matriz ativa')
+        ->and($event->triaged_by_id)->toBe($user->id);
+});
+
+it('reopens a resolved alert and clears the reason', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create([
+        'triage_status' => TriageStatus::Descartado,
+        'triage_reason' => 'descartei antes',
+    ]);
+
+    Livewire::actingAs($user)->test(Inbox::class)->call('reopen', $event->id);
+
+    $event->refresh();
+    expect($event->triage_status)->toBe(TriageStatus::Novo)
+        ->and($event->triage_reason)->toBeNull();
 });
 
 it('hides alerts from other organizations', function () {
@@ -41,6 +97,19 @@ it('hides alerts from other organizations', function () {
 
     Livewire::actingAs($user)->test(Inbox::class)
         ->assertViewHas('events', fn ($events): bool => $events->isEmpty());
+});
+
+it('cannot triage an alert from another organization', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $foreignCompany = MonitoredCompany::factory()->create();
+    $foreignEvent = ChangeEvent::factory()->for($foreignCompany, 'monitoredCompany')->create();
+
+    $component = Livewire::actingAs($user)->test(Inbox::class);
+
+    expect(fn () => $component->call('startAnalysis', $foreignEvent->id))
+        ->toThrow(ModelNotFoundException::class);
+
+    expect($foreignEvent->fresh()->triage_status)->toBe(TriageStatus::Novo);
 });
 
 it('filters alerts by severity', function () {
@@ -61,38 +130,33 @@ it('filters alerts by severity', function () {
         ->assertViewHas('events', fn ($events): bool => $events->count() === 1 && $events->first()->is($critical));
 });
 
-it('cannot acknowledge an alert from another organization', function () {
-    $user = User::factory()->for(Organization::factory())->create();
-    $foreignCompany = MonitoredCompany::factory()->create();
-    $foreignEvent = ChangeEvent::factory()->for($foreignCompany, 'monitoredCompany')->create();
-
-    $component = Livewire::actingAs($user)->test(Inbox::class);
-
-    // The event is outside the org scope, so it is simply not found.
-    expect(fn () => $component->call('acknowledge', $foreignEvent->id))
-        ->toThrow(ModelNotFoundException::class);
-
-    expect($foreignEvent->fresh()->acknowledged_at)->toBeNull();
-});
-
-it('acknowledges only the alerts of the active severity filter', function () {
+it('filters alerts by triage status', function () {
     $user = User::factory()->for(Organization::factory())->create();
     $company = ownedCompany($user);
 
-    $critical = ChangeEvent::factory()->for($company, 'monitoredCompany')->create([
-        'severity' => Severity::Critical,
+    $novo = ChangeEvent::factory()->for($company, 'monitoredCompany')->create();
+    $descartado = ChangeEvent::factory()->for($company, 'monitoredCompany')->create([
+        'type' => ChangeType::NameChanged, 'field' => 'razao_social',
+        'triage_status' => TriageStatus::Descartado,
     ]);
-    $low = ChangeEvent::factory()->for($company, 'monitoredCompany')->create([
-        'severity' => Severity::Low,
-        'type' => ChangeType::NameChanged,
-        'field' => 'razao_social',
+    $caso = ChangeEvent::factory()->for($company, 'monitoredCompany')->create([
+        'type' => ChangeType::AddressChanged, 'field' => 'endereco',
+        'triage_status' => TriageStatus::Caso,
     ]);
 
-    Livewire::actingAs($user)->test(Inbox::class)
-        ->call('setSeverity', 'low')
-        ->call('acknowledgeAll');
+    $ids = fn ($events): array => $events->pluck('id')->all();
 
-    // Só os "baixos" (filtro ativo) foram reconhecidos; o crítico segue em aberto.
-    expect($low->fresh()->acknowledged_at)->not->toBeNull()
-        ->and($critical->fresh()->acknowledged_at)->toBeNull();
+    $component = Livewire::actingAs($user)->test(Inbox::class);
+
+    // Padrão "abertos": só o novo.
+    $component->assertViewHas('events', fn ($e): bool => $ids($e) === [$novo->id]);
+
+    $component->call('setTriage', 'descartados')
+        ->assertViewHas('events', fn ($e): bool => $ids($e) === [$descartado->id]);
+
+    $component->call('setTriage', 'casos')
+        ->assertViewHas('events', fn ($e): bool => $ids($e) === [$caso->id]);
+
+    $component->call('setTriage', 'todos')
+        ->assertViewHas('events', fn ($e): bool => count($ids($e)) === 3);
 });

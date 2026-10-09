@@ -18,7 +18,7 @@ final class AlertsExcelExport
     /** @var list<string> */
     private const HEADINGS = [
         'Empresa', 'CNPJ', 'Tipo de mudança', 'Campo', 'De', 'Para',
-        'Severidade', 'Detectado em', 'Reconhecido em',
+        'Severidade', 'Detectado em', 'Triagem', 'Motivo',
     ];
 
     /**
@@ -32,7 +32,7 @@ final class AlertsExcelExport
         $sheet->setTitle('Alertas');
 
         $sheet->fromArray(self::HEADINGS, null, 'A1');
-        $sheet->getStyle('A1:I1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:J1')->getFont()->setBold(true);
 
         $rowNumber = 2;
 
@@ -48,13 +48,14 @@ final class AlertsExcelExport
                 $event->new_value ?? '',
                 $event->severity->label(),
                 $event->detected_at->format('d/m/Y H:i'),
-                $event->acknowledged_at?->format('d/m/Y H:i') ?? '',
+                $event->triage_status->label(),
+                $event->triage_reason ?? '',
             ], null, 'A'.$rowNumber);
 
             $rowNumber++;
         }
 
-        foreach (range('A', 'I') as $column) {
+        foreach (range('A', 'J') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 
