@@ -94,6 +94,8 @@ return [
         'max_companies' => (int) env('CNPJ_GRAPH_MAX_COMPANIES', 300),
         // Teto de filiais (mesmo cnpj_basico) listadas no painel.
         'branch_limit' => (int) env('CNPJ_GRAPH_BRANCH_LIMIT', 60),
+        // Teto de empresas no mesmo endereço (CEP+número) mostradas no grafo.
+        'address_limit' => (int) env('CNPJ_GRAPH_ADDRESS_LIMIT', 25),
     ],
 
 ];

@@ -13,6 +13,9 @@
                             <span class="text-ink-2">· {{ $groupCount }} empresa(s) desta pessoa</span>
                         @else
                             <span class="text-ink-2">· {{ $partnerCount }} sócio(s) · {{ $groupCount }} empresa(s) no grupo</span>
+                            @if ($showAddress)
+                                <span class="text-ink-2">· {{ $addressCount }} no mesmo endereço</span>
+                            @endif
                         @endif
                     @endif
                 </p>
@@ -67,8 +70,19 @@
                             <x-ui.icon :name="$showProbable ? 'visibility' : 'visibility_off'" :size="15" />
                             {{ $showProbable ? 'Ocultar conexões por sócio PF' : 'Mostrar conexões por sócio PF' }}
                         </button>
-                        <span class="text-[12px] text-ink-muted">Ligações por pessoa física (CPF mascarado) — menor certeza. Ocultas por padrão.</span>
+                        <button type="button" wire:click="toggleAddress"
+                                @class([
+                                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors cursor-pointer',
+                                    'border-primary bg-primary-soft text-accent' => $showAddress,
+                                    'border-line-strong bg-surface text-ink-2 hover:bg-surface-2' => ! $showAddress,
+                                ])>
+                            <x-ui.icon name="location_on" :size="15" />
+                            {{ $showAddress ? 'Ocultar empresas no mesmo endereço' : 'Mostrar empresas no mesmo endereço' }}
+                        </button>
                     </div>
+                    <p class="mt-2 text-[12px] text-ink-muted">
+                        <span class="font-medium">Sócio PF</span>: ligações por CPF mascarado (menor certeza). <span class="font-medium">Mesmo endereço</span>: empresas no mesmo CEP + número. Ambas ocultas por padrão.
+                    </p>
                 @endif
 
                 {{-- Legenda --}}
@@ -79,6 +93,9 @@
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
                     @if (! $personMode && $showProbable)
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Conexão por sócio PF (CPF mascarado)</span>
+                    @endif
+                    @if (! $personMode && $showAddress)
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dotted" style="border-color: var(--graph-edge-address);"></span>Mesmo endereço (CEP + número)</span>
                     @endif
                 </div>
 

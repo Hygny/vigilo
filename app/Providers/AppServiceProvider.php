@@ -58,6 +58,7 @@ class AppServiceProvider extends ServiceProvider
             maxDepth: (int) config('cnpj.graph.max_depth', 5),
             maxCompanies: (int) config('cnpj.graph.max_companies', 300),
             maxBranches: (int) config('cnpj.graph.branch_limit', 60),
+            addressLimit: (int) config('cnpj.graph.address_limit', 25),
         ));
 
         $this->app->singleton(EmpresaLookup::class, fn (): EmpresaLookup => new EmpresaLookup(

@@ -9,8 +9,10 @@ use App\DTO\Graph\CompanyBranch;
 use App\DTO\Graph\GraphEdge;
 use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
+use App\Support\AddressNumber;
 use App\Support\Cnpj;
 use App\Support\SituacaoCadastral;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -29,12 +31,16 @@ final class OwnershipGraphService
     /** Ordem do estabelecimento matriz na base da Receita (a situação-referência da empresa). */
     private const ORDEM_MATRIZ = '0001';
 
+    /** Linhas lidas por CEP antes do filtro de número (vizinhos de endereço). */
+    private const ADDRESS_SCAN = 400;
+
     public function __construct(
         private readonly string $connection,
         private readonly int $reverseLimit,
         private readonly int $maxDepth = 5,
         private readonly int $maxCompanies = 300,
         private readonly int $maxBranches = 60,
+        private readonly int $addressLimit = 25,
     ) {}
 
     /**
@@ -46,7 +52,7 @@ final class OwnershipGraphService
      * primeiro nome na própria query (e o sobrenome conferido depois), cortando os
      * xarás com os mesmos 6 dígitos mas nome diferente.
      */
-    public function for(string $cnpj, bool $includePfGroup = false): OwnershipGraph
+    public function for(string $cnpj, bool $includePfGroup = false, bool $includeAddress = false): OwnershipGraph
     {
         $digits = Cnpj::normalize($cnpj); // 14 dígitos (lookup, sem exigir mod-11)
         $basico = substr($digits, 0, 8);
@@ -62,7 +68,7 @@ final class OwnershipGraphService
             ->where('e.cnpj_basico', $basico)
             ->where('e.cnpj_ordem', $ordem)
             ->where('e.cnpj_dv', $dv)
-            ->first(['e.situacao_cadastral', 'emp.razao_social']);
+            ->first(['e.situacao_cadastral', 'e.cep', 'e.numero', 'emp.razao_social']);
 
         /** @var array<string, GraphNode> $nodes */
         $nodes = [
@@ -158,7 +164,88 @@ final class OwnershipGraphService
             }
         }
 
+        if ($includeAddress) {
+            $this->addAddressNeighbors(
+                $db,
+                $basico,
+                $this->str($center['cep'] ?? null),
+                $this->str($center['numero'] ?? null),
+                $centerId,
+                $nodes,
+                $edges,
+            );
+        }
+
         return new OwnershipGraph($centerId, array_values($nodes), array_values($edges));
+    }
+
+    /**
+     * Acrescenta ao grafo as OUTRAS empresas no mesmo endereço (CEP + número) do
+     * centro — "vizinhos de endereço", ligados por aresta `endereco`. Filtra por
+     * CEP (indexado) e casa o número normalizado no PHP; dedup por cnpj_basico e
+     * teto em $addressLimit. Exclui as filiais da própria empresa (mesmo basico,
+     * já no painel de Filiais). CEP só-zeros/vazio → não faz nada.
+     *
+     * @param  array<string, GraphNode>  $nodes
+     * @param  array<string, GraphEdge>  $edges
+     */
+    private function addAddressNeighbors(ConnectionInterface $db, string $basico, ?string $cep, ?string $numero, string $centerId, array &$nodes, array &$edges): void
+    {
+        $cepDigits = preg_replace('/\D/', '', (string) $cep) ?? '';
+
+        if ($cepDigits === '' || ltrim($cepDigits, '0') === '') {
+            return;
+        }
+
+        $alvoNumero = AddressNumber::normalize((string) $numero);
+
+        $rows = $db->table('estabelecimentos as ea')
+            ->leftJoin('empresas as empa', 'ea.cnpj_basico', '=', 'empa.cnpj_basico')
+            ->leftJoin('estabelecimentos as ma', function (JoinClause $join): void {
+                $join->on('ma.cnpj_basico', '=', 'ea.cnpj_basico')
+                    ->where('ma.cnpj_ordem', '=', self::ORDEM_MATRIZ);
+            })
+            ->where('ea.cep', $cepDigits)
+            ->where('ea.cnpj_basico', '!=', $basico)
+            ->orderBy('ea.cnpj_basico') // recorte determinístico num CEP denso
+            ->limit(self::ADDRESS_SCAN)
+            ->get(['ea.cnpj_basico', 'ea.numero', 'empa.razao_social', 'ma.situacao_cadastral']);
+
+        $added = 0;
+
+        foreach ($rows as $row) {
+            if ($added >= $this->addressLimit) {
+                break;
+            }
+
+            $r = (array) $row;
+
+            if (AddressNumber::normalize($this->str($r['numero'] ?? null) ?? '') !== $alvoNumero) {
+                continue;
+            }
+
+            $nb = $this->str($r['cnpj_basico'] ?? null);
+
+            if ($nb === null) {
+                continue;
+            }
+
+            $id = 'empresa:'.$nb;
+            $nodes[$id] ??= new GraphNode(
+                id: $id,
+                type: 'empresa',
+                label: $this->str($r['razao_social'] ?? null) ?? $nb,
+                document: Cnpj::matrizFromBasico($nb) ?? $nb,
+                situacao: $this->situacao($r['situacao_cadastral'] ?? null),
+            );
+
+            $edgeKey = $centerId.'|endereco|'.$id;
+
+            if (! isset($edges[$edgeKey])) {
+                $edges[$edgeKey] = new GraphEdge($centerId, $id, 'endereco');
+                $added++;
+            }
+        }
     }
 
     /**

@@ -53,6 +53,8 @@
     --graph-edge: #C9CDD6;
     /* Aresta "provável" (só CPF mascarado): laranja distinto das demais cores. */
     --graph-edge-probable: #EA580C;
+    /* Aresta por endereço (mesma CEP+número): teal, distinto de sócio/provável. */
+    --graph-edge-address: #0D9488;
     /* Tooltip do grafo: fundo escuro + texto claro no tema claro. */
     --graph-tip-bg: #171712;
     --graph-tip-fg: #FFFFFF;
@@ -100,6 +102,8 @@
     --graph-edge: #3F3E36;
     /* Aresta provável: laranja mais claro p/ contraste no fundo escuro. */
     --graph-edge-probable: #FB923C;
+    /* Aresta por endereço: teal mais claro p/ contraste no fundo escuro. */
+    --graph-edge-address: #2DD4BF;
     /* Tooltip: fundo escuro elevado + texto ÂMBAR (legível no dark). */
     --graph-tip-bg: #24221A;
     --graph-tip-fg: #F2C744;

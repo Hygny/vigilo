@@ -8,6 +8,7 @@ use App\DTO\Vigilancia\Empresa;
 use App\DTO\Vigilancia\Endereco;
 use App\DTO\Vigilancia\Socio;
 use App\Providers\Cnpj\LocalCnpjProvider;
+use App\Support\AddressNumber;
 use App\Support\NomeSocio;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
@@ -101,13 +102,13 @@ final class EmpresaLookup
             ->limit(self::CANDIDATE_SCAN)
             ->get($this->columns());
 
-        $alvo = $this->normalizeNumero($numeroRaw);
+        $alvo = AddressNumber::normalize($numeroRaw);
         $matched = [];
 
         foreach ($rows as $row) {
             $e = (array) $row;
 
-            if ($this->normalizeNumero($this->strRaw($e['numero'] ?? null)) !== $alvo) {
+            if (AddressNumber::normalize($this->strRaw($e['numero'] ?? null)) !== $alvo) {
                 continue;
             }
 
@@ -291,18 +292,6 @@ final class EmpresaLookup
         }
 
         return $porBasico;
-    }
-
-    /**
-     * Normaliza um número de logradouro para comparação: caixa alta, sem o
-     * prefixo "Nº"/"N°" e sem espaços. "Nº 320" e "320" casam.
-     */
-    private function normalizeNumero(string $value): string
-    {
-        $upper = mb_strtoupper(trim($value));
-        $upper = str_replace(['Nº', 'N°', 'N.º', 'N.°', 'Nº.', 'N º', 'N °'], '', $upper);
-
-        return preg_replace('/\s+/', '', $upper) ?? $upper;
     }
 
     private function cep(mixed $value): ?string

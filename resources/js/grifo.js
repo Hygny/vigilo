@@ -23,6 +23,7 @@ function themeColors() {
         ring: v('--graph-center-ring', '#f2c744'),
         edge: v('--graph-edge', '#cbd5e1'),
         edgeProbable: v('--graph-edge-probable', '#ea580c'),
+        edgeAddress: v('--graph-edge-address', '#0d9488'),
         tipBg: v('--graph-tip-bg', '#171712'),
         tipFg: v('--graph-tip-fg', '#ffffff'),
     };
@@ -100,6 +101,17 @@ function styleSheet(c) {
                 'line-color': c.edgeProbable,
                 width: 2,
                 opacity: 0.95,
+            },
+        },
+        {
+            // Ligação por endereço (mesma CEP+número): pontilhada e teal, para
+            // distinguir de sócio (sólida) e de provável (tracejada laranja).
+            selector: 'edge[type = "endereco"]',
+            style: {
+                'line-style': 'dotted',
+                'line-color': c.edgeAddress,
+                width: 2,
+                opacity: 0.9,
             },
         },
     ];

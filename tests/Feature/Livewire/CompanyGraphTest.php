@@ -40,6 +40,8 @@ function bootCompanyGraphBase(bool $withData = true): void
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
         $t->string('nome_fantasia')->nullable();
+        $t->string('cep')->nullable();
+        $t->string('numero')->nullable();
         $t->string('municipio')->nullable();
         $t->string('uf')->nullable();
     });
@@ -64,7 +66,7 @@ function bootCompanyGraphBase(bool $withData = true): void
     });
 
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02',
+        'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100',
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
         ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA CENTRO'],
@@ -165,6 +167,32 @@ it('hides the PF economic group by default and reveals it (dashed) via the toggl
             expect($pf)->not->toBeNull()
                 ->and($pf['data']['probable'])->toBeTrue()
                 ->and($edges->firstWhere('data.source', 'empresa:77888999'))->toBeNull();
+
+            return true;
+        });
+});
+
+it('hides same-address companies by default and reveals them via the toggle', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+
+    // Empresa vizinha: mesmo CEP + número (empresa diferente, sem vínculo societário).
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA DE ENDERECO']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('cyto', fn (array $cyto): bool => collect($cyto['nodes'])->firstWhere('data.id', 'empresa:45456767') === null)
+        ->call('toggleAddress')
+        ->assertViewHas('cyto', function (array $cyto): bool {
+            $vizinha = collect($cyto['nodes'])->firstWhere('data.id', 'empresa:45456767');
+            $edge = collect($cyto['edges'])->firstWhere('data.type', 'endereco');
+            expect($vizinha)->not->toBeNull()
+                ->and($edge)->not->toBeNull()
+                ->and($edge['data']['target'])->toBe('empresa:45456767');
 
             return true;
         });

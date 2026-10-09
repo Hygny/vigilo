@@ -25,6 +25,8 @@ function bootGraphBase(): void
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
         $t->string('nome_fantasia')->nullable();
+        $t->string('cep')->nullable();
+        $t->string('numero')->nullable();
         $t->string('municipio')->nullable();
         $t->string('uf')->nullable();
     });
@@ -389,6 +391,76 @@ it('caps the number of companies in a person-centered graph', function () {
     $graph = (new OwnershipGraphService('cnpj', 2))->forPerson('***111**')->toArray();
 
     expect(collect($graph['nos'])->where('tipo', 'empresa')->count())->toBe(2); // cap 2 de 3
+});
+
+// ---------------------------------------------------------------------------
+// Vizinhos de endereço (includeAddress)
+// ---------------------------------------------------------------------------
+
+it('includes other companies at the same address (cep + numero) with includeAddress', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'], // mesmo prédio (número normaliza)
+        ['cnpj_basico' => '77888999', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '500'], // número diferente
+        ['cnpj_basico' => '12121212', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '80000000', 'numero' => '100'], // CEP diferente
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'CENTRO'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'VIZINHO'],
+        ['cnpj_basico' => '77888999', 'razao_social' => 'OUTRO NUMERO'],
+        ['cnpj_basico' => '12121212', 'razao_social' => 'OUTRO CEP'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeAddress: true)->toArray();
+
+    $ids = collect($graph['nos'])->pluck('id');
+    expect($ids)->toContain('empresa:44555666')
+        ->and($ids)->not->toContain('empresa:77888999')
+        ->and($ids)->not->toContain('empresa:12121212');
+
+    expect(collect($graph['arestas'])->where('tipo', 'endereco'))->toHaveCount(1);
+});
+
+it('omits address neighbors by default', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'CENTRO'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'VIZINHO'],
+    ]);
+
+    $ids = collect((new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray()['nos'])->pluck('id');
+    expect($ids)->not->toContain('empresa:44555666');
+});
+
+it('caps the number of address neighbors at addressLimit', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '22222222', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '33333333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+    ]);
+
+    // addressLimit = 1 → só um dos dois vizinhos entra.
+    $graph = (new OwnershipGraphService('cnpj', 25, addressLimit: 1))->for('11222333000181', includeAddress: true)->toArray();
+
+    expect(collect($graph['arestas'])->where('tipo', 'endereco'))->toHaveCount(1);
+});
+
+it('adds no address neighbors when the center CEP is all zeros', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '00000000', 'numero' => '100'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '00000000', 'numero' => '100'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181', includeAddress: true)->toArray();
+
+    expect(collect($graph['arestas'])->where('tipo', 'endereco'))->toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------

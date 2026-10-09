@@ -45,6 +45,12 @@ class Graph extends Component
      */
     public bool $showProbable = false;
 
+    /**
+     * Mostrar no grafo as **empresas no mesmo endereço** (CEP + número) do centro
+     * — ligadas por aresta de endereço. Off por padrão; só no modo empresa.
+     */
+    public bool $showAddress = false;
+
     /** @var array<string, mixed>|null Cache do grafo por request (ação + render). */
     private ?array $graphCache = null;
 
@@ -108,6 +114,15 @@ class Graph extends Component
         $this->emitGraph($graphs);
     }
 
+    /**
+     * Liga/desliga as empresas no mesmo endereço (só no modo empresa) e reemite.
+     */
+    public function toggleAddress(OwnershipGraphService $graphs): void
+    {
+        $this->showAddress = ! $this->showAddress;
+        $this->emitGraph($graphs);
+    }
+
     public function render(OwnershipGraphService $graphs): View
     {
         return view('livewire.companies.graph', $this->graphData($graphs));
@@ -143,6 +158,7 @@ class Graph extends Component
         $cyto = ['nodes' => [], 'edges' => [], 'center' => ''];
         $partnerCount = 0;
         $groupCount = 0;
+        $addressCount = 0;
         $beneficiaries = [];
         $branches = [];
         $focusLabel = null;
@@ -151,14 +167,25 @@ class Graph extends Component
             if ($personMode) {
                 $graph = $graphs->forPerson($this->focusDocument, $this->focusName);
             } else {
-                $graph = $graphs->for($cnpj, $this->showProbable);
+                $graph = $graphs->for($cnpj, $this->showProbable, $this->showAddress);
                 $beneficiaries = $graphs->beneficialOwners($cnpj);
                 $branches = $graphs->branches($cnpj);
             }
 
             $cyto = $this->toCytoscape($graph);
+
+            // Vizinhos de endereço (alvos de aresta 'endereco') contam à parte;
+            // o "grupo econômico" exclui esses para não inflar a contagem.
+            $addressIds = [];
+            foreach ($graph->edges as $edge) {
+                if ($edge->relation === 'endereco') {
+                    $addressIds[$edge->to] = true;
+                }
+            }
+            $addressCount = count($addressIds);
+
             $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio') && $n->id !== $graph->center));
-            $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center));
+            $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center && ! isset($addressIds[$n->id])));
 
             $center = array_values(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->id === $graph->center));
             $focusLabel = $center !== [] ? $center[0]->label : null;
@@ -172,12 +199,14 @@ class Graph extends Component
             'cyto' => $cyto,
             'partnerCount' => $partnerCount,
             'groupCount' => $groupCount,
+            'addressCount' => $addressCount,
             'beneficiaries' => $beneficiaries,
             'branches' => $branches,
             'focused' => $focused,
             'focusLabel' => $focusLabel,
             'personMode' => $personMode,
             'showProbable' => $this->showProbable,
+            'showAddress' => $this->showAddress,
         ];
     }
 
@@ -211,7 +240,7 @@ class Graph extends Component
 
         $edges = [];
         foreach ($graph->edges as $i => $edge) {
-            $edges[] = ['data' => ['id' => 'e'.$i, 'source' => $edge->from, 'target' => $edge->to, 'probable' => $edge->probable]];
+            $edges[] = ['data' => ['id' => 'e'.$i, 'source' => $edge->from, 'target' => $edge->to, 'probable' => $edge->probable, 'type' => $edge->relation]];
         }
 
         return ['nodes' => $nodes, 'edges' => $edges, 'center' => $graph->center];

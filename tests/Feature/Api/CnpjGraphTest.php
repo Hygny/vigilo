@@ -32,6 +32,8 @@ function seedGraphCenterBase(): void
         $t->string('cnpj_dv');
         $t->string('situacao_cadastral')->nullable();
         $t->string('nome_fantasia')->nullable();
+        $t->string('cep')->nullable();
+        $t->string('numero')->nullable();
         $t->string('municipio')->nullable();
         $t->string('uf')->nullable();
     });
