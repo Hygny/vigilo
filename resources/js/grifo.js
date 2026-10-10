@@ -29,15 +29,23 @@ function themeColors() {
     };
 }
 
-function fillFor(ele, c, highlightNegative) {
+function fillFor(ele, c) {
     if (ele.data('role') === 'person') {
         return c.person;
     }
     const situacao = ele.data('situacao');
-    if (highlightNegative && situacao && NEGATIVE.includes(situacao)) {
+    if (situacao && NEGATIVE.includes(situacao)) {
         return c.negative;
     }
     return c.company;
+}
+
+// Um nó de empresa com situação negativa (que NÃO é o centro) — candidato a ser
+// filtrado para fora do canvas pelo toggle "Mostrar situação negativa".
+function isNegativeNode(node) {
+    const situacao = node.data('situacao');
+    return !node.data('isCenter') && node.data('role') === 'company'
+        && situacao && NEGATIVE.includes(situacao);
 }
 
 // Formata 14 dígitos como CNPJ (XX.XXX.XXX/XXXX-XX); devolve o original se não for.
@@ -57,12 +65,12 @@ function escapeHtml(value) {
     }[ch]));
 }
 
-function styleSheet(c, highlightNegative = true) {
+function styleSheet(c) {
     return [
         {
             selector: 'node',
             style: {
-                'background-color': (ele) => fillFor(ele, c, highlightNegative),
+                'background-color': (ele) => fillFor(ele, c),
                 label: 'data(label)',
                 color: c.label,
                 'text-valign': 'center',
@@ -80,6 +88,12 @@ function styleSheet(c, highlightNegative = true) {
                 'transition-property': 'background-color, border-width',
                 'transition-duration': '150ms',
             },
+        },
+        {
+            // Nó filtrado para fora do canvas (situação negativa, toggle off):
+            // display:none tira do layout e esconde também as arestas ligadas.
+            selector: 'node.is-hidden',
+            style: { display: 'none' },
         },
         {
             selector: 'edge',
@@ -132,13 +146,13 @@ function layoutOptions() {
 }
 
 export default function registerGrifo() {
-    const define = (Alpine) => Alpine.data('grifo', (initial, highlightNegative = true) => ({
+    const define = (Alpine) => Alpine.data('grifo', (initial, showNegative = true) => ({
             cy: null,
             observer: null,
             onResize: null,
             tip: null,
             expanded: false,
-            highlightNegative: highlightNegative !== false,
+            showNegative: showNegative !== false,
 
             init() {
                 // $nextTick: só inicializa o Cytoscape quando o container já tem
@@ -171,7 +185,7 @@ export default function registerGrifo() {
                 this.cy = cytoscape({
                     container: this.$refs.canvas,
                     elements: this.elements(data),
-                    style: styleSheet(themeColors(), this.highlightNegative),
+                    style: styleSheet(themeColors()),
                     layout: layoutOptions(),
                     // Zoom por roda mais rápido/fluido (padrão do Cytoscape é 1;
                     // 0.25 ficava lento demais).
@@ -190,6 +204,9 @@ export default function registerGrifo() {
 
                 // Reajusta/enquadra assim que o primeiro render terminar.
                 this.cy.ready(() => {
+                    // Aplica o filtro de situação negativa (refaz o layout só se já
+                    // começar escondendo) antes de enquadrar.
+                    this.applyNegativeFilter({ relayout: !this.showNegative });
                     this.cy.resize();
                     this.cy.fit(undefined, 40);
                 });
@@ -280,6 +297,9 @@ export default function registerGrifo() {
 
                 this.cy.elements().remove();
                 this.cy.add(this.elements(data));
+                // Marca os negativos antes do layout, para que fiquem fora do
+                // arranjo quando o toggle estiver desligado.
+                this.applyNegativeFilter();
                 this.cy.layout(layoutOptions()).run();
                 this.cy.fit(undefined, 40);
             },
@@ -303,15 +323,37 @@ export default function registerGrifo() {
 
             applyColors() {
                 if (this.cy) {
-                    this.cy.style(styleSheet(themeColors(), this.highlightNegative)).update();
+                    this.cy.style(styleSheet(themeColors())).update();
                 }
             },
 
-            // Liga/desliga o realce vermelho de situação negativa (evento do
-            // Livewire). Só reestiliza — não refaz o layout nem os dados.
+            // Mostra/esconde no canvas as empresas com situação negativa (evento do
+            // Livewire). É filtro de nós — tira as bolas do grafo, como os outros
+            // toggles — não só recolorir. Refaz o layout com o que sobrou.
             setNegative(on) {
-                this.highlightNegative = on !== false;
-                this.applyColors();
+                this.showNegative = on !== false;
+                this.applyNegativeFilter({ relayout: true });
+            },
+
+            // Adiciona/remove a classe que esconde (display:none) os nós negativos
+            // que não são o centro. Com relayout, re-arranja e enquadra o restante.
+            applyNegativeFilter(opts = {}) {
+                if (!this.cy) {
+                    return;
+                }
+
+                const negatives = this.cy.nodes().filter((n) => isNegativeNode(n));
+
+                if (this.showNegative) {
+                    negatives.removeClass('is-hidden');
+                } else {
+                    negatives.addClass('is-hidden');
+                }
+
+                if (opts.relayout) {
+                    this.cy.layout(layoutOptions()).run();
+                    this.cy.fit(undefined, 40);
+                }
             },
 
             zoomIn() {

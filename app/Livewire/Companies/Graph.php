@@ -57,9 +57,10 @@ class Graph extends Component
     public bool $showAddress = false;
 
     /**
-     * Destacar em vermelho as empresas com **situação cadastral negativa**
-     * (baixada/inapta/suspensa/nula). On por padrão — é um realce só visual no
-     * canvas (não muda os dados do grafo).
+     * Exibir no canvas as empresas com **situação cadastral negativa**
+     * (baixada/inapta/suspensa/nula). On por padrão — quando desligado, o canvas
+     * remove esses nós (menos o centro); é filtro só visual, não muda os dados
+     * do grafo nem o relatório de ligações.
      */
     public bool $showNegative = true;
 
@@ -136,8 +137,9 @@ class Graph extends Component
     }
 
     /**
-     * Liga/desliga o realce vermelho das empresas com situação negativa. É só
-     * visual (não rebuilda o grafo): avisa o canvas por evento, que reestiliza.
+     * Liga/desliga a exibição das empresas com situação negativa: avisa o canvas
+     * por evento, que remove/recoloca esses nós (filtro client-side). Não
+     * rebuilda o grafo nem reconsulta a base.
      */
     public function toggleNegative(): void
     {

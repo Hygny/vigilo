@@ -98,9 +98,7 @@
                 <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 {{ $personMode ? 'border-t border-line pt-3' : '' }} text-[12.5px] text-ink-2">
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-company);"></span>Empresa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
-                    @if ($showNegative)
-                        <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
-                    @endif
+                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
                     @if (! $personMode && $showProbable)
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Conexão por sócio PF (CPF mascarado)</span>

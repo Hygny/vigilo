@@ -287,7 +287,7 @@ it('builds the copy text grouped by link type in pt-BR', function () {
         });
 });
 
-it('toggles the negative-situation highlight on the canvas', function () {
+it('toggles the negative-situation companies on the canvas', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
