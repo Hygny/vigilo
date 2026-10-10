@@ -48,9 +48,17 @@
 
         {{-- Seleção múltipla + ações em lote --}}
         @if ($selectableIds !== [])
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[12px] border border-line bg-surface px-4 py-3 shadow-card">
+            <div x-data="{}" class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[12px] border border-line bg-surface px-4 py-3 shadow-card">
                 <label class="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-2">
+                    {{-- .checked/.indeterminate vêm do estado real (wire:selected),
+                         não do atributo HTML — o morph do Livewire não atualiza a
+                         propriedade de um checkbox fora de wire:model, então ele
+                         ficava "preso" marcado após uma ação em lote. --}}
                     <input type="checkbox" wire:click="toggleSelectAll" @checked($allSelected)
+                           x-effect="
+                               $el.checked = $wire.selected.length === {{ count($selectableIds) }};
+                               $el.indeterminate = $wire.selected.length > 0 && $wire.selected.length < {{ count($selectableIds) }};
+                           "
                            class="h-4 w-4 rounded border-line-strong bg-surface-2 text-primary focus:ring-focus cursor-pointer">
                     Selecionar todos ({{ count($selectableIds) }})
                 </label>
