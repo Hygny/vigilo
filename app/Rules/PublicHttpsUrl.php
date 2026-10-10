@@ -12,6 +12,10 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * host público — bloqueia localhost e literais de IP privado/reservado, que
  * seriam um vetor de SSRF (sondar a rede interna do VPS a partir de um tenant).
  *
+ * Além do IP literal pontuado, barra as formas numéricas de IPv4 que o
+ * `FILTER_VALIDATE_IP` não reconhece mas o resolvedor do SO interpreta como IP
+ * (decimal "2130706433", octal "0177.0.0.1", hex "0x7f.0.0.1", curtas "127.1").
+ *
  * Resíduo conhecido (débito): um hostname que RESOLVE para um IP privado, e
  * faixas IPv6 além do literal, não são barrados aqui (exigiria resolução de DNS
  * no momento do envio). Ver docs/debito-tecnico.md.
@@ -40,8 +44,9 @@ final class PublicHttpsUrl implements ValidationRule
     private static function isPublicHost(string $host): bool
     {
         $host = strtolower(trim($host, '[]')); // remove colchetes de IPv6
+        $host = rtrim($host, '.');             // normaliza FQDN com ponto final
 
-        if (in_array($host, ['localhost', '0.0.0.0'], true)) {
+        if ($host === '' || in_array($host, ['localhost', '0.0.0.0'], true)) {
             return false;
         }
 
@@ -50,6 +55,25 @@ final class PublicHttpsUrl implements ValidationRule
             return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
         }
 
+        // IPv4 disfarçado de hostname (decimal/octal/hex/curto): o
+        // FILTER_VALIDATE_IP não o reconhece, mas o resolvedor sim → SSRF. Um
+        // hostname DNS real tem rótulo alfabético; se TODOS os rótulos forem
+        // numéricos (dec/oct/hex), é um IP disfarçado.
+        if (self::isAllNumericLabels($host)) {
+            return false;
+        }
+
         return true; // hostname comum
+    }
+
+    private static function isAllNumericLabels(string $host): bool
+    {
+        foreach (explode('.', $host) as $label) {
+            if (preg_match('/^(0x[0-9a-f]+|[0-9]+)$/', $label) !== 1) {
+                return false; // rótulo não-numérico → hostname de verdade
+            }
+        }
+
+        return true;
     }
 }
