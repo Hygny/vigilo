@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Support\LastAdminGuard;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -77,9 +78,7 @@ class Users extends Component
         $target = $this->orgUsers()->findOrFail($userId);
 
         DB::transaction(function () use ($target, $newRole): void {
-            // Reconta os admins DENTRO da transação, travando as linhas: evita que
-            // dois rebaixamentos concorrentes zerem o último administrador (TOCTOU).
-            if ($target->isAdmin() && $newRole !== Role::Admin && $this->lockedAdminCount() <= 1) {
+            if (LastAdminGuard::wouldOrphan($this->orgUsers(), $target, $newRole !== Role::Admin)) {
                 $this->addError('role', 'A organização precisa de ao menos um administrador.');
 
                 return;
@@ -105,7 +104,7 @@ class Users extends Component
         }
 
         DB::transaction(function () use ($target): void {
-            if ($target->isAdmin() && $this->lockedAdminCount() <= 1) {
+            if (LastAdminGuard::wouldOrphan($this->orgUsers(), $target, true)) {
                 $this->addError('delete', 'A organização precisa de ao menos um administrador.');
 
                 return;
@@ -137,11 +136,5 @@ class Users extends Component
     private function orgUsers(): Builder
     {
         return User::query()->where('organization_id', $this->currentUser()->organization_id);
-    }
-
-    /** Admins da org, contados com lock (dentro de transação) — guarda TOCTOU. */
-    private function lockedAdminCount(): int
-    {
-        return (int) $this->orgUsers()->where('role', Role::Admin->value)->lockForUpdate()->count();
     }
 }

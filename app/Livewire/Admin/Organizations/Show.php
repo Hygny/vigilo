@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\Asaas\Exceptions\AsaasException;
 use App\Services\Billing\SubscriptionService;
+use App\Support\LastAdminGuard;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -98,9 +99,9 @@ class Show extends Component
         $target = $this->organization->users()->findOrFail($userId);
 
         DB::transaction(function () use ($target, $newRole): void {
-            // Reconta os admins DENTRO da transação, travando as linhas: evita que
-            // dois rebaixamentos concorrentes zerem o último administrador (TOCTOU).
-            if ($target->isAdmin() && $newRole !== Role::Admin && $this->lockedAdminCount() <= 1) {
+            $orgUsers = User::query()->where('organization_id', $this->organization->id);
+
+            if (LastAdminGuard::wouldOrphan($orgUsers, $target, $newRole !== Role::Admin)) {
                 $this->addError('role', 'A organização precisa de ao menos um administrador.');
 
                 return;
@@ -162,12 +163,6 @@ class Show extends Component
             'plans' => Plan::cases(),
             'maxCompanies' => $this->organization->maxMonitoredCompanies(),
         ]);
-    }
-
-    /** Admins da org, contados com lock (dentro de transação) — guarda TOCTOU. */
-    private function lockedAdminCount(): int
-    {
-        return (int) $this->organization->users()->where('role', Role::Admin->value)->lockForUpdate()->count();
     }
 
     private function currentUser(): User
