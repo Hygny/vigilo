@@ -130,6 +130,49 @@ it('does not flag a partner whose name changed but document stayed the same', fu
     expect(diffOf($previous, $current))->toBe([]);
 });
 
+it('does not flag a partner whose document appeared between dumps (same name)', function () {
+    // Sócio PF: no 1º dump sem documento, no 2º com o CPF mascarado. Mesma pessoa.
+    $previous = snap([], [['nome' => 'MARIA SOUZA', 'documento' => null]]);
+    $current = snap([], [['nome' => 'MARIA SOUZA', 'documento' => '***123456**']]);
+
+    expect(diffOf($previous, $current))->toBe([]);
+});
+
+it('does not flag a partner whose document disappeared between dumps (same name)', function () {
+    $previous = snap([], [['nome' => 'MARIA SOUZA', 'documento' => '***123456**']]);
+    $current = snap([], [['nome' => 'MARIA SOUZA', 'documento' => null]]);
+
+    expect(diffOf($previous, $current))->toBe([]);
+});
+
+it('matches a partner by name ignoring accents and case', function () {
+    $previous = snap([], [['nome' => 'JOÃO DA SILVA', 'documento' => null]]);
+    $current = snap([], [['nome' => 'joao da silva', 'documento' => null]]);
+
+    expect(diffOf($previous, $current))->toBe([]);
+});
+
+it('detects a real removal even when another partner shares the masked document', function () {
+    // Dois sócios distintos com o MESMO CPF mascarado; um sai. O nome distingue.
+    $previous = snap([], [
+        ['nome' => 'ANA', 'documento' => '***111222**'],
+        ['nome' => 'BRUNO', 'documento' => '***111222**'],
+    ]);
+    $current = snap([], [
+        ['nome' => 'ANA', 'documento' => '***111222**'],
+    ]);
+
+    $events = diffOf($previous, $current);
+
+    expect($events)->toHaveCount(1)
+        ->and($events[0]->type)->toBe(ChangeType::PartnerRemoved)
+        ->and($events[0]->oldValue)->toBe('BRUNO');
+});
+
+it('does not flag a name-only case change (razao_social)', function () {
+    expect(diffOf(snap(['razao_social' => 'ACME LTDA']), snap(['razao_social' => 'Acme Ltda'])))->toBe([]);
+});
+
 it('keys partners without a document by name', function () {
     $previous = snap([], [['nome' => 'FULANO', 'documento' => null]]);
     $current = snap([], [['nome' => 'BELTRANO', 'documento' => null]]);
