@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\WebhookDelivery;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -15,4 +16,10 @@ Artisan::command('inspire', function () {
 Schedule::command('portfolios:run-scheduled')
     ->dailyAt('03:00')
     ->name('vigilo-portfolio-schedules')
+    ->withoutOverlapping();
+
+// Poda o log append-only de entregas de webhook (retenção em config/webhook.php).
+Schedule::command('model:prune', ['--model' => [WebhookDelivery::class]])
+    ->dailyAt('03:30')
+    ->name('vigilo-prune-webhook-deliveries')
     ->withoutOverlapping();

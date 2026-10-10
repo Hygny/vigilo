@@ -70,6 +70,18 @@ it('throws on a non-2xx response so the job retries', function () {
         ->toThrow(RequestException::class);
 });
 
+it('fails permanently (no retry) when the destination resolves to a private IP', function () {
+    config()->set('webhook.verify_destination_ip', true);
+    Http::fake();
+    $org = Organization::factory()->create();
+    $org->forceFill(['webhook_url' => 'https://127.0.0.1/hook', 'webhook_secret' => 'segredo-super-secreto-123'])->save();
+
+    // Não propaga a exceção (erro permanente → fail(), sem retry) nem chega a enviar.
+    (new SendWebhookNotification($org->id, samplePayload()))->handle(app(WebhookSender::class));
+
+    Http::assertNothingSent();
+});
+
 it('records a failed delivery on final failure', function () {
     $org = webhookOrg();
     $exception = new RequestException(new ClientResponse(new PsrResponse(500, [], 'erro')));

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\Organization;
+use App\Services\Webhooks\Exceptions\BlockedWebhookDestination;
 use App\Services\Webhooks\WebhookSender;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -40,11 +41,18 @@ class SendWebhookNotification implements ShouldQueue
             return;
         }
 
-        $response = $sender->send(
-            (string) $organization->webhook_url,
-            (string) $organization->webhook_secret,
-            $this->payload,
-        );
+        try {
+            $response = $sender->send(
+                (string) $organization->webhook_url,
+                (string) $organization->webhook_secret,
+                $this->payload,
+            );
+        } catch (BlockedWebhookDestination $e) {
+            // Destino privado/inválido é erro PERMANENTE — não adianta re-tentar.
+            $this->fail($e);
+
+            return;
+        }
 
         // Status não-2xx lança RequestException → reenfileira (ou cai em failed()).
         $response->throw();

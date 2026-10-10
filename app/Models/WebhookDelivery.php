@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
@@ -25,6 +27,8 @@ use Illuminate\Support\Carbon;
  */
 final class WebhookDelivery extends Model
 {
+    use Prunable;
+
     public const UPDATED_AT = null;
 
     /** @var list<string> */
@@ -42,6 +46,19 @@ final class WebhookDelivery extends Model
     public function isSuccess(): bool
     {
         return $this->status === 'success';
+    }
+
+    /**
+     * Log append-only: poda entregas mais antigas que a retenção configurada
+     * (agendada via `model:prune` em routes/console.php).
+     *
+     * @return Builder<WebhookDelivery>
+     */
+    public function prunable(): Builder
+    {
+        $days = max(1, (int) config('webhook.deliveries_retention_days', 90));
+
+        return self::query()->where('created_at', '<', Carbon::now()->subDays($days));
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Rules\PublicHttpsUrl;
 use App\Services\Webhooks\WebhookSender;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -88,6 +89,17 @@ class Index extends Component
     {
         $user = $this->currentUser();
         abort_unless($user->isAdmin(), 403);
+
+        // O teste é um POST síncrono; limita para não prender o worker em flood.
+        $key = 'webhook-test:'.$user->getKey();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $this->addError('webhookUrl', 'Muitos testes em sequência. Aguarde um instante e tente de novo.');
+
+            return;
+        }
+
+        RateLimiter::hit($key, 60);
 
         $organization = $user->organization;
 

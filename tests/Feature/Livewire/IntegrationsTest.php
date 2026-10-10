@@ -81,6 +81,22 @@ it('sends a signed test delivery', function () {
     expect(WebhookDelivery::query()->where('organization_id', $admin->organization->id)->where('event_type', 'test')->where('status', 'success')->count())->toBe(1);
 });
 
+it('rate-limits the test delivery to curb flooding', function () {
+    Http::fake(['https://consumidor.test/*' => Http::response('', 200)]);
+    $admin = User::factory()->admin()->create();
+    $admin->organization->forceFill(['webhook_url' => 'https://consumidor.test/hook', 'webhook_secret' => 'segredo-super-secreto'])->save();
+
+    $component = Livewire::actingAs($admin)->test(Index::class);
+
+    for ($i = 0; $i < 5; $i++) {
+        $component->call('sendTest')->assertHasNoErrors();
+    }
+
+    $component->call('sendTest')->assertHasErrors('webhookUrl'); // 6ª bloqueada
+
+    expect(WebhookDelivery::query()->where('organization_id', $admin->organization->id)->count())->toBe(5);
+});
+
 it('rejects a non-https webhook url', function () {
     $admin = User::factory()->admin()->create();
 

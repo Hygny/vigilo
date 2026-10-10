@@ -41,7 +41,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 // Webhook de pagamento do Asaas: público (sem sessão), autenticado pelo token no
 // header. Fica fora do grupo auth e é isento de CSRF (ver bootstrap/app.php).
-Route::post('webhooks/asaas', AsaasWebhookController::class)->name('webhooks.asaas');
+Route::post('webhooks/asaas', AsaasWebhookController::class)->name('webhooks.asaas')->middleware('throttle:120,1');
 
 Route::view('profile', 'profile')
     ->middleware(['auth'])
