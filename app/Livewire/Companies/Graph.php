@@ -56,6 +56,13 @@ class Graph extends Component
      */
     public bool $showAddress = false;
 
+    /**
+     * Destacar em vermelho as empresas com **situação cadastral negativa**
+     * (baixada/inapta/suspensa/nula). On por padrão — é um realce só visual no
+     * canvas (não muda os dados do grafo).
+     */
+    public bool $showNegative = true;
+
     /** @var array<string, mixed>|null Cache do grafo por request (ação + render). */
     private ?array $graphCache = null;
 
@@ -126,6 +133,16 @@ class Graph extends Component
     {
         $this->showAddress = ! $this->showAddress;
         $this->emitGraph($graphs);
+    }
+
+    /**
+     * Liga/desliga o realce vermelho das empresas com situação negativa. É só
+     * visual (não rebuilda o grafo): avisa o canvas por evento, que reestiliza.
+     */
+    public function toggleNegative(): void
+    {
+        $this->showNegative = ! $this->showNegative;
+        $this->dispatch('grifo-negative', on: $this->showNegative);
     }
 
     public function render(OwnershipGraphService $graphs): View
@@ -236,6 +253,7 @@ class Graph extends Component
             'personMode' => $personMode,
             'showProbable' => $this->showProbable,
             'showAddress' => $this->showAddress,
+            'showNegative' => $this->showNegative,
         ];
     }
 

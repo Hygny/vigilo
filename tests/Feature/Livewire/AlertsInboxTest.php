@@ -112,6 +112,28 @@ it('cannot triage an alert from another organization', function () {
     expect($foreignEvent->fresh()->triage_status)->toBe(TriageStatus::Novo);
 });
 
+it('links a case alert straight to the company graph', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $company = ownedCompany($user);
+    ChangeEvent::factory()->for($company, 'monitoredCompany')->create([
+        'triage_status' => TriageStatus::Caso,
+    ]);
+
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->call('setTriage', 'casos')
+        ->assertSee('Ver no grafo')
+        ->assertSeeHtml(route('companies.graph', $company));
+});
+
+it('does not show the graph link for a non-case alert', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $company = ownedCompany($user);
+    ChangeEvent::factory()->for($company, 'monitoredCompany')->create(); // Novo (padrão)
+
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->assertDontSee('Ver no grafo');
+});
+
 it('filters alerts by severity', function () {
     $user = User::factory()->for(Organization::factory())->create();
     $company = ownedCompany($user);

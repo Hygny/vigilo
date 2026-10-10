@@ -287,6 +287,21 @@ it('builds the copy text grouped by link type in pt-BR', function () {
         });
 });
 
+it('toggles the negative-situation highlight on the canvas', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertSet('showNegative', true)
+        ->assertSee('Ocultar situação negativa')
+        ->call('toggleNegative')
+        ->assertSet('showNegative', false)
+        ->assertSee('Mostrar situação negativa')
+        ->assertDispatched('grifo-negative', on: false);
+});
+
 it('shows an unavailable notice when the CNPJ base is down', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

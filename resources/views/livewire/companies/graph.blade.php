@@ -42,7 +42,7 @@
             <x-ui.card class="p-3 sm:p-4">
                 {{-- Canvas do grafo (Cytoscape). wire:ignore: o Livewire não mexe no
                      canvas; atualizações chegam pelo evento grifo-update. --}}
-                <div wire:ignore x-data="grifo(@js($cyto))" @grifo-update.window="refresh($event.detail.graph)" class="relative">
+                <div wire:ignore x-data="grifo(@js($cyto), @js($showNegative))" @grifo-update.window="refresh($event.detail.graph)" @grifo-negative.window="setNegative($event.detail.on)" class="relative">
                     <div x-ref="canvas" class="w-full rounded-[12px] bg-surface-2" style="height: 560px;" :style="{ height: expanded ? '80vh' : '560px' }"></div>
 
                     {{-- Controles de zoom / expandir (só o grafo) --}}
@@ -79,6 +79,15 @@
                             <x-ui.icon name="location_on" :size="15" />
                             {{ $showAddress ? 'Ocultar empresas no mesmo endereço' : 'Mostrar empresas no mesmo endereço' }}
                         </button>
+                        <button type="button" wire:click="toggleNegative"
+                                @class([
+                                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors cursor-pointer',
+                                    'border-primary bg-primary-soft text-accent' => $showNegative,
+                                    'border-line-strong bg-surface text-ink-2 hover:bg-surface-2' => ! $showNegative,
+                                ])>
+                            <x-ui.icon name="warning" :size="15" />
+                            {{ $showNegative ? 'Ocultar situação negativa' : 'Mostrar situação negativa' }}
+                        </button>
                     </div>
                     <p class="mt-2 text-[12px] text-ink-muted">
                         <span class="font-medium">Sócio PF</span>: ligações por CPF mascarado (menor certeza). <span class="font-medium">Mesmo endereço</span>: empresas no mesmo CEP + número. Ambas ocultas por padrão.
@@ -89,7 +98,9 @@
                 <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 {{ $personMode ? 'border-t border-line pt-3' : '' }} text-[12.5px] text-ink-2">
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-company);"></span>Empresa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
+                    @if ($showNegative)
+                        <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
+                    @endif
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
                     @if (! $personMode && $showProbable)
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Conexão por sócio PF (CPF mascarado)</span>

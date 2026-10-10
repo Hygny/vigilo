@@ -144,6 +144,12 @@
                                     <x-ui.icon name="block" :size="18" />
                                 </button>
                             @else
+                                @if ($st === TriageStatus::Caso)
+                                    <a href="{{ route('companies.graph', $event->monitoredCompany) }}" wire:navigate title="Ver no grafo"
+                                       class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-accent transition-colors hover:bg-primary-soft cursor-pointer">
+                                        <x-ui.icon name="hub" :size="18" />
+                                    </a>
+                                @endif
                                 <button wire:click="reopen({{ $event->id }})" title="Reabrir"
                                         class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-ink-2 transition-colors hover:bg-surface-2 cursor-pointer">
                                     <x-ui.icon name="undo" :size="18" />

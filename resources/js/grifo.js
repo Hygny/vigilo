@@ -29,12 +29,12 @@ function themeColors() {
     };
 }
 
-function fillFor(ele, c) {
+function fillFor(ele, c, highlightNegative) {
     if (ele.data('role') === 'person') {
         return c.person;
     }
     const situacao = ele.data('situacao');
-    if (situacao && NEGATIVE.includes(situacao)) {
+    if (highlightNegative && situacao && NEGATIVE.includes(situacao)) {
         return c.negative;
     }
     return c.company;
@@ -57,12 +57,12 @@ function escapeHtml(value) {
     }[ch]));
 }
 
-function styleSheet(c) {
+function styleSheet(c, highlightNegative = true) {
     return [
         {
             selector: 'node',
             style: {
-                'background-color': (ele) => fillFor(ele, c),
+                'background-color': (ele) => fillFor(ele, c, highlightNegative),
                 label: 'data(label)',
                 color: c.label,
                 'text-valign': 'center',
@@ -132,12 +132,13 @@ function layoutOptions() {
 }
 
 export default function registerGrifo() {
-    const define = (Alpine) => Alpine.data('grifo', (initial) => ({
+    const define = (Alpine) => Alpine.data('grifo', (initial, highlightNegative = true) => ({
             cy: null,
             observer: null,
             onResize: null,
             tip: null,
             expanded: false,
+            highlightNegative: highlightNegative !== false,
 
             init() {
                 // $nextTick: só inicializa o Cytoscape quando o container já tem
@@ -170,7 +171,7 @@ export default function registerGrifo() {
                 this.cy = cytoscape({
                     container: this.$refs.canvas,
                     elements: this.elements(data),
-                    style: styleSheet(themeColors()),
+                    style: styleSheet(themeColors(), this.highlightNegative),
                     layout: layoutOptions(),
                     // Zoom por roda mais rápido/fluido (padrão do Cytoscape é 1;
                     // 0.25 ficava lento demais).
@@ -302,8 +303,15 @@ export default function registerGrifo() {
 
             applyColors() {
                 if (this.cy) {
-                    this.cy.style(styleSheet(themeColors())).update();
+                    this.cy.style(styleSheet(themeColors(), this.highlightNegative)).update();
                 }
+            },
+
+            // Liga/desliga o realce vermelho de situação negativa (evento do
+            // Livewire). Só reestiliza — não refaz o layout nem os dados.
+            setNegative(on) {
+                this.highlightNegative = on !== false;
+                this.applyColors();
             },
 
             zoomIn() {
