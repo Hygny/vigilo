@@ -8,6 +8,7 @@ use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -75,15 +76,19 @@ class Users extends Component
 
         $target = $this->orgUsers()->findOrFail($userId);
 
-        // Nunca deixar a organização sem administrador.
-        if ($target->isAdmin() && $newRole !== Role::Admin && $this->adminCount() <= 1) {
-            $this->addError('role', 'A organização precisa de ao menos um administrador.');
+        DB::transaction(function () use ($target, $newRole): void {
+            // Reconta os admins DENTRO da transação, travando as linhas: evita que
+            // dois rebaixamentos concorrentes zerem o último administrador (TOCTOU).
+            if ($target->isAdmin() && $newRole !== Role::Admin && $this->lockedAdminCount() <= 1) {
+                $this->addError('role', 'A organização precisa de ao menos um administrador.');
 
-            return;
-        }
+                return;
+            }
 
-        $target->update(['role' => $newRole]);
-        session()->flash('status', 'Papel atualizado.');
+            // role está fora do #[Fillable] → atribuição explícita via forceFill.
+            $target->forceFill(['role' => $newRole])->save();
+            session()->flash('status', 'Papel atualizado.');
+        });
     }
 
     public function deleteUser(int $userId): void
@@ -99,14 +104,16 @@ class Users extends Component
             return;
         }
 
-        if ($target->isAdmin() && $this->adminCount() <= 1) {
-            $this->addError('delete', 'A organização precisa de ao menos um administrador.');
+        DB::transaction(function () use ($target): void {
+            if ($target->isAdmin() && $this->lockedAdminCount() <= 1) {
+                $this->addError('delete', 'A organização precisa de ao menos um administrador.');
 
-            return;
-        }
+                return;
+            }
 
-        $target->delete();
-        session()->flash('status', 'Usuário removido.');
+            $target->delete();
+            session()->flash('status', 'Usuário removido.');
+        });
     }
 
     public function render(): View
@@ -132,8 +139,9 @@ class Users extends Component
         return User::query()->where('organization_id', $this->currentUser()->organization_id);
     }
 
-    private function adminCount(): int
+    /** Admins da org, contados com lock (dentro de transação) — guarda TOCTOU. */
+    private function lockedAdminCount(): int
     {
-        return (int) $this->orgUsers()->where('role', Role::Admin->value)->count();
+        return (int) $this->orgUsers()->where('role', Role::Admin->value)->lockForUpdate()->count();
     }
 }

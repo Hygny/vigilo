@@ -14,6 +14,7 @@ use App\Services\Billing\SubscriptionService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -96,15 +97,19 @@ class Show extends Component
         /** @var User $target */
         $target = $this->organization->users()->findOrFail($userId);
 
-        // Nunca deixar a organização sem administrador.
-        if ($target->isAdmin() && $newRole !== Role::Admin && $this->adminCount() <= 1) {
-            $this->addError('role', 'A organização precisa de ao menos um administrador.');
+        DB::transaction(function () use ($target, $newRole): void {
+            // Reconta os admins DENTRO da transação, travando as linhas: evita que
+            // dois rebaixamentos concorrentes zerem o último administrador (TOCTOU).
+            if ($target->isAdmin() && $newRole !== Role::Admin && $this->lockedAdminCount() <= 1) {
+                $this->addError('role', 'A organização precisa de ao menos um administrador.');
 
-            return;
-        }
+                return;
+            }
 
-        $target->update(['role' => $newRole]);
-        session()->flash('status', 'Papel atualizado.');
+            // role está fora do #[Fillable] → atribuição explícita via forceFill.
+            $target->forceFill(['role' => $newRole])->save();
+            session()->flash('status', 'Papel atualizado.');
+        });
     }
 
     /**
@@ -159,9 +164,10 @@ class Show extends Component
         ]);
     }
 
-    private function adminCount(): int
+    /** Admins da org, contados com lock (dentro de transação) — guarda TOCTOU. */
+    private function lockedAdminCount(): int
     {
-        return $this->organization->users()->where('role', Role::Admin->value)->count();
+        return (int) $this->organization->users()->where('role', Role::Admin->value)->lockForUpdate()->count();
     }
 
     private function currentUser(): User

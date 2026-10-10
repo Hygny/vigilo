@@ -25,23 +25,25 @@ class DatabaseSeeder extends Seeder
     {
         $organization = Organization::create(['name' => 'Vigilo Demo']);
 
-        User::create([
+        // organization_id/role/email_verified_at ficam fora do #[Fillable] →
+        // forceFill (mass assignment os descartaria em silêncio).
+        (new User)->forceFill([
             'name' => 'Demo Vigilo',
             'email' => 'demo@vigilo.test',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
             'organization_id' => $organization->id,
             'role' => Role::Admin,
-        ]);
+        ])->save();
 
-        User::create([
+        (new User)->forceFill([
             'name' => 'Analista Demo',
             'email' => 'analista@vigilo.test',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
             'organization_id' => $organization->id,
             'role' => Role::User,
-        ]);
+        ])->save();
 
         // Super-admin da plataforma (dono) — sem organização, opera no /admin.
         // is_super_admin fica fora do #[Fillable], então usamos forceFill.

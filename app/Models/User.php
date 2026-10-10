@@ -30,7 +30,10 @@ use Laravel\Sanctum\HasApiTokens;
  * @property Carbon|null $updated_at
  * @property-read Organization|null $organization
  */
-#[Fillable(['name', 'email', 'password', 'organization_id', 'role'])]
+// organization_id e role ficam FORA do fillable: são atribuídos server-side via
+// forceFill (createUser/setRole), nunca por mass assignment — um fluxo futuro de
+// convite/registro descuidado não auto-atribui tenant nem papel (escalonamento).
+#[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
