@@ -10,6 +10,7 @@ use App\Enums\Severity;
 use App\Models\CompanyPartner;
 use App\Models\CompanySnapshot;
 use App\Support\NomeSocio;
+use App\Support\SituacaoCadastral;
 
 /**
  * The heart of Vigilo: a pure function that compares two snapshots of a
@@ -21,11 +22,6 @@ use App\Support\NomeSocio;
  */
 final class CompanyDiffer
 {
-    /**
-     * Cadastral statuses that represent a degradation and warrant a critical alert.
-     */
-    private const NEGATIVE_SITUACOES = ['BAIXADA', 'INAPTA', 'SUSPENSA', 'NULA'];
-
     /**
      * @return list<ChangeEventData>
      */
@@ -228,7 +224,8 @@ final class CompanyDiffer
 
     private function isNegativeSituacao(string $situacao): bool
     {
-        return in_array(mb_strtoupper(trim($situacao)), self::NEGATIVE_SITUACOES, true);
+        // Fonte única do conjunto negativo (derivado do mapa da Receita).
+        return SituacaoCadastral::isNegative($situacao);
     }
 
     private function normalize(?string $value): ?string

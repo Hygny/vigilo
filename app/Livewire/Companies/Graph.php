@@ -12,6 +12,7 @@ use App\Models\MonitoredCompany;
 use App\Services\Export\GraphConnectionsExport;
 use App\Services\Graph\OwnershipGraphService;
 use App\Support\Cnpj;
+use App\Support\SituacaoCadastral;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Carbon;
@@ -273,10 +274,17 @@ class Graph extends Component
                     $addressIds[$edge->to] = true;
                 }
             }
-            $addressCount = count($addressIds);
+
+            // Empresa visível no canvas: com o filtro "situação negativa" desligado,
+            // os nós negativos somem (client-side) — as contagens do cabeçalho
+            // acompanham para não divergir do que aparece.
+            $visibleEmpresa = fn (GraphNode $n): bool => $this->showNegative
+                || $n->id === $graph->center
+                || ! SituacaoCadastral::isNegative($n->situacao);
 
             $partnerCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => str_starts_with($n->type, 'socio') && $n->id !== $graph->center));
-            $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center && ! isset($addressIds[$n->id])));
+            $addressCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && isset($addressIds[$n->id]) && $visibleEmpresa($n)));
+            $groupCount = count(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->type === 'empresa' && $n->id !== $graph->center && ! isset($addressIds[$n->id]) && $visibleEmpresa($n)));
 
             $center = array_values(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->id === $graph->center));
             $focusLabel = $center !== [] ? $center[0]->label : null;
@@ -304,6 +312,7 @@ class Graph extends Component
             'showProbable' => $this->showProbable,
             'showAddress' => $this->showAddress,
             'showNegative' => $this->showNegative,
+            'negativeLabels' => SituacaoCadastral::negativeLabels(),
         ];
     }
 

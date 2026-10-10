@@ -13,8 +13,10 @@ namespace App\Support;
 final class SituacaoCadastral
 {
     /**
-     * Ao adicionar um código negativo (≠ ATIVA), atualize também o array
-     * `NEGATIVE` em resources/js/grifo.js (pinta o nó de vermelho no grafo).
+     * Código da Receita → rótulo. Tudo exceto ATIVA é "negativo" — o conjunto
+     * negativo é DERIVADO daqui ({@see negativeLabels()}), inclusive para o
+     * grifo.js (recebe a lista do servidor via @js). Adicionar um código aqui já
+     * propaga para a coloração/filtro do grafo — sem lista duplicada para manter.
      *
      * @var array<string, string>
      */
@@ -39,5 +41,22 @@ final class SituacaoCadastral
     public static function code(string $label): ?string
     {
         return array_flip(self::MAP)[mb_strtoupper(trim($label))] ?? null;
+    }
+
+    /**
+     * Rótulos de situação "negativa" (tudo exceto ATIVA) — fonte única derivada
+     * do MAP. Consumido pelo contador do grafo e exposto ao grifo.js.
+     *
+     * @return list<string>
+     */
+    public static function negativeLabels(): array
+    {
+        return array_values(array_filter(self::MAP, static fn (string $label): bool => $label !== 'ATIVA'));
+    }
+
+    /** O rótulo representa uma situação negativa (baixada/inapta/suspensa/nula)? */
+    public static function isNegative(?string $label): bool
+    {
+        return $label !== null && in_array(mb_strtoupper(trim($label)), self::negativeLabels(), true);
     }
 }

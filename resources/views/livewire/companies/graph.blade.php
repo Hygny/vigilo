@@ -48,7 +48,7 @@
             <x-ui.card class="p-3 sm:p-4">
                 {{-- Canvas do grafo (Cytoscape). wire:ignore: o Livewire não mexe no
                      canvas; atualizações chegam pelo evento grifo-update. --}}
-                <div wire:ignore x-data="grifo(@js($cyto), @js($showNegative))" @grifo-update.window="refresh($event.detail.graph)" @grifo-negative.window="setNegative($event.detail.on)" class="relative">
+                <div wire:ignore x-data="grifo(@js($cyto), @js($showNegative), @js($negativeLabels))" @grifo-update.window="refresh($event.detail.graph)" @grifo-negative.window="setNegative($event.detail.on)" class="relative">
                     <div x-ref="canvas" class="w-full rounded-[12px] bg-surface-2" style="height: 560px;" :style="{ height: expanded ? '80vh' : '560px' }"></div>
 
                     {{-- Controles de zoom / expandir (só o grafo) --}}

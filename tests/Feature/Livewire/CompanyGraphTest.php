@@ -302,6 +302,25 @@ it('toggles the negative-situation companies on the canvas', function () {
         ->assertDispatched('grifo-negative', on: false);
 });
 
+it('excludes negative companies from the header counts when the filter is off', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+
+    // Vizinha de endereço BAIXADA (situação 08).
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '08', 'cep' => '49019900', 'numero' => '100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA BAIXADA']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')                 // mostra as empresas do mesmo endereço
+        ->assertViewHas('addressCount', 1)       // showNegative on (padrão) → conta a baixada
+        ->call('toggleNegative')                 // desliga o realce/filtro de negativas
+        ->assertViewHas('addressCount', 0);      // a baixada some da contagem (e do canvas)
+});
+
 it('shows an unavailable notice when the CNPJ base is down', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
