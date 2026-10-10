@@ -46,12 +46,55 @@
             @endforeach
         </div>
 
+        {{-- Seleção múltipla + ações em lote --}}
+        @if ($selectableIds !== [])
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[12px] border border-line bg-surface px-4 py-3 shadow-card">
+                <label class="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-2">
+                    <input type="checkbox" wire:click="toggleSelectAll" @checked($allSelected)
+                           class="h-4 w-4 rounded border-line-strong bg-surface-2 text-primary focus:ring-focus cursor-pointer">
+                    Selecionar todos ({{ count($selectableIds) }})
+                </label>
+
+                @if ($selectedCount > 0)
+                    <span class="text-[13px] font-semibold text-ink">{{ $selectedCount }} selecionado(s)</span>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <x-ui.button size="sm" variant="secondary" icon="search" wire:click="bulkStartAnalysis">Iniciar análise</x-ui.button>
+                        <x-ui.button size="sm" variant="secondary" icon="flag" wire:click="bulkPromoteToCase">Virar caso</x-ui.button>
+                        <x-ui.button size="sm" variant="danger" icon="block" wire:click="beginBulkDismiss">Descartar</x-ui.button>
+                        <button type="button" wire:click="clearSelection"
+                                class="text-[13px] text-ink-muted underline-offset-2 hover:underline cursor-pointer">Limpar</button>
+                    </div>
+                @endif
+
+                @if ($bulkDismissing)
+                    <div class="w-full border-t border-line pt-3">
+                        <label class="mb-1 block text-[12.5px] font-medium text-ink-2">Motivo do descarte (aplicado a todos os selecionados)</label>
+                        <div class="flex flex-col gap-2 sm:flex-row">
+                            <input type="text" wire:model="bulkDismissReason" wire:keydown.enter="confirmBulkDismiss"
+                                   class="ui-input flex-1" placeholder="Ex.: lote de filiais encerradas" autofocus>
+                            <div class="flex gap-2">
+                                <x-ui.button size="sm" variant="danger" wire:click="confirmBulkDismiss">Descartar {{ $selectedCount }}</x-ui.button>
+                                <x-ui.button size="sm" variant="secondary" wire:click="cancelBulkDismiss">Cancelar</x-ui.button>
+                            </div>
+                        </div>
+                        @error('bulkDismissReason') <span class="mt-1 block text-xs text-danger">{{ $message }}</span> @enderror
+                    </div>
+                @endif
+            </div>
+        @endif
+
         <div class="flex flex-col gap-3">
             @forelse ($events as $event)
                 @php $tone = $event->severity->tone(); $st = $event->triage_status; @endphp
-                <div class="rounded-[14px] border border-line bg-surface p-4 shadow-card sm:px-5"
+                <div wire:key="event-{{ $event->id }}"
+                     class="rounded-[14px] border border-line bg-surface p-4 shadow-card sm:px-5"
                      style="border-left:3px solid var(--{{ $tone }});">
                     <div class="flex items-center gap-4">
+                        @if ($st->isOpen())
+                            <input type="checkbox" value="{{ $event->id }}" wire:model.live="selected"
+                                   aria-label="Selecionar alerta"
+                                   class="h-4 w-4 shrink-0 rounded border-line-strong bg-surface-2 text-primary focus:ring-focus cursor-pointer">
+                        @endif
                         <div class="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[11px]"
                              style="background:var(--{{ $tone }}-soft);color:var(--{{ $tone }});">
                             <x-ui.icon :name="$event->type->icon()" :size="23" />

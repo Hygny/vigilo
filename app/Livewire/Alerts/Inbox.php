@@ -13,6 +13,7 @@ use App\Models\Portfolio;
 use App\Services\Export\AlertsExcelExport;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Layout;
@@ -38,15 +39,30 @@ class Inbox extends Component
 
     public string $dismissReason = '';
 
+    /**
+     * IDs dos alertas marcados para ação em lote. Só alertas "em aberto" são
+     * selecionáveis — as ações em lote sempre avançam a partir do estado aberto.
+     *
+     * @var list<int|string>
+     */
+    public array $selected = [];
+
+    /** Formulário de "descartar em lote" (motivo único) aberto? */
+    public bool $bulkDismissing = false;
+
+    public string $bulkDismissReason = '';
+
     public function setSeverity(string $severity): void
     {
         $this->severity = $severity;
+        $this->clearSelection();
     }
 
     public function setTriage(string $triage): void
     {
         $this->triage = $triage;
         $this->cancelDismiss();
+        $this->clearSelection();
     }
 
     public function startAnalysis(int $id): void
@@ -110,6 +126,75 @@ class Inbox extends Component
         session()->flash('status', 'Alerta descartado.');
     }
 
+    // --- Ações em lote --------------------------------------------------
+
+    /** Marca/desmarca todos os alertas selecionáveis (em aberto) da página. */
+    public function toggleSelectAll(): void
+    {
+        $selectable = $this->openIds($this->visibleEvents());
+        $allSelected = $selectable !== [] && array_diff($selectable, $this->normalizedSelection()) === [];
+
+        $this->selected = $allSelected ? [] : $selectable;
+    }
+
+    public function clearSelection(): void
+    {
+        $this->selected = [];
+        $this->cancelBulkDismiss();
+    }
+
+    public function bulkStartAnalysis(): void
+    {
+        $count = $this->transitionSelected([TriageStatus::Novo->value], TriageStatus::EmAnalise);
+        $this->afterBulk($count, 'movido(s) para "Em análise"');
+    }
+
+    public function bulkPromoteToCase(): void
+    {
+        $count = $this->transitionSelected(TriageStatus::openValues(), TriageStatus::Caso);
+        $this->afterBulk($count, 'marcado(s) como caso');
+    }
+
+    /** Abre o formulário do motivo único para descartar a seleção. */
+    public function beginBulkDismiss(): void
+    {
+        if ($this->selected === []) {
+            return;
+        }
+
+        $this->cancelDismiss(); // fecha o descarte de linha única, se aberto
+        $this->bulkDismissing = true;
+        $this->bulkDismissReason = '';
+        $this->resetErrorBag();
+    }
+
+    public function cancelBulkDismiss(): void
+    {
+        $this->bulkDismissing = false;
+        $this->bulkDismissReason = '';
+        $this->resetErrorBag();
+    }
+
+    public function confirmBulkDismiss(): void
+    {
+        $validated = $this->validate(
+            ['bulkDismissReason' => ['required', 'string', 'min:3', 'max:500']],
+            [
+                'bulkDismissReason.required' => 'Informe o motivo do descarte.',
+                'bulkDismissReason.min' => 'Descreva o motivo (mín. 3 caracteres).',
+                'bulkDismissReason.max' => 'O motivo deve ter no máximo 500 caracteres.',
+            ],
+        );
+
+        $count = $this->transitionSelected(
+            TriageStatus::openValues(),
+            TriageStatus::Descartado,
+            $validated['bulkDismissReason'],
+        );
+
+        $this->afterBulk($count, 'descartado(s)');
+    }
+
     /**
      * Exporta em Excel TODOS os alertas do filtro atual (sem o teto de 100 da
      * listagem). Respeita escopo da organização + filtros de severidade/triagem.
@@ -131,13 +216,18 @@ class Inbox extends Component
 
     public function render(): View
     {
-        $events = $this->filteredEvents()
-            ->with('monitoredCompany')
-            ->orderByDesc('detected_at')
-            ->limit(100)
-            ->get();
+        $events = $this->visibleEvents();
+        $selectableIds = $this->openIds($events);
 
-        return view('livewire.alerts.inbox', ['events' => $events]);
+        $allSelected = $selectableIds !== []
+            && array_diff($selectableIds, $this->normalizedSelection()) === [];
+
+        return view('livewire.alerts.inbox', [
+            'events' => $events,
+            'selectableIds' => $selectableIds,
+            'allSelected' => $allSelected,
+            'selectedCount' => count($this->selected),
+        ]);
     }
 
     private function transition(int $id, TriageStatus $status, bool $clearReason = false): void
@@ -149,6 +239,83 @@ class Inbox extends Component
             'triaged_at' => Carbon::now(),
             'triaged_by_id' => auth()->id(),
         ], $clearReason ? ['triage_reason' => null] : []));
+    }
+
+    /**
+     * Avança os alertas selecionados que estão num dos estados `$from` para
+     * `$to`, num único UPDATE escopado à organização. Retorna quantos mudaram.
+     *
+     * @param  list<string>  $from  valores de TriageStatus elegíveis
+     */
+    private function transitionSelected(array $from, TriageStatus $to, ?string $reason = null): int
+    {
+        $ids = $this->normalizedSelection();
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        $payload = [
+            'triage_status' => $to->value,
+            'triage_reason' => $reason,
+            'triaged_at' => Carbon::now(),
+            'triaged_by_id' => auth()->id(),
+        ];
+
+        return $this->scopedEvents()
+            ->whereIn('id', $ids)
+            ->whereIn('triage_status', $from)
+            ->update($payload);
+    }
+
+    private function afterBulk(int $count, string $suffix): void
+    {
+        $this->clearSelection();
+
+        session()->flash('status', $count === 0
+            ? 'Nenhum alerta elegível na seleção.'
+            : "{$count} alerta(s) {$suffix}.");
+    }
+
+    /**
+     * A página de alertas do filtro atual — fonte única da listagem e da
+     * seleção (o "selecionar todos" deriva daqui, nunca de uma query à parte).
+     *
+     * @return Collection<int, ChangeEvent>
+     */
+    private function visibleEvents(): Collection
+    {
+        return $this->filteredEvents()
+            ->with('monitoredCompany')
+            ->orderByDesc('detected_at')
+            ->limit(100)
+            ->get();
+    }
+
+    /**
+     * IDs dos alertas em aberto (= selecionáveis) dentre os eventos visíveis.
+     *
+     * @param  Collection<int, ChangeEvent>  $events
+     * @return list<int>
+     */
+    private function openIds(Collection $events): array
+    {
+        $ids = $events
+            ->filter(fn (ChangeEvent $e): bool => $e->triage_status->isOpen())
+            ->map(fn (ChangeEvent $e): int => (int) $e->id)
+            ->all();
+
+        return array_values($ids);
+    }
+
+    /**
+     * Seleção atual como lista de inteiros (os checkboxes entregam strings).
+     *
+     * @return list<int>
+     */
+    private function normalizedSelection(): array
+    {
+        return array_map('intval', $this->selected);
     }
 
     private function findAuthorized(int $id): ChangeEvent
