@@ -31,6 +31,9 @@ class Show extends Component
 {
     use AuthorizesRequests, InteractsWithCurrentOrganization, WithFileUploads, WithPagination;
 
+    /** Máximo de linhas rejeitadas enviadas à tela (o total fica em rejected_total). */
+    private const MAX_REPORT_ROWS = 100;
+
     public Portfolio $portfolio;
 
     #[Validate('required|string')]
@@ -43,7 +46,7 @@ class Show extends Component
     public ?TemporaryUploadedFile $csv = null;
 
     /**
-     * @var array{imported: int, rejected: list<array{line: int, value: string, reason: string}>}|null
+     * @var array{imported: int, rejected: list<array{line: int, value: string, reason: string}>, rejected_total: int}|null
      */
     public ?array $importReport = null;
 
@@ -266,15 +269,26 @@ class Show extends Component
             return;
         }
 
+        // Cap defensivo: o import direto é síncrono, então arquivos enormes são
+        // recusados aqui (explicitamente) em vez de travar o request.
+        if ($this->csvExceedsRowCap($path)) {
+            $this->addError('csv', 'Arquivo grande demais para importação direta (máx. '.number_format(CompanyImporter::MAX_ROWS, 0, ',', '.').' linhas). Divida em arquivos menores.');
+
+            return;
+        }
+
         // Quota do plano: importa no máximo as vagas restantes; o excedente volta
         // rejeitado com motivo "limite_do_plano".
         $remaining = $this->portfolio->organization->remainingCompanySlots();
 
         $report = $importer->importFromFile($this->portfolio, $path, $remaining);
 
+        // Só as primeiras linhas rejeitadas vão para a tela; o total verdadeiro
+        // fica em `rejected_total` — não serializa uma lista gigante ao navegador.
         $this->importReport = [
             'imported' => $report->importedCount(),
-            'rejected' => $report->rejected,
+            'rejected' => array_slice($report->rejected, 0, self::MAX_REPORT_ROWS),
+            'rejected_total' => $report->rejectedCount(),
         ];
 
         $this->reset('csv');
@@ -287,6 +301,34 @@ class Show extends Component
         }
 
         session()->flash('status', $message);
+    }
+
+    /**
+     * Conta as linhas do CSV só até o teto (saída antecipada em MAX_ROWS+1), sem
+     * carregar o arquivo inteiro, para decidir se é grande demais para o import
+     * direto.
+     */
+    private function csvExceedsRowCap(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        $lines = 0;
+
+        try {
+            while (fgets($handle) !== false) {
+                if (++$lines > CompanyImporter::MAX_ROWS) {
+                    return true;
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        return false;
     }
 
     public function queueRefresh(int $companyId): void

@@ -207,8 +207,7 @@ app/
 │  └─ CompanyImporter            # CSV -> normaliza/valida/dedupe -> relatório
 ├─ Jobs/
 │  ├─ RefreshMonitoredCompanyJob # fetch -> snapshot -> diff -> eventos -> notifica
-│  ├─ DispatchMonthlyRefreshJob  # Bus::batch de todos os monitorados
-│  └─ ImportCompaniesCsvJob       # import assíncrono (arquivos grandes)
+│  └─ SendWebhookNotification    # POST assinado (HMAC) a cada alerta
 ├─ Notifications/CompanyChangeDetected  # database + mail
 └─ Livewire/                     # Dashboard, Portfolios, Companies, Alerts
 ```

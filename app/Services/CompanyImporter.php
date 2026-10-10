@@ -29,6 +29,13 @@ final class CompanyImporter
     public const REASON_PLAN_LIMIT = 'limite_do_plano';
 
     /**
+     * Teto defensivo de linhas para o import direto (síncrono). Arquivos acima
+     * disso são recusados na tela, para não travar o request nem gerar um
+     * relatório gigante — devem ser divididos em partes menores.
+     */
+    public const MAX_ROWS = 10000;
+
+    /**
      * @param  iterable<int, array{cnpj?: string|null, label?: string|null, line?: int}>  $rows
      * @param  int|null  $limit  Máximo de empresas a criar nesta importação (quota
      *                           do plano); linhas válidas além disso são rejeitadas

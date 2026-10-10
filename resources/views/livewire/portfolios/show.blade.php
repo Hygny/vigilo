@@ -82,13 +82,16 @@
 
                 @if ($importReport !== null)
                     <div class="mt-2 rounded-btn border border-line bg-surface-2 p-3 text-sm">
-                        <p class="font-semibold text-ink">{{ $importReport['imported'] }} adicionada(s), {{ count($importReport['rejected']) }} rejeitada(s).</p>
-                        @if (count($importReport['rejected']) > 0)
+                        <p class="font-semibold text-ink">{{ $importReport['imported'] }} adicionada(s), {{ $importReport['rejected_total'] }} rejeitada(s).</p>
+                        @if ($importReport['rejected_total'] > 0)
                             <ul class="mt-2 max-h-40 space-y-1 overflow-y-auto text-ink-muted">
                                 @foreach ($importReport['rejected'] as $row)
                                     <li>Linha {{ $row['line'] }}: <span class="font-mono">{{ $row['value'] ?: '(vazio)' }}</span> — {{ $row['reason'] }}</li>
                                 @endforeach
                             </ul>
+                            @if ($importReport['rejected_total'] > count($importReport['rejected']))
+                                <p class="mt-1 text-[12px] text-ink-muted">Mostrando as primeiras {{ count($importReport['rejected']) }} de {{ $importReport['rejected_total'] }} rejeitadas.</p>
+                            @endif
                         @endif
                     </div>
                 @endif

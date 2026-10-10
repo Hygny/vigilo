@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\PortfolioScheduledRun;
 use App\Models\User;
+use App\Services\CompanyImporter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -71,6 +72,38 @@ it('imports companies from a CSV upload and reports the outcome', function () {
     ]);
 
     expect($portfolio->monitoredCompanies()->count())->toBe(1);
+});
+
+it('rejects a CSV with more rows than the direct-import cap', function () {
+    [$user, $portfolio] = ownedPortfolio();
+
+    // Acima do teto de linhas do import direto (CompanyImporter::MAX_ROWS).
+    $content = "cnpj\n".str_repeat("123\n", CompanyImporter::MAX_ROWS + 1);
+    $file = UploadedFile::fake()->createWithContent('grande.csv', $content);
+
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->set('csv', $file)
+        ->call('import')
+        ->assertHasErrors('csv');
+
+    expect($portfolio->monitoredCompanies()->count())->toBe(0); // nada importado
+});
+
+it('caps the rejected list sent to the screen but keeps the true total', function () {
+    [$user, $portfolio] = ownedPortfolio();
+
+    $content = "cnpj\n".str_repeat("123\n", 150); // 150 linhas inválidas
+    $file = UploadedFile::fake()->createWithContent('rejeitadas.csv', $content);
+
+    $component = Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->set('csv', $file)
+        ->call('import')
+        ->assertHasNoErrors();
+
+    $report = $component->get('importReport');
+
+    expect($report['rejected_total'])->toBe(150)
+        ->and($report['rejected'])->toHaveCount(100); // teto de exibição
 });
 
 it('queues a refresh for a single company', function () {
