@@ -207,15 +207,20 @@ class Inbox extends Component
         $this->afterBulk($count, 'descartado(s)');
     }
 
+    /** Teto defensivo de linhas no export (evita planilha gigante em org grande). */
+    private const EXPORT_MAX = 10000;
+
     /**
-     * Exporta em Excel TODOS os alertas do filtro atual (sem o teto de 100 da
-     * listagem). Respeita escopo da organização + filtros de severidade/triagem.
+     * Exporta em Excel os alertas do filtro atual (sem o teto de 100 da listagem,
+     * mas com um teto defensivo de EXPORT_MAX linhas). Respeita escopo da
+     * organização + filtros de severidade/triagem.
      */
     public function export(AlertsExcelExport $export): BinaryFileResponse
     {
         $events = $this->filteredEvents()
             ->with('monitoredCompany')
             ->orderByDesc('detected_at')
+            ->limit(self::EXPORT_MAX)
             ->get();
 
         $path = $export->build($events);

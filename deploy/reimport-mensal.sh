@@ -30,14 +30,22 @@ COMPOSE="docker compose -f $APP_DIR/docker-compose.yml"
 
 cd "$APP_DIR" || exit 1
 
-# Credenciais do Postgres (as mesmas do compose).
+# Lock: evita duas execuções simultâneas (ex.: uma rodada estourou a janela e a
+# próxima semana disparou por cima). flock -n sai se já houver uma rodando.
+exec 9>"/tmp/vigilo-reimport-mensal.lock" || exit 1
+if ! flock -n 9; then
+    echo "==> [$(date -Is)] outra execução já em andamento — saindo"
+    exit 0
+fi
+
+# Credenciais do Postgres (as mesmas do compose). PG_PASS SEM `:?` — faltando,
+# ainda queremos registrar a falha (contrato "grava maintenance_run sempre").
 set -a
 # shellcheck disable=SC1091
 . "$APP_DIR/.env"
 set +a
 PG_USER="${CNPJ_DB_USERNAME:-cnpj}"
-PG_PASS="${CNPJ_DB_PASSWORD:?defina CNPJ_DB_PASSWORD em ~/apps/vigilo/.env}"
-PG_DSN="postgres://${PG_USER}:${PG_PASS}@data-postgres-1:5432/cnpj"
+PG_PASS="${CNPJ_DB_PASSWORD:-}"
 
 STARTED_AT="$(date -Is)"
 REIMPORT=skip
@@ -61,6 +69,17 @@ record_run() {
         --message="$MSG" \
         || echo "!! [$(date -Is)] não consegui registrar o maintenance-run"
 }
+
+# Sem a senha do Postgres não dá para consultar a base nem reimportar — registra
+# a falha (o card do super-admin precisa saber) e sai, em vez de morrer calado.
+if [ -z "$PG_PASS" ]; then
+    REIMPORT=fail
+    MSG="CNPJ_DB_PASSWORD ausente em ~/apps/vigilo/.env — manutenção abortada"
+    echo "!! [$(date -Is)] $MSG"
+    record_run
+    exit 1
+fi
+PG_DSN="postgres://${PG_USER}:${PG_PASS}@data-postgres-1:5432/cnpj"
 
 BEFORE="$(pf_count)"
 
