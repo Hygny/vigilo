@@ -69,6 +69,56 @@ it('overdue payment: suspends the organization and marks it past due', function 
         ->and($fresh->isSuspended())->toBeTrue();
 });
 
+it('reversal event suspends a paid organization', function (string $event) {
+    $org = orgWithSubscription('sub_1');
+
+    postAsaasWebhook(['event' => $event, 'payment' => ['subscription' => 'sub_1']])
+        ->assertNoContent();
+
+    $fresh = $org->fresh();
+
+    expect($fresh->billing_status)->toBe(BillingStatus::PastDue)
+        ->and($fresh->isSuspended())->toBeTrue()
+        ->and($fresh->asaas_subscription_id)->toBe('sub_1'); // assinatura permanece
+})->with([
+    'PAYMENT_REFUND_IN_PROGRESS',
+    'PAYMENT_REFUNDED',
+    'PAYMENT_RECEIVED_IN_CASH_UNDONE',
+    'PAYMENT_CHARGEBACK_REQUESTED',
+    'PAYMENT_CHARGEBACK_DISPUTE',
+    'PAYMENT_AWAITING_CHARGEBACK_REVERSAL',
+    'PAYMENT_DELETED',
+]);
+
+it('reversal is idempotent: a re-delivered event keeps the original suspended_at', function () {
+    $org = orgWithSubscription('sub_1', [
+        'billing_status' => BillingStatus::PastDue->value,
+        'suspended_at' => now()->subHour(),
+    ]);
+
+    $before = $org->fresh()->suspended_at; // valor já persistido (precisão do banco)
+
+    postAsaasWebhook(['event' => 'PAYMENT_REFUNDED', 'payment' => ['subscription' => 'sub_1']])
+        ->assertNoContent();
+
+    expect($org->fresh()->suspended_at->equalTo($before))->toBeTrue();
+});
+
+it('restored payment reactivates a suspended organization', function () {
+    $org = orgWithSubscription('sub_1', [
+        'billing_status' => BillingStatus::PastDue->value,
+        'suspended_at' => now(),
+    ]);
+
+    postAsaasWebhook(['event' => 'PAYMENT_RESTORED', 'payment' => ['subscription' => 'sub_1']])
+        ->assertNoContent();
+
+    $fresh = $org->fresh();
+
+    expect($fresh->billing_status)->toBe(BillingStatus::Active)
+        ->and($fresh->suspended_at)->toBeNull();
+});
+
 it('subscription deleted: downgrades to Free without calling Asaas back', function () {
     $org = orgWithSubscription('sub_1', ['plan' => Plan::Business->value]);
 

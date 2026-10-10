@@ -95,8 +95,20 @@ final class SubscriptionService
         }
 
         match ($event) {
-            'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED' => $this->markPaid($organization),
-            'PAYMENT_OVERDUE' => $this->markOverdue($organization),
+            // Pagamento válido (ou restaurado após exclusão) → acesso liberado.
+            'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RESTORED' => $this->markPaid($organization),
+            // Vencido OU revertido (estorno/chargeback/exclusão da cobrança): o
+            // dinheiro não está mais garantido → suspende o acesso. Usa o mesmo
+            // efeito de "vencido" (PastDue + suspended_at); a assinatura em si
+            // continua (só SUBSCRIPTION_DELETED rebaixa para Free).
+            'PAYMENT_OVERDUE',
+            'PAYMENT_REFUND_IN_PROGRESS',
+            'PAYMENT_REFUNDED',
+            'PAYMENT_RECEIVED_IN_CASH_UNDONE',
+            'PAYMENT_CHARGEBACK_REQUESTED',
+            'PAYMENT_CHARGEBACK_DISPUTE',
+            'PAYMENT_AWAITING_CHARGEBACK_REVERSAL',
+            'PAYMENT_DELETED' => $this->markOverdue($organization),
             // O Asaas já removeu a assinatura — só aplicamos o efeito local, sem
             // chamar a API de volta.
             'SUBSCRIPTION_DELETED' => $this->applyCancellation($organization),
