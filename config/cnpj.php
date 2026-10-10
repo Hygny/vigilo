@@ -96,6 +96,10 @@ return [
         'branch_limit' => (int) env('CNPJ_GRAPH_BRANCH_LIMIT', 60),
         // Teto de empresas no mesmo endereço (CEP+número) mostradas no grafo.
         'address_limit' => (int) env('CNPJ_GRAPH_ADDRESS_LIMIT', 25),
+        // Máximo de recentragens (pivôs) do grafo por usuário, por minuto. O pivô
+        // navega a base inteira (due diligence), então limitamos para não virar
+        // raspagem em massa. 0 desliga o limite.
+        'focus_per_minute' => (int) env('CNPJ_GRAPH_FOCUS_PER_MINUTE', 30),
     ],
 
 ];

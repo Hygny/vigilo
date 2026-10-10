@@ -33,6 +33,12 @@
             </div>
         </div>
 
+        @if ($focusLimited)
+            <div class="flex items-center gap-2 rounded-btn border border-line bg-surface-2 px-4 py-3 text-sm text-ink-2 shadow-card">
+                <x-ui.icon name="hourglass_top" :size="18" class="text-high" />Muitas navegações em sequência no grafo. Aguarde alguns segundos e tente de novo.
+            </div>
+        @endif
+
         @if (! $available)
             <div class="flex items-start gap-3 rounded-[14px] border border-line bg-surface-2 p-5 text-[14px] text-ink-2">
                 <x-ui.icon name="warning" :size="20" class="mt-0.5 shrink-0 text-high" />

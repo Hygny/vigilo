@@ -348,6 +348,67 @@ it('recenters the graph when focusing another company, and resets back', functio
         ->assertSee('EMPRESA CENTRO');        // voltou ao início
 });
 
+it('rate-limits graph pivots to curb scraping', function () {
+    config()->set('cnpj.graph.focus_per_minute', 1); // 1 pivô por minuto
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    $grupoCnpj = Cnpj::matrizFromBasico('44555666');
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        'cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => substr((string) $grupoCnpj, 12, 2), 'situacao_cadastral' => '02',
+    ]);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusOn', $grupoCnpj)               // 1º pivô — permitido
+        ->assertSet('focus', preg_replace('/\D/', '', (string) $grupoCnpj))
+        ->call('focusPerson', '***111**', 'MARIA')  // 2º — estoura o limite
+        ->assertViewHas('personMode', false)        // NÃO pivotou para a pessoa
+        ->assertSet('focusDocument', '')
+        ->assertSet('focusLimited', true)
+        ->assertSee('Muitas navegações');           // aviso exibido
+});
+
+it('does not rate-limit pivots when the limit is disabled (0)', function () {
+    config()->set('cnpj.graph.focus_per_minute', 0);
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    $grupoCnpj = Cnpj::matrizFromBasico('44555666');
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        'cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => substr((string) $grupoCnpj, 12, 2), 'situacao_cadastral' => '02',
+    ]);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusOn', $grupoCnpj)
+        ->call('focusPerson', '***111**', 'MARIA') // 2º pivô ainda passa
+        ->assertViewHas('personMode', true)
+        ->assertSet('focusLimited', false);
+});
+
+it('does not rate-limit resetFocus (back to the own portfolio company)', function () {
+    config()->set('cnpj.graph.focus_per_minute', 1);
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    $grupoCnpj = Cnpj::matrizFromBasico('44555666');
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        'cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => substr((string) $grupoCnpj, 12, 2), 'situacao_cadastral' => '02',
+    ]);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusOn', $grupoCnpj)   // consome a única cota
+        ->call('resetFocus')            // NÃO conta no limite → volta à monitorada
+        ->assertSet('focus', '')
+        ->assertSet('focusLimited', false)
+        ->assertSee('EMPRESA CENTRO');
+});
+
 it('ignores a focus with an invalid CNPJ', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

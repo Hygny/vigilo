@@ -15,6 +15,7 @@ use App\Support\Cnpj;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -64,6 +65,12 @@ class Graph extends Component
      */
     public bool $showNegative = true;
 
+    /**
+     * Sinaliza que o último pivô foi bloqueado pelo rate-limit — aviso transiente
+     * (vale só para o render da ação que o disparou; zerado a cada ação nova).
+     */
+    public bool $focusLimited = false;
+
     /** @var array<string, mixed>|null Cache do grafo por request (ação + render). */
     private ?array $graphCache = null;
 
@@ -71,6 +78,12 @@ class Graph extends Component
     {
         $this->authorize('view', $company);
         $this->company = $company;
+    }
+
+    /** Zera o aviso transiente a cada nova ação (não "gruda" no próximo request). */
+    public function hydrate(): void
+    {
+        $this->focusLimited = false;
     }
 
     /**
@@ -82,6 +95,10 @@ class Graph extends Component
      */
     public function focusOn(string $cnpj, OwnershipGraphService $graphs): void
     {
+        if ($this->tooManyFocusAttempts()) {
+            return;
+        }
+
         $digits = preg_replace('/\D/', '', $cnpj) ?? '';
 
         if (strlen($digits) === Cnpj::LENGTH) {
@@ -99,6 +116,10 @@ class Graph extends Component
      */
     public function focusPerson(string $document, string $name, OwnershipGraphService $graphs): void
     {
+        if ($this->tooManyFocusAttempts()) {
+            return;
+        }
+
         $doc = preg_replace('/[^0-9*]/', '', $document) ?? '';
 
         if ($doc !== '' && mb_strlen($doc) <= 14) {
@@ -115,6 +136,33 @@ class Graph extends Component
         $this->focusDocument = '';
         $this->focusName = '';
         $this->emitGraph($graphs);
+    }
+
+    /**
+     * Limita quantos pivôs (recentragens) o usuário pode fazer por minuto. Como o
+     * pivô navega a base CNPJ inteira (due diligence), um teto por usuário evita
+     * que a tela vire ferramenta de raspagem em massa. Voltar à empresa monitorada
+     * (resetFocus) não conta. Retorna true e sinaliza na tela quando estoura.
+     */
+    private function tooManyFocusAttempts(): bool
+    {
+        $max = (int) config('cnpj.graph.focus_per_minute', 30);
+
+        if ($max <= 0) {
+            return false; // limite desligado por configuração
+        }
+
+        $key = 'grifo-focus:'.(string) (auth()->id() ?? request()->ip());
+
+        if (RateLimiter::tooManyAttempts($key, $max)) {
+            $this->focusLimited = true;
+
+            return true;
+        }
+
+        RateLimiter::hit($key, 60); // janela de 1 minuto
+
+        return false;
     }
 
     /**
