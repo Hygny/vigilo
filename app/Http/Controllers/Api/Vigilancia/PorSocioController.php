@@ -45,7 +45,10 @@ final class PorSocioController extends Controller
             }
         }
 
-        $nomesNorm = array_values(array_unique($nomesNorm));
+        // Teto de cardinalidade: um POST com milhares de nomes viraria um
+        // whereIn gigante. Mantém só os primeiros N (além do rate limit).
+        $maxNomes = max(1, (int) config('vigilancia.por_socio_nomes_max', 50));
+        $nomesNorm = array_slice(array_values(array_unique($nomesNorm)), 0, $maxNomes);
 
         $situacaoCode = null;
         $situacao = $request->input('situacao');

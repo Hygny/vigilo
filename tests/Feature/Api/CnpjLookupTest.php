@@ -89,6 +89,24 @@ it('returns the most recent changes first, capped by the configured limit', func
         ->assertJsonPath('historico.0.data', '2025-03-20');
 });
 
+it('does not collapse the history to zero when the limit env is empty', function () {
+    config(['cnpj.api.history_limit' => '']); // env vazia → (int) '' = 0
+
+    [$org, $token] = orgWithApiToken();
+    $company = monitor($org, '12345678000190');
+    ChangeEvent::factory()->create([
+        'monitored_company_id' => $company->id,
+        'field' => 'situacao_cadastral',
+        'detected_at' => '2025-03-20 10:00:00',
+    ]);
+
+    // max(1, ...) garante ao menos 1 — sem o fix viria LIMIT 0 (histórico vazio).
+    $this->withHeaders(['Authorization' => 'Bearer '.$token])
+        ->getJson('/api/cnpj/12345678000190')
+        ->assertOk()
+        ->assertJsonCount(1, 'historico');
+});
+
 it('rejects a request without a token', function () {
     $this->getJson('/api/cnpj/12345678000190')->assertUnauthorized();
 });

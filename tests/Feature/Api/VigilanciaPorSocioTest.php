@@ -120,6 +120,31 @@ it('rejects an unauthenticated request', function () {
     $this->postJson('/api/v1/vigilancia/empresas/por-socio', ['nomes' => ['x']])->assertUnauthorized();
 });
 
+it('defensively masks a full CPF in the QSA', function () {
+    $token = socioToken();
+    seedSocioBase();
+    // Força um CPF completo (11 díg) na base — a resposta deve mascará-lo.
+    DB::connection('cnpj')->table('socios')->where('cnpj_basico', '10000004')
+        ->update(['cnpj_cpf_do_socio' => '12345678901']);
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->postJson('/api/v1/vigilancia/empresas/por-socio', ['nomes' => ['Maria Souza']])
+        ->assertOk()
+        ->assertJsonPath('data.0.socios.0.documento_mascarado', '***456789**');
+});
+
+it('caps the number of names by cardinality', function () {
+    config()->set('vigilancia.por_socio_nomes_max', 1);
+    $token = socioToken();
+    seedSocioBase();
+
+    // 2 nomes, mas o teto deixa só o 1º (Carlos → 3 empresas); Maria é descartada.
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->postJson('/api/v1/vigilancia/empresas/por-socio', ['nomes' => ['Carlos Eduardo Brandt', 'Maria Souza']])
+        ->assertOk()
+        ->assertJsonPath('meta.total', 3);
+});
+
 it('rejects a token without the vigilancia:osint ability', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

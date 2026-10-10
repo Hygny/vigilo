@@ -62,7 +62,7 @@ final class CnpjLookupController extends Controller
             'historico' => $company->changeEvents()
                 ->orderByDesc('detected_at')
                 ->orderByDesc('id')
-                ->limit((int) config('cnpj.api.history_limit'))
+                ->limit(max(1, (int) config('cnpj.api.history_limit', 50)))
                 ->get()
                 ->map(fn (ChangeEvent $event): array => [
                     'data' => $event->detected_at->toDateString(),

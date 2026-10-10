@@ -287,11 +287,34 @@ final class EmpresaLookup
                 nome: $this->str($s['nome_socio'] ?? null),
                 qualificacao: $this->str($s['qualificacao'] ?? null),
                 dataEntrada: $this->date($s['data_entrada_sociedade'] ?? null),
-                documentoMascarado: $this->str($s['cnpj_cpf_do_socio'] ?? null),
+                documentoMascarado: $this->maskDocument($s['cnpj_cpf_do_socio'] ?? null),
             );
         }
 
         return $porBasico;
+    }
+
+    /**
+     * Máscara defensiva do documento do sócio: a Receita já deve entregar o CPF
+     * de PF mascarado (`***NNNNNN**`), mas se vier um CPF completo (11 dígitos),
+     * mascara aqui — LGPD, nunca vazar CPF íntegro. CNPJ (14 díg, público) e
+     * valores já mascarados passam inalterados.
+     */
+    private function maskDocument(mixed $value): ?string
+    {
+        $raw = $this->str($value);
+
+        if ($raw === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $raw) ?? '';
+
+        if (strlen($digits) === 11) {
+            return '***'.substr($digits, 3, 6).'**';
+        }
+
+        return $raw;
     }
 
     private function cep(mixed $value): ?string

@@ -28,4 +28,8 @@ return [
     'por_endereco_max' => (int) env('VIGILANCIA_POR_ENDERECO_MAX', 100),
     'por_socio_max' => (int) env('VIGILANCIA_POR_SOCIO_MAX', 100),
 
+    // Máximo de nomes aceitos num POST /empresas/por-socio (cardinalidade do
+    // whereIn). Além do rate limit, evita uma única requisição pesada.
+    'por_socio_nomes_max' => (int) env('VIGILANCIA_POR_SOCIO_NOMES_MAX', 50),
+
 ];
