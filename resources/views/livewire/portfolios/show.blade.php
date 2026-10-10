@@ -208,12 +208,7 @@
         @php
             $todayDom = now()->day;
             $sel = $scheduleDays;
-            $presets = [
-                ['key' => 'day1', 'label' => 'Todo dia 1', 'days' => [1]],
-                ['key' => 'day15', 'label' => 'Todo dia 15', 'days' => [15]],
-                ['key' => 'biweekly', 'label' => 'Dias 1 e 15', 'days' => [1, 15]],
-                ['key' => 'lastday', 'label' => 'Último dia', 'days' => [31]],
-            ];
+            // Presets vêm do componente (fonte única) — chave => [label, days].
             $dayPhrase = function (array $days): string {
                 $labels = array_map(fn ($d) => (string) $d, $days);
                 if (count($labels) === 1) {
@@ -284,9 +279,9 @@
                     <div>
                         <p class="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-ink-muted">Atalhos</p>
                         <div class="flex flex-wrap gap-2">
-                            @foreach ($presets as $preset)
+                            @foreach ($schedulePresets as $key => $preset)
                                 @php $active = $sel === $preset['days']; @endphp
-                                <button type="button" wire:click="applyPreset('{{ $preset['key'] }}')"
+                                <button type="button" wire:click="applyPreset('{{ $key }}')"
                                         @class([
                                             'rounded-full px-3.5 py-2 text-[13px] font-semibold cursor-pointer transition-colors border focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
                                             'bg-primary text-onprimary border-primary' => $active,

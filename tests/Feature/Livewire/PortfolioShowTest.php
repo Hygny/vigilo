@@ -12,6 +12,7 @@ use App\Models\Portfolio;
 use App\Models\PortfolioScheduledRun;
 use App\Models\User;
 use App\Services\CompanyImporter;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -214,6 +215,41 @@ it('applies a schedule preset (not persisted until saved)', function () {
         ->call('saveSchedule');
 
     expect($portfolio->fresh()->schedule_days)->toBe([1, 15]);
+});
+
+it('applies the single-source presets and ignores an unknown one', function () {
+    [$user, $portfolio] = ownedPortfolio();
+
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->call('applyPreset', 'lastday')
+        ->assertSet('scheduleDays', [31])
+        ->call('applyPreset', 'inexistente') // preset desconhecido → no-op
+        ->assertSet('scheduleDays', [31]);
+});
+
+it('computes the next scheduled run, sliding day 31 to the last day of February', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-02-10'));
+    [$user, $portfolio] = ownedPortfolio();
+    $portfolio->update(['schedule_days' => [31]]);
+
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->assertViewHas('nextRun', fn ($nextRun): bool => $nextRun?->toDateString() === '2026-02-28');
+
+    $this->travelBack();
+});
+
+it('skips today in the next run when the portfolio already ran today', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-03-15'));
+    [$user, $portfolio] = ownedPortfolio();
+    $portfolio->update(['schedule_days' => [15]]);
+    $portfolio->scheduledRuns()->create([
+        'scheduled_day' => 15, 'ran_on' => '2026-03-15', 'companies_count' => 0, 'dispatched_count' => 0,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
+        ->assertViewHas('nextRun', fn ($nextRun): bool => $nextRun?->toDateString() === '2026-04-15');
+
+    $this->travelBack();
 });
 
 it('discards unsaved schedule changes, reverting to the persisted days', function () {

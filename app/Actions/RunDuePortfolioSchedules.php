@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions;
 
 use App\Models\Portfolio;
+use App\Support\ScheduleCalendar;
 use Carbon\CarbonImmutable;
 
 /**
@@ -34,7 +35,7 @@ final class RunDuePortfolioSchedules
             ->whereNotNull('schedule_days')
             ->chunkById(200, function ($portfolios) use ($day, $daysInMonth, $ranOn, &$executed): void {
                 foreach ($portfolios as $portfolio) {
-                    $matchedDay = $this->matchedDay($portfolio->schedule_days ?? [], $day, $daysInMonth);
+                    $matchedDay = ScheduleCalendar::matchedDay($portfolio->schedule_days ?? [], $day, $daysInMonth);
 
                     if ($matchedDay === null) {
                         continue;
@@ -61,23 +62,5 @@ final class RunDuePortfolioSchedules
             });
 
         return $executed;
-    }
-
-    /**
-     * Retorna o dia configurado que dispara nesta data, ou null. Um dia maior
-     * que o número de dias do mês "escorrega" para o último dia (ex.: dia 31
-     * configurado roda em 28/fev).
-     *
-     * @param  list<int>  $days
-     */
-    private function matchedDay(array $days, int $day, int $daysInMonth): ?int
-    {
-        foreach ($days as $configured) {
-            if (min((int) $configured, $daysInMonth) === $day) {
-                return (int) $configured;
-            }
-        }
-
-        return null;
     }
 }

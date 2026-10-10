@@ -13,6 +13,7 @@ use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Services\CompanyImporter;
 use App\Support\Cnpj;
+use App\Support\ScheduleCalendar;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -95,18 +96,28 @@ class Show extends Component
     }
 
     /**
+     * Presets de agendamento — fonte ÚNICA (consumida por applyPreset e pela
+     * view); antes os dias estavam duplicados no match e no Blade. A ordem é a
+     * de exibição.
+     *
+     * @var array<string, array{label: string, days: list<int>}>
+     */
+    private const SCHEDULE_PRESETS = [
+        'day1' => ['label' => 'Todo dia 1', 'days' => [1]],
+        'day15' => ['label' => 'Todo dia 15', 'days' => [15]],
+        'biweekly' => ['label' => 'Dias 1 e 15', 'days' => [1, 15]],
+        'lastday' => ['label' => 'Último dia', 'days' => [31]],
+    ];
+
+    /**
      * Aplica um preset comum de agendamento. Não persiste: o usuário confirma
-     * com "Salvar".
+     * com "Salvar". Chave desconhecida é no-op.
      */
     public function applyPreset(string $preset): void
     {
-        $this->scheduleDays = match ($preset) {
-            'day1' => [1],
-            'day15' => [15],
-            'biweekly' => [1, 15],
-            'lastday' => [31],
-            default => $this->scheduleDays,
-        };
+        if (isset(self::SCHEDULE_PRESETS[$preset])) {
+            $this->scheduleDays = self::SCHEDULE_PRESETS[$preset]['days'];
+        }
     }
 
     public function clearScheduleDays(): void
@@ -175,7 +186,7 @@ class Show extends Component
         for ($offset = 0; $offset < 366; $offset++) {
             $date = $today->addDays($offset);
 
-            if (! $this->scheduleFiresOn($days, $date)) {
+            if (! ScheduleCalendar::firesOn($days, $date)) {
                 continue;
             }
 
@@ -188,22 +199,6 @@ class Show extends Component
         }
 
         return null;
-    }
-
-    /**
-     * @param  list<int>  $days
-     */
-    private function scheduleFiresOn(array $days, CarbonImmutable $date): bool
-    {
-        $daysInMonth = $date->daysInMonth;
-
-        foreach ($days as $configured) {
-            if (min($configured, $daysInMonth) === $date->day) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public function addCompany(): void
@@ -504,6 +499,7 @@ class Show extends Component
             'scheduledRuns' => $this->portfolio->scheduledRuns()->limit(12)->get(),
             'scheduleDirty' => $this->normalizedScheduleDays($this->scheduleDays) !== $savedDays,
             'nextRun' => $this->nextScheduledRun($savedDays),
+            'schedulePresets' => self::SCHEDULE_PRESETS,
         ]);
     }
 
