@@ -198,6 +198,95 @@ it('hides same-address companies by default and reveals them via the toggle', fu
         });
 });
 
+it('lists the connected entities in the report with their link type', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro + sócios MARIA (PF)/HOLDING (PJ) + EMPRESA GRUPO
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertSee('Ligações')
+        ->assertViewHas('connections', function (array $connections): bool {
+            $byName = collect($connections)->keyBy('nome');
+
+            expect($byName['EMPRESA GRUPO']->tipo)->toBe('Grupo econômico')
+                ->and($byName['HOLDING']->tipo)->toBe('Sócio')
+                ->and($byName['MARIA']->tipo)->toBe('Sócio')
+                ->and($byName['MARIA']->documento)->toBe('***111**');
+
+            return true;
+        });
+});
+
+it('includes same-address neighbours in the report only when the toggle is on', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA DE ENDERECO']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('connections', fn (array $c): bool => collect($c)->firstWhere('nome', 'VIZINHA DE ENDERECO') === null)
+        ->call('toggleAddress')
+        ->assertViewHas('connections', function (array $c): bool {
+            $vizinha = collect($c)->firstWhere('nome', 'VIZINHA DE ENDERECO');
+            expect($vizinha)->not->toBeNull()
+                ->and($vizinha->tipo)->toBe('Mesmo endereço');
+
+            return true;
+        });
+});
+
+it('exports the connections report to Excel', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('exportConnections')
+        ->assertFileDownloaded();
+});
+
+it('labels the person\'s companies as "Empresa do sócio" in the report', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // MARIA (***111**) é sócia da CENTRO e da GRUPO
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('focusPerson', '***111**', 'MARIA')
+        ->assertViewHas('connections', function (array $connections): bool {
+            $tipoPorNome = collect($connections)->keyBy('nome')->map(fn ($c): string => $c->tipo);
+            expect($tipoPorNome['EMPRESA CENTRO'])->toBe('Empresa do sócio')
+                ->and($tipoPorNome['EMPRESA GRUPO'])->toBe('Empresa do sócio');
+
+            return true;
+        });
+});
+
+it('builds the copy text grouped by link type in pt-BR', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('connectionsText', function (string $text): bool {
+            expect($text)->toContain('Ligações societárias')
+                ->and($text)->toContain('Sócio:')
+                ->and($text)->toContain('MARIA')
+                ->and($text)->toContain('Grupo econômico:')
+                ->and($text)->toContain('EMPRESA GRUPO');
+
+            return true;
+        });
+});
+
 it('shows an unavailable notice when the CNPJ base is down', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

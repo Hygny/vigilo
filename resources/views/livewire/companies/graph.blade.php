@@ -175,6 +175,70 @@
                     @endif
                 </x-ui.card>
             @endif
+
+            {{-- Relatório de ligações: tabela dos CNPJ/sócios ligados ao centro,
+                 com Copiar (p/ e-mail) e Exportar Excel. Inclui os vizinhos de
+                 endereço quando o toggle está ligado. --}}
+            @if (count($connections) > 0)
+                <x-ui.card class="p-5" x-data="{ copied: false }">
+                    {{-- Texto do Copiar lido na hora do clique (textContent), não
+                         cacheado no Alpine: assim reflete o estado após toggle/foco,
+                         pois o Livewire re-renderiza este nó a cada mudança. --}}
+                    <div x-ref="copytext" class="hidden">{{ $connectionsText }}</div>
+
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-2">
+                            <x-ui.icon name="hub" :size="20" class="text-accent" />
+                            <h2 class="text-[15px] font-semibold text-ink">Ligações</h2>
+                            <span class="text-[12.5px] text-ink-muted">· {{ count($connections) }} no relatório</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <x-ui.button variant="secondary" size="sm" icon="content_copy"
+                                         x-on:click="navigator.clipboard.writeText($refs.copytext.textContent).then(() => { copied = true; setTimeout(() => copied = false, 2000) })">
+                                <span x-text="copied ? 'Copiado!' : 'Copiar'">Copiar</span>
+                            </x-ui.button>
+                            <x-ui.button variant="secondary" size="sm" icon="download" wire:click="exportConnections">
+                                Exportar Excel
+                            </x-ui.button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-hidden rounded-btn ring-1 ring-line">
+                        <table class="w-full border-collapse text-left text-[13px]">
+                            <thead>
+                                <tr class="bg-surface-2 text-[11.5px] uppercase tracking-wide text-ink-muted">
+                                    <th class="px-4 py-2 font-semibold">Nome / Razão social</th>
+                                    <th class="px-4 py-2 font-semibold">CNPJ / Documento</th>
+                                    <th class="px-4 py-2 font-semibold">Tipo de ligação</th>
+                                    <th class="px-4 py-2 font-semibold">Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-line">
+                                @foreach ($connections as $c)
+                                    <tr>
+                                        <td class="px-4 py-2.5 font-medium text-ink">{{ $c->nome }}</td>
+                                        <td class="px-4 py-2.5 font-mono text-ink-2">{{ $c->documento ?? '—' }}</td>
+                                        <td class="px-4 py-2.5">
+                                            <span class="inline-flex rounded-md bg-surface-2 px-2 py-0.5 text-[11.5px] font-medium text-ink-2 ring-1 ring-inset ring-line">{{ $c->tipo }}</span>
+                                        </td>
+                                        <td class="px-4 py-2.5">
+                                            @if ($c->situacao && $c->situacao !== 'ATIVA')
+                                                <span class="font-semibold text-danger">{{ $c->situacao }}</span>
+                                            @else
+                                                <span class="text-ink-2">{{ $c->situacao ?? '—' }}</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p class="mt-3 text-[12px] text-ink-muted">
+                        Sócios, empresas do grupo, filiais e vizinhas de endereço ligadas ao centro atual. "Copiar" gera um texto pronto para e-mail; "Exportar Excel" baixa a mesma lista.
+                    </p>
+                </x-ui.card>
+            @endif
         @endif
     </div>
 </div>
