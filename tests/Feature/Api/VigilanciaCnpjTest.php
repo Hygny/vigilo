@@ -100,6 +100,9 @@ function osintToken(): string
 
 it('rejects an unauthenticated request', function () {
     $this->getJson('/api/v1/vigilancia/cnpjs/44555666000107')->assertUnauthorized();
+
+    // 401 é barrado pelo auth (antes da auditoria) → não gera trilha.
+    $this->assertDatabaseCount('api_access_logs', 0);
 });
 
 it('rejects a token without the vigilancia:osint ability (wildcard does not count)', function () {
