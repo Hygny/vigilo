@@ -67,20 +67,23 @@ class Inbox extends Component
 
     public function startAnalysis(int $id): void
     {
-        $this->transition($id, TriageStatus::EmAnalise);
-        session()->flash('status', 'Alerta movido para "Em análise".');
+        if ($this->transition($id, TriageStatus::EmAnalise, from: [TriageStatus::Novo])) {
+            session()->flash('status', 'Alerta movido para "Em análise".');
+        }
     }
 
     public function promoteToCase(int $id): void
     {
-        $this->transition($id, TriageStatus::Caso);
-        session()->flash('status', 'Alerta marcado como caso.');
+        if ($this->transition($id, TriageStatus::Caso, from: TriageStatus::openCases())) {
+            session()->flash('status', 'Alerta marcado como caso.');
+        }
     }
 
     public function reopen(int $id): void
     {
-        $this->transition($id, TriageStatus::Novo, clearReason: true);
-        session()->flash('status', 'Alerta reaberto.');
+        if ($this->transition($id, TriageStatus::Novo, from: TriageStatus::resolvedCases(), clearReason: true)) {
+            session()->flash('status', 'Alerta reaberto.');
+        }
     }
 
     /** Abre o formulário de motivo para descartar um alerta. */
@@ -115,6 +118,15 @@ class Inbox extends Component
         }
 
         $event = $this->findAuthorized($this->dismissingId);
+
+        // Só se descarta um alerta em aberto (o método é endpoint — a UI já
+        // esconde o botão em alertas resolvidos).
+        if (! $event->triage_status->isOpen()) {
+            $this->cancelDismiss();
+
+            return;
+        }
+
         $event->update([
             'triage_status' => TriageStatus::Descartado,
             'triage_reason' => $validated['dismissReason'],
@@ -230,15 +242,30 @@ class Inbox extends Component
         ]);
     }
 
-    private function transition(int $id, TriageStatus $status, bool $clearReason = false): void
+    /**
+     * Aplica uma transição de triagem a um alerta, só se o estado atual estiver
+     * entre os de origem permitidos. Cada método público é endpoint: sem o guard,
+     * um cliente poderia, ex., reabrir um caso ou promover um descartado,
+     * sobrescrevendo triaged_at/triaged_by e apagando a resolução anterior.
+     *
+     * @param  list<TriageStatus>  $from  estados de origem permitidos
+     * @return bool true se a transição foi aplicada (false = ignorada)
+     */
+    private function transition(int $id, TriageStatus $status, array $from, bool $clearReason = false): bool
     {
         $event = $this->findAuthorized($id);
+
+        if (! in_array($event->triage_status, $from, true)) {
+            return false;
+        }
 
         $event->update(array_merge([
             'triage_status' => $status,
             'triaged_at' => Carbon::now(),
             'triaged_by_id' => auth()->id(),
         ], $clearReason ? ['triage_reason' => null] : []));
+
+        return true;
     }
 
     /**
@@ -249,7 +276,12 @@ class Inbox extends Component
      */
     private function transitionSelected(array $from, TriageStatus $to, ?string $reason = null): int
     {
-        $ids = $this->normalizedSelection();
+        // Limita a seleção (vem do cliente) aos alertas de fato selecionáveis na
+        // página atual — barra IDs arbitrários/fora da página e o tamanho do IN.
+        $ids = array_values(array_intersect(
+            $this->normalizedSelection(),
+            $this->openIds($this->visibleEvents()),
+        ));
 
         if ($ids === []) {
             return 0;

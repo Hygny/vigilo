@@ -61,4 +61,24 @@ enum TriageStatus: string
     {
         return [self::Novo->value, self::EmAnalise->value];
     }
+
+    /**
+     * Estados "em aberto" como casos do enum (para validar transições).
+     *
+     * @return list<TriageStatus>
+     */
+    public static function openCases(): array
+    {
+        return [self::Novo, self::EmAnalise];
+    }
+
+    /**
+     * Estados "resolvidos" (descartado/virou caso) como casos do enum.
+     *
+     * @return list<TriageStatus>
+     */
+    public static function resolvedCases(): array
+    {
+        return [self::Descartado, self::Caso];
+    }
 }

@@ -125,6 +125,53 @@ it('links a case alert straight to the company graph', function () {
         ->assertSeeHtml(route('companies.graph', $company));
 });
 
+it('ignores an invalid single transition (reopen on an open alert)', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create(); // Novo
+
+    Livewire::actingAs($user)->test(Inbox::class)->call('reopen', $event->id);
+
+    expect($event->fresh()->triage_status)->toBe(TriageStatus::Novo); // reabrir só de resolvido
+});
+
+it('ignores startAnalysis on a resolved alert (keeps the resolution)', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create([
+        'triage_status' => TriageStatus::Caso,
+    ]);
+
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->call('startAnalysis', $event->id)
+        ->assertSessionMissing('status'); // sem flash de sucesso enganoso
+
+    expect($event->fresh()->triage_status)->toBe(TriageStatus::Caso); // iniciar análise só de Novo
+});
+
+it('ignores promoteToCase on an already dismissed alert', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $event = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create([
+        'triage_status' => TriageStatus::Descartado,
+        'triage_reason' => 'descartei antes',
+    ]);
+
+    Livewire::actingAs($user)->test(Inbox::class)->call('promoteToCase', $event->id);
+
+    expect($event->fresh()->triage_status)->toBe(TriageStatus::Descartado); // virar caso só de aberto
+});
+
+it('bulk actions only affect selectable events on the current page', function () {
+    $user = User::factory()->for(Organization::factory())->create();
+    $openOffPage = ChangeEvent::factory()->for(ownedCompany($user), 'monitoredCompany')->create(); // Novo
+
+    // Cliente injeta o id de um alerta em aberto que NÃO está na página do filtro.
+    Livewire::actingAs($user)->test(Inbox::class)
+        ->call('setTriage', 'casos') // o "novo" não aparece aqui
+        ->set('selected', [$openOffPage->id])
+        ->call('bulkPromoteToCase');
+
+    expect($openOffPage->fresh()->triage_status)->toBe(TriageStatus::Novo); // intacto
+});
+
 it('does not show the graph link for a non-case alert', function () {
     $user = User::factory()->for(Organization::factory())->create();
     $company = ownedCompany($user);
