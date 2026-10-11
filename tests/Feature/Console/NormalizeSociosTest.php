@@ -64,6 +64,41 @@ it('reprocesses everything with --all', function () {
     expect($norm['a3'])->toBe('JOAO'); // --all recalcula o já preenchido
 });
 
+it('batch-normalizes many pending rows in one pass', function () {
+    seedSociosParaNormalizar(); // a1, a2 pendentes + a3 preenchido
+
+    // Mais pendentes, para exercitar o UPDATE em lote (CASE) com vários IDs.
+    $extra = [];
+    for ($i = 1; $i <= 7; $i++) {
+        $extra[] = ['socio_id' => "p{$i}", 'cnpj_basico' => (string) $i, 'nome_socio' => "Nome  Número {$i}", 'nome_norm' => null];
+    }
+    DB::connection('cnpj')->table('socios')->insert($extra);
+
+    $this->artisan('vigilo:normalizar-socios')->assertSuccessful();
+
+    $norm = DB::connection('cnpj')->table('socios')->pluck('nome_norm', 'socio_id');
+
+    expect($norm['a1'])->toBe('JOSE DA SILVA')
+        ->and($norm['p1'])->toBe('NOME NUMERO 1')   // acento/espaços normalizados
+        ->and($norm['p7'])->toBe('NOME NUMERO 7')
+        ->and($norm['a3'])->toBe('VALOR-ANTIGO');   // já preenchido → intacto
+});
+
+it('normalizes an empty or null name to an empty string', function () {
+    seedSociosParaNormalizar();
+    DB::connection('cnpj')->table('socios')->insert([
+        ['socio_id' => 'e1', 'cnpj_basico' => '9', 'nome_socio' => '   ', 'nome_norm' => null], // só espaços
+        ['socio_id' => 'e2', 'cnpj_basico' => '9', 'nome_socio' => null, 'nome_norm' => null],
+    ]);
+
+    $this->artisan('vigilo:normalizar-socios')->assertSuccessful();
+
+    $norm = DB::connection('cnpj')->table('socios')->pluck('nome_norm', 'socio_id');
+
+    expect($norm['e1'])->toBe('')
+        ->and($norm['e2'])->toBe(''); // vazio/nulo → '' (não fica NULL, não re-processa)
+});
+
 it('adds the nome_norm column when missing', function () {
     config()->set('database.connections.cnpj', [
         'driver' => 'sqlite',

@@ -89,17 +89,53 @@ final class NormalizeSocios extends Command
         return self::SUCCESS;
     }
 
+    /** Linhas por UPDATE em lote — teto defensivo de bindings (SQLite ~32k, PG 65k). */
+    private const UPDATE_BATCH = 1000;
+
     /**
+     * Grava o `nome_norm` do lote num único UPDATE por sub-lote (CASE), em vez de
+     * um UPDATE por linha — reduz drasticamente os round-trips na carga inicial
+     * (DT-14). A normalização continua PHP-side ({@see NomeSocio::norm}).
+     *
      * @param  Collection<int, \stdClass>  $rows
      */
     private function applyChunk(ConnectionInterface $db, Collection $rows): void
     {
-        foreach ($rows as $row) {
-            $s = (array) $row;
-
-            $db->table('socios')
-                ->where('socio_id', $s['socio_id'] ?? null)
-                ->update(['nome_norm' => NomeSocio::norm((string) ($s['nome_socio'] ?? ''))]);
+        foreach ($rows->chunk(self::UPDATE_BATCH) as $batch) {
+            $this->updateBatch($db, $batch);
         }
+    }
+
+    /**
+     * @param  Collection<int, \stdClass>  $batch
+     */
+    private function updateBatch(ConnectionInterface $db, Collection $batch): void
+    {
+        $cases = [];
+        $ids = [];
+        $caseBindings = [];
+
+        foreach ($batch as $row) {
+            $s = (array) $row;
+            $id = $s['socio_id'] ?? null;
+
+            if ($id === null) {
+                continue;
+            }
+
+            $cases[] = 'WHEN ? THEN ?';
+            $caseBindings[] = $id;
+            $caseBindings[] = NomeSocio::norm((string) ($s['nome_socio'] ?? ''));
+            $ids[] = $id;
+        }
+
+        if ($ids === []) {
+            return;
+        }
+
+        $in = implode(', ', array_fill(0, count($ids), '?'));
+        $sql = 'UPDATE socios SET nome_norm = CASE socio_id '.implode(' ', $cases).' END WHERE socio_id IN ('.$in.')';
+
+        $db->update($sql, array_merge($caseBindings, $ids));
     }
 }
