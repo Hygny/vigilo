@@ -44,16 +44,24 @@
                                 </span>
                             @endif
                         </div>
+
+                        {{-- O que significa, em linguagem simples (sem juridiquês) --}}
+                        <p class="mt-1.5 text-[13.5px] text-ink-2">{{ $sancao->fonte->explicacao() }}</p>
+
                         @if ($sancao->orgao)
-                            <p class="mt-1.5 text-[13.5px] text-ink-2"><span class="text-ink-muted">Órgão:</span> {{ $sancao->orgao }}</p>
+                            <p class="mt-1 text-xs text-ink-muted">Aplicada por: {{ $sancao->orgao }}</p>
                         @endif
+
                         @if ($sancao->fundamentacao)
-                            <p class="mt-0.5 text-[13px] text-ink-muted">{{ $sancao->fundamentacao }}</p>
+                            <details class="mt-2">
+                                <summary class="cursor-pointer select-none text-xs font-medium text-ink-muted hover:text-ink-2">Base legal</summary>
+                                <p class="mt-1 text-xs leading-relaxed text-ink-muted">{{ $sancao->fundamentacao }}</p>
+                            </details>
                         @endif
                     </li>
                 @endforeach
             </ul>
-            <p class="mt-3 text-xs text-ink-muted">Fonte: Portal da Transparência (CGU) — cadastros CEIS, CNEP e CEPIM. A sanção foi vinculada a este CNPJ.</p>
+            <p class="mt-3 text-xs text-ink-muted">Fonte: Portal da Transparência (CGU) — dados públicos sujeitos a atualização; confirme na fonte oficial.</p>
         @endif
     </x-ui.card>
 </div>

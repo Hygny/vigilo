@@ -38,6 +38,7 @@ it('lists a sanction tied to the CNPJ', function () {
                 'tipoSancao' => ['descricaoResumida' => 'Empresa inidônea'],
                 'orgaoSancionador' => ['nome' => 'TCU'],
                 'dataInicioSancao' => '01/03/2023',
+                'fundamentacao' => [['descricao' => 'Art. 46 da Lei 8.443/92']],
             ]]);
         }
 
@@ -51,7 +52,8 @@ it('lists a sanction tied to the CNPJ', function () {
         ->test(RiscoPanel::class, ['company' => riscoCompanyFor($org)])
         ->assertSee('CEIS')
         ->assertSee('Empresa inidônea')
-        ->assertSee('TCU');
+        ->assertSee('impedida de contratar') // explicação em linguagem simples
+        ->assertSee('Base legal');            // juridiquês fica colapsado no "ver mais"
 });
 
 it('degrades gracefully when the integration is not configured', function () {

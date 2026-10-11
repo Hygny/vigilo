@@ -36,6 +36,16 @@ enum FonteSancao: string
         };
     }
 
+    /** O que estar nesta lista significa, em linguagem simples (sem juridiquês). */
+    public function explicacao(): string
+    {
+        return match ($this) {
+            self::Ceis => 'A empresa está impedida de contratar com órgãos públicos (declarada inidônea ou suspensa).',
+            self::Cnep => 'A empresa foi punida por ato lesivo contra a administração pública (Lei Anticorrupção).',
+            self::Cepim => 'A entidade está impedida de receber verba ou firmar convênio com o governo federal.',
+        };
+    }
+
     /** Caminho (rota) do cadastro na API de Dados. */
     public function endpoint(): string
     {
