@@ -9,6 +9,8 @@ use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Graph\OwnershipGraphService;
+use App\Services\Risco\PortalTransparenciaClient;
+use App\Services\Risco\RiscoService;
 use App\Services\Vigilancia\EmpresaLookup;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -63,6 +65,21 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(EmpresaLookup::class, fn (): EmpresaLookup => new EmpresaLookup(
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
+
+        $this->app->singleton(PortalTransparenciaClient::class, function (): PortalTransparenciaClient {
+            $apiKey = config('risco.portal.api_key');
+
+            return new PortalTransparenciaClient(
+                baseUrl: (string) config('risco.portal.base_url'),
+                apiKey: is_string($apiKey) ? $apiKey : null,
+                timeout: (int) config('risco.portal.timeout'),
+            );
+        });
+
+        $this->app->singleton(RiscoService::class, fn (): RiscoService => new RiscoService(
+            client: $this->app->make(PortalTransparenciaClient::class),
+            cacheTtlMinutes: (int) config('risco.cache_ttl', 720),
         ));
     }
 
