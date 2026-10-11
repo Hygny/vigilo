@@ -23,6 +23,16 @@ final class Sancao
     ) {}
 
     /**
+     * A sanção está vigente? Sem data de fim (indeterminada) ou com fim no
+     * futuro conta como ativa; já encerrada, não. Comparação lexicográfica de
+     * datas ISO (Y-m-d), que é equivalente à cronológica.
+     */
+    public function estaAtiva(): bool
+    {
+        return $this->dataFim === null || $this->dataFim >= now()->toDateString();
+    }
+
+    /**
      * @return array{fonte: string, sigla: string, tipo: ?string, orgao: ?string, data_inicio: ?string, data_fim: ?string, fundamentacao: ?string}
      */
     public function toArray(): array

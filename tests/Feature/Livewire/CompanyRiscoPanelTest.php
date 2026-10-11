@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Companies\RiscoPanel;
+use App\Models\CompanySnapshot;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -25,8 +26,49 @@ it('shows "nothing on record" when the lookup runs clean', function () {
 
     Livewire::actingAs($user)
         ->test(RiscoPanel::class, ['company' => riscoCompanyFor($org)])
-        ->assertSee('Nada consta')
+        ->assertSee('Risco Baixo') // semáforo: ativa (sem snapshot negativo) e sem sanções
         ->assertSee('Nenhuma sanção encontrada');
+});
+
+it('flags high risk when an active sanction exists', function () {
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(function (Request $request) {
+        if (str_contains($request->url(), '/ceis')) {
+            return Http::response([[
+                'pessoa' => ['cnpjFormatado' => '11.222.333/0001-81'],
+                'tipoSancao' => ['descricaoResumida' => 'Empresa inidônea'],
+                'dataInicioSancao' => '01/03/2023', // sem data de fim → vigente
+            ]]);
+        }
+
+        return Http::response([]);
+    });
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => riscoCompanyFor($org)])
+        ->assertSee('Risco Alto')
+        ->assertSee('sanção vigente');
+});
+
+it('flags medium risk when the company has a negative registration status and nothing on record', function () {
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(fn () => Http::response([]));
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = riscoCompanyFor($org);
+    CompanySnapshot::factory()->create([
+        'monitored_company_id' => $company->id,
+        'situacao_cadastral' => 'BAIXADA',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco Médio')
+        ->assertSee('BAIXADA');
 });
 
 it('lists a sanction tied to the CNPJ', function () {
@@ -53,6 +95,8 @@ it('lists a sanction tied to the CNPJ', function () {
         ->assertSee('CEIS')
         ->assertSee('Empresa inidônea')
         ->assertSee('impedida de contratar') // explicação em linguagem simples
+        ->assertSee('Aplicada por')          // órgão sancionador
+        ->assertSee('TCU')
         ->assertSee('Base legal');            // juridiquês fica colapsado no "ver mais"
 });
 

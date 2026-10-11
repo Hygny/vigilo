@@ -1,18 +1,17 @@
 <div>
     <x-ui.card class="p-[22px]">
-        <div class="mb-4 flex items-center justify-between gap-3">
+        <div class="mb-1 flex items-center justify-between gap-3">
             <div class="flex items-center gap-2">
                 <x-ui.icon name="gavel" :size="20" class="text-accent" />
                 <h2 class="text-[15px] font-semibold text-ink">Risco · Sanções (CGU)</h2>
             </div>
-            @if ($report->configurado && $report->disponivel)
-                @if ($report->temSancoes())
-                    <x-ui.badge tone="crit" icon="gpp_bad">{{ $report->total() }} {{ $report->total() === 1 ? 'sanção' : 'sanções' }}</x-ui.badge>
-                @else
-                    <x-ui.badge tone="ok" icon="verified_user">Nada consta</x-ui.badge>
-                @endif
+            @if ($nivel)
+                <x-ui.badge :tone="$nivel->tone()" :icon="$nivel->icon()">Risco {{ $nivel->label() }}</x-ui.badge>
             @endif
         </div>
+        @if ($motivo)
+            <p class="mb-4 text-[13px] text-ink-muted">{{ $motivo }}</p>
+        @endif
 
         @if (! $report->configurado)
             <div class="flex items-start gap-2 text-sm text-ink-muted">

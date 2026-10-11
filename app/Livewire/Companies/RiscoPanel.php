@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Livewire\Companies;
 
+use App\Enums\NivelRisco;
 use App\Models\MonitoredCompany;
 use App\Services\Risco\RiscoService;
+use App\Support\SituacaoCadastral;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Component;
@@ -37,8 +39,31 @@ class RiscoPanel extends Component
 
     public function render(RiscoService $risco): View
     {
+        $report = $risco->para($this->company->cnpj);
+
+        // O semáforo só aparece quando a consulta rodou de fato — sem isso não
+        // avaliamos "baixo" (seria enganoso dizer que está limpo sem ter checado).
+        $nivel = null;
+        $motivo = null;
+
+        if ($report->configurado && $report->disponivel) {
+            $situacao = $this->company->latestSnapshot?->situacao_cadastral;
+            $situacaoNegativa = SituacaoCadastral::isNegative($situacao);
+
+            $nivel = NivelRisco::avaliar($report->temSancaoAtiva(), $report->temSancoes(), $situacaoNegativa);
+            $motivo = match ($nivel) {
+                NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
+                NivelRisco::Medio => $situacaoNegativa
+                    ? 'Situação cadastral: '.$situacao.'.'
+                    : 'Sanção encontrada, porém já expirada.',
+                NivelRisco::Baixo => 'Empresa ativa e sem sanções nos cadastros consultados.',
+            };
+        }
+
         return view('livewire.companies.risco-panel', [
-            'report' => $risco->para($this->company->cnpj),
+            'report' => $report,
+            'nivel' => $nivel,
+            'motivo' => $motivo,
         ]);
     }
 }

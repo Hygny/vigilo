@@ -47,6 +47,18 @@ final class RiscoReport
         return $this->sancoes !== [];
     }
 
+    /** Há ao menos uma sanção vigente (não encerrada)? */
+    public function temSancaoAtiva(): bool
+    {
+        foreach ($this->sancoes as $sancao) {
+            if ($sancao->estaAtiva()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function total(): int
     {
         return count($this->sancoes);
