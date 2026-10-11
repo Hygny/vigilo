@@ -109,9 +109,55 @@ it('degrades gracefully when the integration is not configured', function () {
 
     Livewire::actingAs($user)
         ->test(RiscoPanel::class, ['company' => riscoCompanyFor($org)])
-        ->assertSee('não foi configurada');
+        ->assertSee('não foi configurada')
+        ->assertDontSee('Risco Baixo') // sem chave → sem semáforo (não dizemos "baixo" sem checar)
+        ->assertDontSee('Risco Alto');
 
     Http::assertNothingSent();
+});
+
+it('shows no risk badge when the source is unavailable', function () {
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(fn () => Http::response('erro', 500));
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => riscoCompanyFor($org)])
+        ->assertSee('Não foi possível consultar')
+        ->assertDontSee('Risco Baixo')
+        ->assertDontSee('Risco Alto');
+});
+
+it('describes both signals when a negative status and an expired sanction coexist', function () {
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(function (Request $request) {
+        if (str_contains($request->url(), '/ceis')) {
+            return Http::response([[
+                'pessoa' => ['cnpjFormatado' => '11.222.333/0001-81'],
+                'tipoSancao' => ['descricaoResumida' => 'Suspensão'],
+                'dataInicioSancao' => '01/01/2015',
+                'dataFimSancao' => '01/01/2018', // já expirada
+            ]]);
+        }
+
+        return Http::response([]);
+    });
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = riscoCompanyFor($org);
+    CompanySnapshot::factory()->create([
+        'monitored_company_id' => $company->id,
+        'situacao_cadastral' => 'BAIXADA',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco Médio')
+        ->assertSee('BAIXADA')   // situação negativa no motivo
+        ->assertSee('expirada'); // e a sanção expirada também
 });
 
 it('forbids viewing the risk of a company from another organization', function () {

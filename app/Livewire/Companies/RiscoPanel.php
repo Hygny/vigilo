@@ -53,9 +53,7 @@ class RiscoPanel extends Component
             $nivel = NivelRisco::avaliar($report->temSancaoAtiva(), $report->temSancoes(), $situacaoNegativa);
             $motivo = match ($nivel) {
                 NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
-                NivelRisco::Medio => $situacaoNegativa
-                    ? 'Situação cadastral: '.$situacao.'.'
-                    : 'Sanção encontrada, porém já expirada.',
+                NivelRisco::Medio => $this->motivoMedio($situacaoNegativa, $situacao, $report->temSancoes()),
                 NivelRisco::Baixo => 'Empresa ativa e sem sanções nos cadastros consultados.',
             };
         }
@@ -65,5 +63,28 @@ class RiscoPanel extends Component
             'nivel' => $nivel,
             'motivo' => $motivo,
         ]);
+    }
+
+    /**
+     * Motivo do nível Médio: junta os dois sinais possíveis (situação cadastral
+     * negativa e/ou sanção já expirada) — podem coexistir, então descreve ambos.
+     */
+    private function motivoMedio(bool $situacaoNegativa, ?string $situacao, bool $temSancoes): string
+    {
+        $sinais = [];
+
+        if ($situacaoNegativa) {
+            $sinais[] = 'situação cadastral '.$situacao;
+        }
+
+        if ($temSancoes) {
+            $sinais[] = 'sanção já expirada';
+        }
+
+        if ($sinais === []) {
+            return 'Sinais de atenção no cadastro.';
+        }
+
+        return 'Atenção: '.implode(' e ', $sinais).'.';
     }
 }
