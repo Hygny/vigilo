@@ -22,6 +22,19 @@ function pgfnMonitor(string $cnpj = '11222333000181'): void
     MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => $cnpj]);
 }
 
+/** Cria uma pasta temporária com vários CSVs (um "por UF"). */
+function pgfnDir(array $filesByName): string
+{
+    $dir = sys_get_temp_dir().'/pgfn_dir_'.uniqid();
+    mkdir($dir);
+
+    foreach ($filesByName as $name => $contents) {
+        file_put_contents($dir.'/'.$name, $contents);
+    }
+
+    return $dir;
+}
+
 it('imports only the carteira CNPJs, parsing BR currency', function () {
     pgfnMonitor('11222333000181'); // na carteira
     $csv = pgfnCsv(
@@ -105,6 +118,41 @@ it('reads a plain decimal value without inflating it 100x', function () {
     @unlink($csv);
 });
 
-it('fails when the file does not exist', function () {
+it('imports every CSV in a folder under a single per-tipo reload (UFs do not wipe each other)', function () {
+    pgfnMonitor('11222333000181');
+    // Simula o ZIP real: um CSV por UF, o mesmo CNPJ inscrito em UFs diferentes.
+    $dir = pgfnDir([
+        'Dados_abertos_Nao_Previdenciario_RJ.csv' => "CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;100,00\n",
+        'Dados_abertos_Nao_Previdenciario_SP.csv' => "CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;200,00\n99999999000199;999,00\n",
+    ]);
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $dir, '--tipo' => 'nao-previdenciario'])->assertSuccessful();
+
+    // As duas UFs do CNPJ monitorado coexistem (nenhuma apagou a outra); o de fora ficou fora.
+    expect(PgfnDebt::query()->count())->toBe(2)
+        ->and(app(PgfnLookup::class)->para('11222333000181')->total)->toEqualWithDelta(300.00, 0.001);
+
+    array_map('unlink', glob($dir.'/*') ?: []);
+    rmdir($dir);
+});
+
+it('aborts the whole folder import if one CSV lacks the document column (nothing deleted)', function () {
+    pgfnMonitor('11222333000181');
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'imported_at' => now()]);
+
+    $dir = pgfnDir([
+        'ok.csv' => "CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;100,00\n",
+        'ruim.csv' => "COLUNA_ESTRANHA;OUTRA\nx;y\n", // sem coluna de documento
+    ]);
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $dir, '--tipo' => 'geral'])->assertFailed();
+
+    expect(PgfnDebt::query()->count())->toBe(1); // dado bom preservado — nada foi apagado
+
+    array_map('unlink', glob($dir.'/*') ?: []);
+    rmdir($dir);
+});
+
+it('fails when the path does not exist', function () {
     $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
 });

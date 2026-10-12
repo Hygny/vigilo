@@ -12,57 +12,155 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Importa a Dívida Ativa da União (PGFN, dados abertos) de um CSV, guardando SÓ
- * as inscrições dos CNPJs da CARTEIRA (o dump oficial tem ~6M linhas; filtrar
- * pela carteira deixa a tabela pequena). RECARGA POR TIPO: o `--tipo` (arquivo
- * previdenciário/não-previdenciário/FGTS) é substituído a cada import, então
- * rodar os 3 arquivos coexiste. CPF (PF, mascarado) é ignorado — só CNPJ.
+ * Importa a Dívida Ativa da União (PGFN, dados abertos) de um CSV — ou de uma
+ * PASTA de CSVs — guardando SÓ as inscrições dos CNPJs da CARTEIRA (o dump
+ * oficial tem milhões de linhas; filtrar pela carteira deixa a tabela pequena).
+ *
+ * O dump real vem num ZIP por sistema, com um CSV POR UF dentro (e SP quebrado
+ * em partes). Por isso o comando aceita uma pasta: lê todos os .csv e faz UM
+ * único reload por `--tipo` cobrindo todas as UFs (apontar um arquivo por vez
+ * apagaria a UF anterior). RECARGA POR TIPO: o `--tipo` (previdenciário /
+ * não-previdenciário / FGTS) é substituído a cada import, então rodar os 3
+ * coexiste. CPF (PF, mascarado) é ignorado — só CNPJ.
  *
  * Dados abertos: https://dadosabertos.pgfn.gov.br (Dívida Ativa da União).
+ * O script deploy/baixar-importar-pgfn.sh baixa, descompacta e chama este comando.
  */
 final class ImportPgfn extends Command
 {
     protected $signature = 'vigilo:importar-pgfn
-        {path : Caminho do CSV da PGFN}
+        {path : Caminho de um CSV OU de uma pasta com os CSVs da PGFN (por UF)}
         {--tipo=geral : Categoria recarregada (previdenciario|nao-previdenciario|fgts|geral)}
         {--delimiter=; : Delimitador do CSV (padrão ";")}';
 
-    protected $description = 'Importa a dívida ativa (PGFN) dos CNPJs da carteira de um CSV (recarga por tipo).';
+    protected $description = 'Importa a dívida ativa (PGFN) dos CNPJs da carteira de um CSV ou pasta (recarga por tipo).';
 
     /** Linhas por INSERT em lote (a tabela é pequena — só a carteira). */
     private const CHUNK = 1000;
 
     public function handle(): int
     {
-        $path = (string) $this->argument('path');
+        $files = $this->resolveFiles((string) $this->argument('path'));
 
-        if (! is_file($path)) {
-            $this->error("Arquivo não encontrado: {$path}");
-
-            return self::FAILURE;
+        if ($files === null) {
+            return self::FAILURE; // mensagem já reportada
         }
 
         $tipo = (string) $this->option('tipo');
         $delimiter = (string) $this->option('delimiter');
+        $carteira = $this->carteira();
+        $now = Carbon::now();
 
-        // Conjunto de CNPJs monitorados (só dígitos) — o filtro da carteira.
+        /** @var list<array<string, mixed>> $rows */
+        $rows = [];
+        $sawValidDoc = false;
+
+        // Lê TODOS os arquivos antes de tocar na tabela — se algum falhar, aborta
+        // sem ter apagado nada (a recarga só acontece na transação lá embaixo).
+        foreach ($files as $file) {
+            $result = $this->readFile($file, $delimiter, $carteira, $tipo, $now);
+
+            if ($result === null) {
+                return self::FAILURE;
+            }
+
+            $sawValidDoc = $sawValidDoc || $result['sawValidDoc'];
+
+            foreach ($result['rows'] as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        // Guarda: se os arquivos tinham linhas mas NENHUM documento válido
+        // (cabeçalho não reconhecido ou --delimiter errado), não mexe na tabela.
+        if (! $sawValidDoc) {
+            $this->error('Nenhum CNPJ/CPF válido lido — cabeçalho não reconhecido ou --delimiter errado? Nada foi alterado.');
+
+            return self::FAILURE;
+        }
+
+        // Recarga por tipo: substitui as inscrições deste tipo (0 linhas = limpa).
+        DB::transaction(function () use ($rows, $tipo): void {
+            PgfnDebt::query()->where('tipo', $tipo)->delete();
+
+            foreach (array_chunk($rows, self::CHUNK) as $chunk) {
+                PgfnDebt::insert($chunk);
+            }
+        });
+
+        $this->info("PGFN [{$tipo}]: {$this->plural(count($rows))} da carteira importada(s) de ".count($files).' arquivo(s).');
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Resolve o argumento para a lista de CSVs a ler: um arquivo, ou todos os
+     * .csv de uma pasta (ordenados). Null (com erro reportado) se não existir.
+     *
+     * @return list<string>|null
+     */
+    private function resolveFiles(string $path): ?array
+    {
+        if (is_dir($path)) {
+            $found = glob(rtrim($path, '/\\').'/*.[cC][sS][vV]') ?: [];
+            sort($found);
+
+            if ($found === []) {
+                $this->error("Nenhum .csv encontrado na pasta: {$path}");
+
+                return null;
+            }
+
+            return $found;
+        }
+
+        if (is_file($path)) {
+            return [$path];
+        }
+
+        $this->error("Arquivo ou pasta não encontrado: {$path}");
+
+        return null;
+    }
+
+    /**
+     * Conjunto de CNPJs monitorados (só dígitos) — o filtro da carteira.
+     *
+     * @return array<string, true>
+     */
+    private function carteira(): array
+    {
         $carteira = [];
+
         foreach (MonitoredCompany::query()->pluck('cnpj') as $cnpj) {
             $digits = preg_replace('/\D/', '', (string) $cnpj) ?? '';
+
             if (strlen($digits) === 14) {
                 $carteira[$digits] = true;
             }
         }
 
-        $handle = fopen($path, 'r');
+        return $carteira;
+    }
+
+    /**
+     * Lê um CSV, devolvendo as linhas da carteira + se viu algum documento
+     * plausível. Null (erro reportado) se ilegível ou sem a coluna de documento.
+     *
+     * @param  array<string, true>  $carteira
+     * @return array{rows: list<array<string, mixed>>, sawValidDoc: bool}|null
+     */
+    private function readFile(string $file, string $delimiter, array $carteira, string $tipo, Carbon $now): ?array
+    {
+        $handle = fopen($file, 'r');
 
         if ($handle === false) {
-            $this->error("Não foi possível abrir: {$path}");
+            $this->error("Não foi possível abrir: {$file}");
 
-            return self::FAILURE;
+            return null;
         }
 
-        $now = Carbon::now();
+        /** @var list<array<string, mixed>> $rows */
         $rows = [];
         $sawValidDoc = false;
 
@@ -70,9 +168,9 @@ final class ImportPgfn extends Command
             $header = fgetcsv($handle, 0, $delimiter);
 
             if (! is_array($header)) {
-                $this->error('CSV vazio ou ilegível.');
+                $this->error("CSV vazio ou ilegível: {$file}");
 
-                return self::FAILURE;
+                return null;
             }
 
             $col = [
@@ -84,9 +182,9 @@ final class ImportPgfn extends Command
             ];
 
             if ($col['documento'] === null) {
-                $this->error('Não achei a coluna de CNPJ/CPF no cabeçalho do CSV.');
+                $this->error("Não achei a coluna de CNPJ/CPF no cabeçalho: {$file}");
 
-                return self::FAILURE;
+                return null;
             }
 
             while (($line = fgetcsv($handle, 0, $delimiter)) !== false) {
@@ -117,26 +215,7 @@ final class ImportPgfn extends Command
             fclose($handle);
         }
 
-        // Guarda: se o arquivo tinha linhas mas NENHUM documento válido (cabeçalho
-        // não reconhecido ou --delimiter errado), não mexe na tabela.
-        if (! $sawValidDoc) {
-            $this->error('Nenhum CNPJ/CPF válido no arquivo — cabeçalho não reconhecido ou --delimiter errado? Nada foi alterado.');
-
-            return self::FAILURE;
-        }
-
-        // Recarga por tipo: substitui as inscrições deste tipo (0 linhas = limpa).
-        DB::transaction(function () use ($rows, $tipo): void {
-            PgfnDebt::query()->where('tipo', $tipo)->delete();
-
-            foreach (array_chunk($rows, self::CHUNK) as $chunk) {
-                PgfnDebt::insert($chunk);
-            }
-        });
-
-        $this->info("PGFN [{$tipo}]: {$this->plural(count($rows))} da carteira importada(s).");
-
-        return self::SUCCESS;
+        return ['rows' => $rows, 'sawValidDoc' => $sawValidDoc];
     }
 
     private function plural(int $n): string
