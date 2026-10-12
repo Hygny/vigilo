@@ -23,12 +23,14 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_refreshed_at
  * @property RefreshStatus|null $last_refresh_status
  * @property string|null $last_refresh_error
+ * @property Carbon|null $sanctions_synced_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Portfolio $portfolio
  * @property-read Collection<int, CompanySnapshot> $snapshots
  * @property-read CompanySnapshot|null $latestSnapshot
  * @property-read Collection<int, ChangeEvent> $changeEvents
+ * @property-read Collection<int, CompanySanction> $sanctions
  */
 class MonitoredCompany extends Model
 {
@@ -46,6 +48,7 @@ class MonitoredCompany extends Model
         return [
             'last_refreshed_at' => 'datetime',
             'last_refresh_status' => RefreshStatus::class,
+            'sanctions_synced_at' => 'datetime',
         ];
     }
 
@@ -86,5 +89,16 @@ class MonitoredCompany extends Model
     public function changeEvents(): HasMany
     {
         return $this->hasMany(ChangeEvent::class);
+    }
+
+    /**
+     * Sanções conhecidas (CGU) — o conjunto contra o qual a varredura detecta
+     * sanção nova.
+     *
+     * @return HasMany<CompanySanction, $this>
+     */
+    public function sanctions(): HasMany
+    {
+        return $this->hasMany(CompanySanction::class);
     }
 }

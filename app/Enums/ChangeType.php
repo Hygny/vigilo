@@ -13,6 +13,7 @@ enum ChangeType: string
     case CnaeChanged = 'cnae_changed';
     case PorteChanged = 'porte_changed';
     case NameChanged = 'name_changed';
+    case SancaoAdicionada = 'sancao_adicionada';
 
     public function label(): string
     {
@@ -24,6 +25,7 @@ enum ChangeType: string
             self::CnaeChanged => 'CNAE principal alterado',
             self::PorteChanged => 'Porte alterado',
             self::NameChanged => 'Razão social / nome fantasia alterado',
+            self::SancaoAdicionada => 'Nova sanção (CGU)',
         };
     }
 
@@ -40,6 +42,7 @@ enum ChangeType: string
             self::CnaeChanged => 'category',
             self::PorteChanged => 'straighten',
             self::NameChanged => 'badge',
+            self::SancaoAdicionada => 'gavel',
         };
     }
 }

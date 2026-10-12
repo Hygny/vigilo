@@ -6,12 +6,17 @@ namespace App\Jobs;
 
 use App\Contracts\CnpjDataProvider;
 use App\DTO\ChangeEventData;
+use App\Enums\ChangeType;
+use App\Enums\FonteSancao;
 use App\Enums\RefreshStatus;
+use App\Enums\Severity;
 use App\Models\ChangeEvent;
+use App\Models\CompanySanction;
 use App\Models\CompanySnapshot;
 use App\Models\MonitoredCompany;
 use App\Notifications\CompanyChangeDetected;
 use App\Services\CompanyDiffer;
+use App\Services\Risco\SanctionMonitor;
 use App\Services\SnapshotService;
 use DateTimeInterface;
 use Illuminate\Bus\Batchable;
@@ -93,7 +98,7 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         ];
     }
 
-    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ): void
+    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ, SanctionMonitor $sanctions): void
     {
         // A cancelled batch (e.g. the monthly run was aborted) should stop here.
         if ($this->batch()?->cancelled()) {
@@ -118,6 +123,9 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
                 $this->markRefreshed(RefreshStatus::Ok);
             });
 
+            // Baseline silencioso das sanções conhecidas junto do rebaseline.
+            $sanctions->sync($this->company, silent: true);
+
             return;
         }
 
@@ -131,13 +139,25 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
 
         // Snapshot + change_events + status num único átomo: se algo falhar no
         // meio, o retry recomeça limpo (sem snapshot órfão nem eventos parciais).
-        $events = DB::transaction(function () use ($previous, $data, $snapshots, $differ): EloquentCollection {
+        $snapshot = null;
+        $events = DB::transaction(function () use ($previous, $data, $snapshots, $differ, &$snapshot): EloquentCollection {
             $snapshot = $snapshots->store($this->company, $data);
             $changes = $this->persistChanges($previous, $snapshot, $differ->diff($previous, $snapshot));
             $this->markRefreshed(RefreshStatus::Ok);
 
             return $changes;
         });
+
+        // Sanções (fonte externa/CGU): fora da transação do snapshot porque faz
+        // HTTP. Uma sanção NOVA vira change_event crítico ligado ao snapshot
+        // atual e pega carona na notificação + webhook.
+        if ($snapshot !== null) {
+            $novas = $sanctions->sync($this->company);
+
+            if ($novas !== []) {
+                $events = $events->merge($this->persistSanctionEvents($snapshot, $novas));
+            }
+        }
 
         if ($events->isNotEmpty()) {
             $this->notifyOrganization($data->razaoSocial, $events);
@@ -185,6 +205,43 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         }
 
         return $events;
+    }
+
+    /**
+     * Transforma as sanções recém-descobertas em change_events críticos (ligados
+     * ao snapshot atual, pois `to_snapshot_id` é obrigatório).
+     *
+     * @param  list<CompanySanction>  $novas
+     * @return EloquentCollection<int, ChangeEvent>
+     */
+    private function persistSanctionEvents(CompanySnapshot $snapshot, array $novas): EloquentCollection
+    {
+        $now = Carbon::now();
+
+        /** @var EloquentCollection<int, ChangeEvent> $events */
+        $events = new EloquentCollection;
+
+        foreach ($novas as $sancao) {
+            $events->push($this->company->changeEvents()->create([
+                'from_snapshot_id' => null,
+                'to_snapshot_id' => $snapshot->id,
+                'type' => ChangeType::SancaoAdicionada,
+                'field' => 'sancao',
+                'old_value' => null,
+                'new_value' => $this->describeSancao($sancao),
+                'severity' => Severity::Critical,
+                'detected_at' => $now,
+            ]));
+        }
+
+        return $events;
+    }
+
+    private function describeSancao(CompanySanction $sancao): string
+    {
+        $sigla = FonteSancao::tryFrom($sancao->fonte)?->sigla() ?? mb_strtoupper($sancao->fonte);
+
+        return $sancao->tipo !== null ? "{$sigla} — {$sancao->tipo}" : $sigla;
     }
 
     /**
