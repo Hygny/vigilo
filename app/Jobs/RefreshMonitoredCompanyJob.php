@@ -13,9 +13,11 @@ use App\Enums\Severity;
 use App\Models\ChangeEvent;
 use App\Models\CompanySanction;
 use App\Models\CompanySnapshot;
+use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Notifications\CompanyChangeDetected;
 use App\Services\CompanyDiffer;
+use App\Services\Risco\DirtyListMonitor;
 use App\Services\Risco\SanctionMonitor;
 use App\Services\SnapshotService;
 use DateTimeInterface;
@@ -98,7 +100,7 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         ];
     }
 
-    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ, SanctionMonitor $sanctions): void
+    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ, SanctionMonitor $sanctions, DirtyListMonitor $dirtyList): void
     {
         // A cancelled batch (e.g. the monthly run was aborted) should stop here.
         if ($this->batch()?->cancelled()) {
@@ -123,8 +125,9 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
                 $this->markRefreshed(RefreshStatus::Ok);
             });
 
-            // Baseline silencioso das sanções conhecidas junto do rebaseline.
+            // Baseline silencioso de sanções e Lista Suja junto do rebaseline.
             $sanctions->sync($this->company, silent: true);
+            $dirtyList->sync($this->company, silent: true);
 
             return;
         }
@@ -156,6 +159,13 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
 
             if ($novas !== []) {
                 $events = $events->merge($this->persistSanctionEvents($snapshot, $novas));
+            }
+
+            // Entrou na Lista Suja (trabalho escravo) desde o último refresh → alerta crítico.
+            $listaSuja = $dirtyList->sync($this->company);
+
+            if ($listaSuja !== null) {
+                $events->push($this->persistDirtyListEvent($snapshot, $listaSuja));
             }
         }
 
@@ -242,6 +252,26 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         $sigla = FonteSancao::tryFrom($sancao->fonte)?->sigla() ?? mb_strtoupper($sancao->fonte);
 
         return $sancao->tipo !== null ? "{$sigla} — {$sancao->tipo}" : $sigla;
+    }
+
+    /**
+     * Entrada nova na Lista Suja do trabalho escravo → change_event crítico
+     * (ligado ao snapshot atual, pois `to_snapshot_id` é obrigatório).
+     */
+    private function persistDirtyListEvent(CompanySnapshot $snapshot, DirtyListEmployer $entry): ChangeEvent
+    {
+        $detalhe = collect([$entry->nome, $entry->uf, $entry->ano])->filter()->implode(' · ');
+
+        return $this->company->changeEvents()->create([
+            'from_snapshot_id' => null,
+            'to_snapshot_id' => $snapshot->id,
+            'type' => ChangeType::ListaSuja,
+            'field' => 'lista_suja',
+            'old_value' => null,
+            'new_value' => $detalhe !== '' ? $detalhe : 'Consta na Lista Suja (MTE)',
+            'severity' => Severity::Critical,
+            'detected_at' => Carbon::now(),
+        ]);
     }
 
     /**

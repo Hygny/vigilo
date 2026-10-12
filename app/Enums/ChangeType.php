@@ -14,6 +14,7 @@ enum ChangeType: string
     case PorteChanged = 'porte_changed';
     case NameChanged = 'name_changed';
     case SancaoAdicionada = 'sancao_adicionada';
+    case ListaSuja = 'lista_suja';
 
     public function label(): string
     {
@@ -26,6 +27,7 @@ enum ChangeType: string
             self::PorteChanged => 'Porte alterado',
             self::NameChanged => 'Razão social / nome fantasia alterado',
             self::SancaoAdicionada => 'Nova sanção (CGU)',
+            self::ListaSuja => 'Entrou na Lista Suja (trabalho escravo)',
         };
     }
 
@@ -43,6 +45,7 @@ enum ChangeType: string
             self::PorteChanged => 'straighten',
             self::NameChanged => 'badge',
             self::SancaoAdicionada => 'gavel',
+            self::ListaSuja => 'gavel',
         };
     }
 }
