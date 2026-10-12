@@ -31,7 +31,8 @@ final class ImportPgfn extends Command
     protected $signature = 'vigilo:importar-pgfn
         {path : Caminho de um CSV OU de uma pasta com os CSVs da PGFN (por UF)}
         {--tipo=geral : Categoria recarregada (previdenciario|nao-previdenciario|fgts|geral)}
-        {--delimiter=; : Delimitador do CSV (padrão ";")}';
+        {--delimiter=; : Delimitador do CSV (padrão ";")}
+        {--allow-empty : Permite recarregar com ZERO inscrição (limpa o tipo) — para arquivos já validados, p.ex. pré-filtrados pelo pgfn_filter.py}';
 
     protected $description = 'Importa a dívida ativa (PGFN) dos CNPJs da carteira de um CSV ou pasta (recarga por tipo).';
 
@@ -72,8 +73,10 @@ final class ImportPgfn extends Command
         }
 
         // Guarda: se os arquivos tinham linhas mas NENHUM documento válido
-        // (cabeçalho não reconhecido ou --delimiter errado), não mexe na tabela.
-        if (! $sawValidDoc) {
+        // (cabeçalho não reconhecido ou --delimiter errado), não mexe na tabela —
+        // a menos que --allow-empty diga que o arquivo já foi validado e que zero
+        // inscrição é um resultado legítimo (limpar o tipo).
+        if (! $sawValidDoc && ! $this->option('allow-empty')) {
             $this->error('Nenhum CNPJ/CPF válido lido — cabeçalho não reconhecido ou --delimiter errado? Nada foi alterado.');
 
             return self::FAILURE;

@@ -153,6 +153,24 @@ it('aborts the whole folder import if one CSV lacks the document column (nothing
     rmdir($dir);
 });
 
+it('clears the tipo (not abort) for a validated empty file when --allow-empty is set', function () {
+    pgfnMonitor('11222333000181');
+    // Dívida antiga desse tipo que precisa sumir se a carteira não tem mais nada nele.
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'fgts', 'imported_at' => now()]);
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'imported_at' => now()]);
+
+    // Arquivo "válido" mas sem nenhuma inscrição da carteira (só cabeçalho) —
+    // é o que o pgfn_filter.py produz quando a carteira não tem dívida no tipo.
+    $csv = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n");
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'fgts', '--allow-empty' => true])->assertSuccessful();
+
+    expect(PgfnDebt::query()->where('tipo', 'fgts')->count())->toBe(0)   // limpo
+        ->and(PgfnDebt::query()->where('tipo', 'geral')->count())->toBe(1); // outro tipo intacto
+
+    @unlink($csv);
+});
+
 it('fails when the path does not exist', function () {
     $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
 });

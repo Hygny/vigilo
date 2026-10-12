@@ -4,11 +4,12 @@
 # para o Vigilo filtrando pela CARTEIRA. Roda no HOST do VPS.
 #
 # O dump oficial é enorme (o "Não Previdenciário" passa de 1 GB zipado / dezenas
-# de GB abertos) e vem num ZIP por sistema, com um CSV POR UF dentro (SP quebrado
-# em partes). Para não estourar o disco, este script NÃO descompacta tudo: ele
-# faz streaming de cada CSV (`unzip -p`) e filtra pela carteira ANTES de tocar no
-# container (`grep -F`), importando só um CSV já pequeno por tipo. O importador
-# ainda refiltra pela carteira no PHP, então o grep é só para reduzir volume.
+# de GB abertos) e vem num ZIP por sistema, com vários CSVs dentro. Para não
+# estourar o disco, NÃO descompactamos tudo: o pgfn_filter.py (ao lado deste
+# arquivo) lê cada CSV em streaming (stdlib zipfile) e mantém só as linhas da
+# carteira ANTES de tocar no container — importando um CSV já pequeno por tipo.
+# O filtro tira a pontuação do documento (igual ao importador PHP), então é
+# imune ao formato do dump. Usa python3 (não precisa de `unzip`).
 #
 # Fonte: https://dadosabertos.pgfn.gov.br (Dívida Ativa da União).
 #
@@ -19,16 +20,19 @@
 #   bash .../baixar-importar-pgfn.sh 2026_trimestre_02   # trimestre fixo
 #   bash .../baixar-importar-pgfn.sh latest fgts previdenciario
 #
-# Requer: curl, unzip. Recarrega POR TIPO (rodar um tipo substitui só ele).
+# Requer: curl, python3. Recarrega POR TIPO (rodar um tipo substitui só ele).
 set -uo pipefail
 
 APP_DIR="$HOME/apps/vigilo"
 COMPOSE="docker compose -f $APP_DIR/docker-compose.yml"
 BASE_URL="https://dadosabertos.pgfn.gov.br"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FILTER="$SCRIPT_DIR/pgfn_filter.py"
 
 cd "$APP_DIR" || exit 1
-command -v curl  >/dev/null || { echo "!! curl não encontrado";  exit 1; }
-command -v unzip >/dev/null || { echo "!! unzip não encontrado"; exit 1; }
+command -v curl    >/dev/null || { echo "!! curl não encontrado"; exit 1; }
+command -v python3 >/dev/null || { echo "!! python3 não encontrado (instale com: sudo apt-get install -y python3)"; exit 1; }
+[ -f "$FILTER" ] || { echo "!! não achei $FILTER"; exit 1; }
 
 # tipo interno  ->  nome do arquivo (sistema) no CDN
 declare -A SISTEMA=(
@@ -42,9 +46,10 @@ QUARTER="${1:-latest}"
 TIPOS=("$@")
 [ "${#TIPOS[@]}" -eq 0 ] && TIPOS=(nao-previdenciario previdenciario fgts)
 
-quarter_exists() { curl -fsIL --max-time 60 "$BASE_URL/$1/Dados_abertos_FGTS.zip" >/dev/null 2>&1; }
+# Sonda o tipo MAIS PESADO: um trimestre só é "pronto" quando o não-previdenciário
+# (o último a subir) já está publicado — evita escolher um trimestre incompleto.
+quarter_exists() { curl -fsIL --max-time 60 "$BASE_URL/$1/Dados_abertos_Nao_Previdenciario.zip" >/dev/null 2>&1; }
 
-# Detecta o trimestre mais novo disponível (probe do ano atual para trás).
 if [ "$QUARTER" = latest ]; then
     echo "==> detectando o trimestre mais novo no CDN..."
     Y=$(date +%Y)
@@ -60,15 +65,10 @@ echo "==> trimestre: $QUARTER"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-PAT="$WORK/patterns.txt"
 
-# Carteira (host): dígitos crus + formato pontuado → grep -F pega os dois jeitos.
 echo "==> coletando a carteira..."
 $COMPOSE exec -T app php artisan vigilo:carteira-cnpjs </dev/null > "$WORK/carteira.txt" \
     || { echo "!! não consegui listar a carteira"; exit 1; }
-sed -E 's#^([0-9]{2})([0-9]{3})([0-9]{3})([0-9]{4})([0-9]{2})$#\1.\2.\3/\4-\5#' \
-    "$WORK/carteira.txt" > "$WORK/carteira_fmt.txt"
-sort -u "$WORK/carteira.txt" "$WORK/carteira_fmt.txt" > "$PAT"
 N_CART=$(grep -c . "$WORK/carteira.txt" || true)
 [ "${N_CART:-0}" -eq 0 ] && { echo "!! carteira vazia — nada a importar"; exit 1; }
 echo "==> carteira: $N_CART CNPJ(s)"
@@ -90,31 +90,19 @@ for tipo in "${TIPOS[@]}"; do
     fi
 
     echo "==> [$tipo] filtrando pela carteira (streaming, sem descompactar tudo)"
-    members=$(unzip -Z1 "$zip" 2>/dev/null | grep -iE '\.csv$' || true)
-    if [ -z "$members" ]; then
-        echo "!! [$tipo] nenhum .csv dentro do zip"; rm -f "$zip"; rc=1; continue
+    if ! n=$(python3 "$FILTER" "$zip" "$WORK/carteira.txt" "$out"); then
+        echo "!! [$tipo] filtro falhou (zip corrompido ou sem coluna de documento) — nada importado"; rm -f "$zip" "$out"; rc=1; continue
     fi
-
-    : > "$out"
-    header_done=0
-    while IFS= read -r m; do
-        [ -z "$m" ] && continue
-        if [ "$header_done" -eq 0 ]; then
-            unzip -p "$zip" "$m" | head -1 > "$out" # cabeçalho uma vez
-            header_done=1
-        fi
-        unzip -p "$zip" "$m" | tail -n +2 | grep -F -f "$PAT" >> "$out" || true
-    done <<< "$members"
-
-    n=$(( $(grep -c . "$out" || echo 1) - 1 )); [ "$n" -lt 0 ] && n=0
-    echo "==> [$tipo] $n linha(s) candidata(s) após o filtro"
+    echo "==> [$tipo] $n inscrição(ões) da carteira encontrada(s)"
     rm -f "$zip"
 
     echo "==> [$tipo] importando no container"
     if ! $COMPOSE cp "$out" app:/tmp/pgfn.csv; then
         echo "!! [$tipo] falha ao copiar para o container"; rm -f "$out"; rc=1; continue
     fi
-    $COMPOSE exec -T app php artisan vigilo:importar-pgfn /tmp/pgfn.csv --tipo="$tipo" </dev/null \
+    # --allow-empty: o pgfn_filter.py já validou a estrutura; zero inscrição é
+    # legítimo (a carteira pode não ter dívida neste tipo) e deve limpar o tipo.
+    $COMPOSE exec -T app php artisan vigilo:importar-pgfn /tmp/pgfn.csv --tipo="$tipo" --allow-empty </dev/null \
         || { echo "!! [$tipo] import falhou"; rc=1; }
     $COMPOSE exec -T app rm -f /tmp/pgfn.csv </dev/null || true
     rm -f "$out"

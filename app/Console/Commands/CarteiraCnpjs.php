@@ -22,11 +22,11 @@ final class CarteiraCnpjs extends Command
     public function handle(): int
     {
         MonitoredCompany::query()
-            ->orderBy('cnpj')
             ->pluck('cnpj')
             ->map(fn ($cnpj): string => preg_replace('/\D/', '', (string) $cnpj) ?? '')
             ->filter(fn (string $digits): bool => strlen($digits) === 14)
             ->unique()
+            ->sort() // ordena pelos dígitos normalizados (não pela forma crua armazenada)
             ->each(fn (string $digits) => $this->line($digits));
 
         return self::SUCCESS;
