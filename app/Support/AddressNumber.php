@@ -30,7 +30,10 @@ final class AddressNumber
      * (produção) e SQLite (testes). Retorna um LITERAL por coluna (as únicas são
      * `e.numero` e `ea.numero`): garante injection-safety e satisfaz o
      * analisador, que exige literal-string em SQL cru. A paridade com
-     * {@see normalize()} é coberta pelos testes do por-endereço ("Nº 320" ≡ "320").
+     * {@see normalize()} é coberta por teste (AddressNumberParityTest, as 7
+     * variantes de token). Nota: o `numero` da Receita é de uma linha só, então
+     * o SQL só remove o espaço literal (o PHP remove todo `\s`); não há tab/quebra
+     * no campo, logo não há divergência na prática.
      *
      * @return literal-string
      */
