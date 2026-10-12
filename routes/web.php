@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AsaasWebhookController;
+use App\Http\Controllers\CompanyDossieController;
 use App\Http\Controllers\StopImpersonationController;
 use App\Livewire\Admin\Organizations\Index as AdminOrganizations;
 use App\Livewire\Admin\Organizations\Show as AdminOrganizationShow;
@@ -27,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('companies/{company}', CompanyShow::class)->name('companies.show');
     Route::get('companies/{company}/grafo', CompanyGraph::class)->name('companies.graph');
+    Route::get('companies/{company}/dossie', CompanyDossieController::class)->name('companies.dossie');
 
     Route::get('alerts', Inbox::class)->name('alerts.index');
 

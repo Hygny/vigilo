@@ -17,6 +17,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <x-ui.button :href="route('companies.graph', $company)" variant="secondary" icon="hub" wire:navigate>Grafo societário</x-ui.button>
+                <x-ui.button :href="route('companies.dossie', $company)" variant="secondary" icon="picture_as_pdf">Dossiê (PDF)</x-ui.button>
                 <x-ui.button wire:click="queueRefresh" icon="bolt">Atualizar agora</x-ui.button>
             </div>
         </div>
