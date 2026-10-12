@@ -6,6 +6,7 @@ namespace App\Livewire\Companies;
 
 use App\Enums\NivelRisco;
 use App\Models\MonitoredCompany;
+use App\Services\Risco\DirtyListLookup;
 use App\Services\Risco\RiscoService;
 use App\Support\SituacaoCadastral;
 use Illuminate\Contracts\View\View;
@@ -37,31 +38,38 @@ class RiscoPanel extends Component
         return view('livewire.companies.risco-panel-placeholder');
     }
 
-    public function render(RiscoService $risco): View
+    public function render(RiscoService $risco, DirtyListLookup $listaSujaLookup): View
     {
         $report = $risco->para($this->company->cnpj);
+        $listaSuja = $listaSujaLookup->consta($this->company->cnpj);
+        $naListaSuja = $listaSuja !== null;
 
-        // O semáforo só aparece quando a consulta rodou de fato — sem isso não
-        // avaliamos "baixo" (seria enganoso dizer que está limpo sem ter checado).
         $nivel = null;
         $motivo = null;
 
-        if ($report->configurado && $report->disponivel) {
+        // O semáforo aparece quando há sinal confiável: a consulta de sanções
+        // rodou, OU a empresa consta na Lista Suja (sinal local, sempre
+        // confiável). Sem nenhum dos dois não dizemos "baixo" — seria enganoso
+        // garantir que está limpo sem ter checado as sanções.
+        if ($naListaSuja || ($report->configurado && $report->disponivel)) {
             $situacao = $this->company->latestSnapshot?->situacao_cadastral;
             $situacaoNegativa = SituacaoCadastral::isNegative($situacao);
 
-            $nivel = NivelRisco::avaliar($report->temSancaoAtiva(), $report->temSancoes(), $situacaoNegativa);
-            $motivo = match ($nivel) {
-                NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
-                NivelRisco::Medio => $this->motivoMedio($situacaoNegativa, $situacao, $report->temSancoes()),
-                NivelRisco::Baixo => 'Empresa ativa e sem sanções nos cadastros consultados.',
-            };
+            $nivel = NivelRisco::avaliar($report->temSancaoAtiva(), $report->temSancoes(), $situacaoNegativa, $naListaSuja);
+            $motivo = $naListaSuja
+                ? 'Consta na Lista Suja do trabalho escravo (MTE).'
+                : match ($nivel) {
+                    NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
+                    NivelRisco::Medio => $this->motivoMedio($situacaoNegativa, $situacao, $report->temSancoes()),
+                    NivelRisco::Baixo => 'Empresa ativa e sem sanções nos cadastros consultados.',
+                };
         }
 
         return view('livewire.companies.risco-panel', [
             'report' => $report,
             'nivel' => $nivel,
             'motivo' => $motivo,
+            'listaSuja' => $listaSuja,
         ]);
     }
 

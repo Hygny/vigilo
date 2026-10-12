@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Livewire\Companies\RiscoPanel;
 use App\Models\CompanySnapshot;
+use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -158,6 +159,30 @@ it('describes both signals when a negative status and an expired sanction coexis
         ->assertSee('Risco Médio')
         ->assertSee('BAIXADA')   // situação negativa no motivo
         ->assertSee('expirada'); // e a sanção expirada também
+});
+
+it('flags high risk and shows the dirty-list warning even without the CGU key', function () {
+    config()->set('risco.portal.api_key', null); // CGU não configurada
+    Http::fake();
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = riscoCompanyFor($org);
+    DirtyListEmployer::query()->create([
+        'documento' => '11222333000181',
+        'nome' => 'EMPRESA RUIM LTDA',
+        'uf' => 'PA',
+        'ano' => '2022',
+        'imported_at' => now(),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco Alto')              // semáforo sobe mesmo sem a CGU
+        ->assertSee('Lista Suja')
+        ->assertSee('EMPRESA RUIM LTDA');
+
+    Http::assertNothingSent(); // Lista Suja é consulta local; não chama a CGU
 });
 
 it('forbids viewing the risk of a company from another organization', function () {

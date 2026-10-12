@@ -3,7 +3,7 @@
         <div class="mb-1 flex items-center justify-between gap-3">
             <div class="flex items-center gap-2">
                 <x-ui.icon name="gavel" :size="20" class="text-accent" />
-                <h2 class="text-[15px] font-semibold text-ink">Risco · Sanções (CGU)</h2>
+                <h2 class="text-[15px] font-semibold text-ink">Risco</h2>
             </div>
             @if ($nivel)
                 <x-ui.badge :tone="$nivel->tone()" :icon="$nivel->icon()">Risco {{ $nivel->label() }}</x-ui.badge>
@@ -12,6 +12,21 @@
         @if ($motivo)
             <p class="mb-4 text-[13px] text-ink-muted">{{ $motivo }}</p>
         @endif
+
+        {{-- Lista Suja do trabalho escravo (MTE): sinal crítico, sempre no topo --}}
+        @if ($listaSuja)
+            <div class="mb-4 flex items-start gap-2 rounded-btn bg-crit-soft px-4 py-3 text-sm text-crit">
+                <x-ui.icon name="gavel" :size="18" class="mt-0.5" />
+                <div>
+                    <p class="font-semibold">Consta na Lista Suja do trabalho escravo (MTE).</p>
+                    @php($detalhe = collect([$listaSuja->nome, $listaSuja->uf, $listaSuja->ano ? 'ano '.$listaSuja->ano : null])->filter()->implode(' · '))
+                    @if ($detalhe)<p class="mt-0.5 text-xs">{{ $detalhe }}</p>@endif
+                </div>
+            </div>
+        @endif
+
+        {{-- Sanções (CGU) --}}
+        <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Sanções (CGU)</h3>
 
         @if (! $report->configurado)
             <div class="flex items-start gap-2 text-sm text-ink-muted">

@@ -27,6 +27,11 @@ it('classifies low risk when active and clean', function () {
         ->toBe(NivelRisco::Baixo);
 });
 
+it('classifies high risk when the company is on the dirty list', function () {
+    expect(NivelRisco::avaliar(sancaoAtiva: false, algumaSancao: false, situacaoNegativa: false, listaSuja: true))
+        ->toBe(NivelRisco::Alto);
+});
+
 it('treats a sanction without an end date (or future end) as active', function () {
     expect(RiscoReport::ok('11222333000181', [sancaoComFim(null)])->temSancaoAtiva())->toBeTrue()
         ->and(RiscoReport::ok('11222333000181', [sancaoComFim('2999-12-31')])->temSancaoAtiva())->toBeTrue();
