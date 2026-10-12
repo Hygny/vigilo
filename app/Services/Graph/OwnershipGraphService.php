@@ -225,20 +225,17 @@ final class OwnershipGraphService
             })
             ->where('ea.cep', $cepDigits)
             ->where('ea.cnpj_basico', '!=', $basico)
-            ->orderBy('ea.cnpj_basico') // recorte determinístico num CEP denso
-            ->limit(self::ADDRESS_SCAN)
+            ->where(DB::raw(AddressNumber::sqlExpression('ea.numero')), '=', $alvoNumero) // número NO BANCO (exaustivo)
+            ->orderBy('ea.cnpj_basico')
+            ->limit(self::ADDRESS_SCAN) // teto de segurança sobre os que já casam o número
             ->get(['ea.cnpj_basico', 'ea.numero', 'ea.complemento', 'empa.razao_social', 'ma.situacao_cadastral']);
 
-        // Empresas DISTINTAS (por basico) que casam o número — e que não estejam
-        // numa OUTRA unidade (sala/complemento) do mesmo prédio.
+        // Empresas DISTINTAS (por basico) que não estejam numa OUTRA unidade
+        // (sala/complemento) do mesmo prédio.
         $matches = [];
 
         foreach ($rows as $row) {
             $r = (array) $row;
-
-            if (AddressNumber::normalize($this->str($r['numero'] ?? null) ?? '') !== $alvoNumero) {
-                continue;
-            }
 
             // Mesmo CEP+número mas complemento diferente = outra sala/unidade do
             // mesmo edifício → NÃO é vínculo (advogado e instituto no mesmo prédio,

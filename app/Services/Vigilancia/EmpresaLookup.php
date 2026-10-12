@@ -28,14 +28,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class EmpresaLookup
 {
-    /**
-     * Teto de estabelecimentos lidos por CEP antes do filtro de número. Um CEP
-     * específico tem poucos estabelecimentos; o teto só protege contra CEP
-     * "geral" patológico. Ordenamos por abertura desc, então pega-se os mais
-     * novos — coerente com a ordenação do contrato.
-     */
-    private const CANDIDATE_SCAN = 2000;
-
     /** Ordem do estabelecimento matriz (a empresa, para a busca por sócio). */
     private const ORDEM_MATRIZ = '0001';
 
@@ -90,7 +82,11 @@ final class EmpresaLookup
 
         $db = DB::connection($this->connection);
 
-        $query = $this->baseQuery($db)->where('e.cep', $cepDigits);
+        // Filtro do número NO BANCO (normalizado igual ao PHP) — exaustivo, sem a
+        // amostragem antiga que perdia matches em CEP denso (+2000 estabelecimentos).
+        $query = $this->baseQuery($db)
+            ->where('e.cep', $cepDigits)
+            ->where(DB::raw(AddressNumber::sqlExpression('e.numero')), '=', AddressNumber::normalize($numeroRaw));
 
         if ($situacaoCode !== null) {
             $query->where('e.situacao_cadastral', $situacaoCode);
@@ -99,25 +95,10 @@ final class EmpresaLookup
         $rows = $query
             ->orderBy('e.data_inicio_atividade', 'desc')
             ->orderBy('e.cnpj_basico') // desempate estável em datas iguais
-            ->limit(self::CANDIDATE_SCAN)
+            ->limit($limite)
             ->get($this->columns());
 
-        $alvo = AddressNumber::normalize($numeroRaw);
-        $matched = [];
-
-        foreach ($rows as $row) {
-            $e = (array) $row;
-
-            if (AddressNumber::normalize($this->strRaw($e['numero'] ?? null)) !== $alvo) {
-                continue;
-            }
-
-            $matched[] = $e;
-
-            if (count($matched) >= $limite) {
-                break;
-            }
-        }
+        $matched = array_map(fn (object $row): array => (array) $row, $rows->all());
 
         if ($matched === []) {
             return [];
