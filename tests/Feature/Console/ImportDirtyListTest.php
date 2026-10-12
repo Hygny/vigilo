@@ -49,6 +49,30 @@ it('is a full reload: re-importing replaces the whole list', function () {
     @unlink($second);
 });
 
+it('aborts without touching the list when the file has no valid document', function () {
+    DirtyListEmployer::query()->create(['documento' => '11222333000181', 'imported_at' => now()]); // lista boa
+    $csv = dirtyListCsv("Empregador;CNPJ/CPF\n"); // só cabeçalho
+
+    $this->artisan('vigilo:importar-lista-suja', ['path' => $csv])->assertFailed();
+
+    expect(DirtyListEmployer::query()->count())->toBe(1); // lista preservada
+
+    @unlink($csv);
+});
+
+it('aborts on a wrong delimiter instead of wiping the list', function () {
+    DirtyListEmployer::query()->create(['documento' => '11222333000181', 'imported_at' => now()]);
+    // Arquivo com vírgula; o comando usa ";" por padrão → cada linha vira uma só
+    // célula e os dígitos de várias colunas concatenam num "documento" inválido.
+    $csv = dirtyListCsv("Empregador,CNPJ/CPF,Ano\nX,11.222.333/0001-81,2022\n");
+
+    $this->artisan('vigilo:importar-lista-suja', ['path' => $csv])->assertFailed();
+
+    expect(DirtyListEmployer::query()->count())->toBe(1); // preservada
+
+    @unlink($csv);
+});
+
 it('fails when the document column is missing', function () {
     $csv = dirtyListCsv("Empregador;UF\nX;PA\n");
 

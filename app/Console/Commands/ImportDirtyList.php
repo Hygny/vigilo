@@ -76,7 +76,11 @@ final class ImportDirtyList extends Command
             while (($line = fgetcsv($handle, 0, $delimiter)) !== false) {
                 $documento = preg_replace('/\D/', '', $this->cell($line, $col['documento']) ?? '') ?? '';
 
-                if ($documento === '') {
+                // Só CNPJ (14) ou CPF (11). Descarta lixo (cabeçalho repetido,
+                // linha vazia e, sobretudo, delimitador/coluna errados — que
+                // concatenam dígitos de várias colunas e dariam um "documento"
+                // implausível). É também a guarda que evita apagar a lista boa.
+                if (! in_array(strlen($documento), [11, 14], true)) {
                     continue;
                 }
 
@@ -93,6 +97,15 @@ final class ImportDirtyList extends Command
             }
         } finally {
             fclose($handle);
+        }
+
+        // Guarda contra wipe acidental: se nada válido foi lido (arquivo vazio,
+        // cabeçalho não reconhecido ou --delimiter errado), NÃO toca na tabela —
+        // a lista atual é um sinal de risco crítico e não pode sumir em silêncio.
+        if ($rows === []) {
+            $this->error('Nenhum CNPJ/CPF válido encontrado — arquivo vazio, cabeçalho não reconhecido ou --delimiter errado? A lista atual NÃO foi alterada.');
+
+            return self::FAILURE;
         }
 
         DB::transaction(function () use ($rows): void {
