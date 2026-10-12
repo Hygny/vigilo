@@ -96,6 +96,10 @@ return [
         'branch_limit' => (int) env('CNPJ_GRAPH_BRANCH_LIMIT', 60),
         // Teto de empresas no mesmo endereço (CEP+número) mostradas no grafo.
         'address_limit' => (int) env('CNPJ_GRAPH_ADDRESS_LIMIT', 25),
+        // Acima de quantas empresas distintas no MESMO CEP+número o endereço é
+        // tratado como prédio comercial/coworking (vínculo = ruído) e as ligações
+        // de "mesmo endereço" são suprimidas. 0 desliga a supressão por ocupação.
+        'address_crowded_max' => (int) env('CNPJ_GRAPH_ADDRESS_CROWDED_MAX', 6),
         // Máximo de recentragens (pivôs) do grafo por usuário, por minuto. O pivô
         // navega a base inteira (due diligence), então limitamos para não virar
         // raspagem em massa. 0 desliga o limite.

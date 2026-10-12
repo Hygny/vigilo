@@ -27,6 +27,7 @@ function bootGraphBase(): void
         $t->string('nome_fantasia')->nullable();
         $t->string('cep')->nullable();
         $t->string('numero')->nullable();
+        $t->string('complemento')->nullable();
         $t->string('municipio')->nullable();
         $t->string('uf')->nullable();
     });

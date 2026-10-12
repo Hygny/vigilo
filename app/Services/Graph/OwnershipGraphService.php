@@ -41,6 +41,7 @@ final class OwnershipGraphService
         private readonly int $maxCompanies = 300,
         private readonly int $maxBranches = 60,
         private readonly int $addressLimit = 25,
+        private readonly int $addressCrowdedMax = 6,
     ) {}
 
     /**
@@ -68,7 +69,7 @@ final class OwnershipGraphService
             ->where('e.cnpj_basico', $basico)
             ->where('e.cnpj_ordem', $ordem)
             ->where('e.cnpj_dv', $dv)
-            ->first(['e.situacao_cadastral', 'e.cep', 'e.numero', 'emp.razao_social']);
+            ->first(['e.situacao_cadastral', 'e.cep', 'e.numero', 'e.complemento', 'emp.razao_social']);
 
         /** @var array<string, GraphNode> $nodes */
         $nodes = [
@@ -170,6 +171,7 @@ final class OwnershipGraphService
                 $basico,
                 $this->str($center['cep'] ?? null),
                 $this->str($center['numero'] ?? null),
+                $this->str($center['complemento'] ?? null),
                 $centerId,
                 $nodes,
                 $edges,
@@ -189,7 +191,7 @@ final class OwnershipGraphService
      * @param  array<string, GraphNode>  $nodes
      * @param  array<string, GraphEdge>  $edges
      */
-    private function addAddressNeighbors(ConnectionInterface $db, string $basico, ?string $cep, ?string $numero, string $centerId, array &$nodes, array &$edges): void
+    private function addAddressNeighbors(ConnectionInterface $db, string $basico, ?string $cep, ?string $numero, ?string $complemento, string $centerId, array &$nodes, array &$edges): void
     {
         $cepDigits = preg_replace('/\D/', '', (string) $cep) ?? '';
 
@@ -198,6 +200,14 @@ final class OwnershipGraphService
         }
 
         $alvoNumero = AddressNumber::normalize((string) $numero);
+
+        // Número ausente/genérico (vazio, "S/N", "0") não identifica um endereço:
+        // casaria todos os sem-número do CEP → ruído, não vínculo.
+        if ($this->numeroInespecifico($alvoNumero)) {
+            return;
+        }
+
+        $alvoComplemento = $this->normalizeComplemento($complemento);
 
         $rows = $db->table('estabelecimentos as ea')
             ->leftJoin('empresas as empa', 'ea.cnpj_basico', '=', 'empa.cnpj_basico')
@@ -209,18 +219,25 @@ final class OwnershipGraphService
             ->where('ea.cnpj_basico', '!=', $basico)
             ->orderBy('ea.cnpj_basico') // recorte determinístico num CEP denso
             ->limit(self::ADDRESS_SCAN)
-            ->get(['ea.cnpj_basico', 'ea.numero', 'empa.razao_social', 'ma.situacao_cadastral']);
+            ->get(['ea.cnpj_basico', 'ea.numero', 'ea.complemento', 'empa.razao_social', 'ma.situacao_cadastral']);
 
-        $added = 0;
+        // Empresas DISTINTAS (por basico) que casam o número — e que não estejam
+        // numa OUTRA unidade (sala/complemento) do mesmo prédio.
+        $matches = [];
 
         foreach ($rows as $row) {
-            if ($added >= $this->addressLimit) {
-                break;
-            }
-
             $r = (array) $row;
 
             if (AddressNumber::normalize($this->str($r['numero'] ?? null) ?? '') !== $alvoNumero) {
+                continue;
+            }
+
+            // Mesmo CEP+número mas complemento diferente = outra sala/unidade do
+            // mesmo edifício → NÃO é vínculo (advogado e instituto no mesmo prédio,
+            // salas distintas). Só exclui quando AMBOS têm complemento e diferem;
+            // com complemento ausente, o teto de ocupação abaixo decide.
+            $compl = $this->normalizeComplemento($this->str($r['complemento'] ?? null));
+            if ($alvoComplemento !== '' && $compl !== '' && $compl !== $alvoComplemento) {
                 continue;
             }
 
@@ -229,6 +246,25 @@ final class OwnershipGraphService
             if ($nb === null) {
                 continue;
             }
+
+            $matches[$nb] ??= $r;
+        }
+
+        // Endereço "lotado" = prédio comercial/coworking/condomínio/contador: muitas
+        // empresas distintas no mesmo CEP+número. Compartilhar o prédio não é
+        // vínculo societário → suprime tudo (evita falso positivo). 0 desliga.
+        if ($this->addressCrowdedMax > 0 && count($matches) > $this->addressCrowdedMax) {
+            return;
+        }
+
+        $added = 0;
+
+        foreach ($matches as $nb => $r) {
+            if ($added >= $this->addressLimit) {
+                break;
+            }
+
+            $nb = (string) $nb; // chave de array numérica vira int no PHP; matrizFromBasico exige string
 
             $id = 'empresa:'.$nb;
             $nodes[$id] ??= new GraphNode(
@@ -246,6 +282,20 @@ final class OwnershipGraphService
                 $added++;
             }
         }
+    }
+
+    /** Número sem dígitos úteis (vazio, "S/N", "0", "00") — não identifica endereço. */
+    private function numeroInespecifico(string $numeroNormalizado): bool
+    {
+        $digits = preg_replace('/\D/', '', $numeroNormalizado) ?? '';
+
+        return $digits === '' || ltrim($digits, '0') === '';
+    }
+
+    /** Normaliza o complemento (sala/andar) para comparação: caixa alta, só alfanumérico. */
+    private function normalizeComplemento(?string $value): string
+    {
+        return preg_replace('/[^A-Z0-9]/', '', mb_strtoupper(trim((string) $value))) ?? '';
     }
 
     /**

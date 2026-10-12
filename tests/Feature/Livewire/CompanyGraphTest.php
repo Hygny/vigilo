@@ -42,6 +42,7 @@ function bootCompanyGraphBase(bool $withData = true): void
         $t->string('nome_fantasia')->nullable();
         $t->string('cep')->nullable();
         $t->string('numero')->nullable();
+        $t->string('complemento')->nullable();
         $t->string('municipio')->nullable();
         $t->string('uf')->nullable();
     });
@@ -216,6 +217,78 @@ it('lists the connected entities in the report with their link type', function (
 
             return true;
         });
+});
+
+it('excludes a company in a different unit (sala) of the same building', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro 11222333 no CEP 49019900, nº 100
+
+    // Centro numa sala específica do edifício.
+    DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')
+        ->update(['complemento' => 'SALA 02']);
+
+    // Vizinho em OUTRA sala do mesmo prédio (mesmo CEP+número) → NÃO é vínculo.
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100', 'complemento' => 'SALA 319'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'OUTRA SALA LTDA']);
+
+    // Co-tenant na MESMA sala → vínculo legítimo.
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '78787878', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100', 'complemento' => 'SALA 02'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '78787878', 'razao_social' => 'MESMA SALA LTDA']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('cyto', function (array $cyto): bool {
+            $nodes = collect($cyto['nodes']);
+            expect($nodes->firstWhere('data.id', 'empresa:45456767'))->toBeNull()   // outra sala → fora
+                ->and($nodes->firstWhere('data.id', 'empresa:78787878'))->not->toBeNull(); // mesma sala → entra
+
+            return true;
+        });
+});
+
+it('suppresses same-address neighbours when the address is a crowded building', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100 (sem complemento)
+
+    // 7 empresas distintas no MESMO CEP+número (prédio) → acima do teto (6).
+    for ($i = 1; $i <= 7; $i++) {
+        $basico = str_pad((string) (60000000 + $i), 8, '0', STR_PAD_LEFT);
+        DB::connection('cnpj')->table('estabelecimentos')->insert([
+            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ]);
+        DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => "PREDIO EMPRESA {$i}"]);
+    }
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('addressCount', 0) // prédio lotado → nenhum vínculo de endereço
+        ->assertViewHas('cyto', fn (array $cyto): bool => collect($cyto['edges'])->firstWhere('data.type', 'endereco') === null);
+});
+
+it('ignores same-address when the company has no street number', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    // Centro e vizinho SEM número no mesmo CEP → não deve agrupar os "S/N".
+    DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')->update(['numero' => '']);
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => ''],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'SEM NUMERO LTDA']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('addressCount', 0);
 });
 
 it('includes same-address neighbours in the report only when the toggle is on', function () {

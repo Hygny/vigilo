@@ -61,6 +61,7 @@ class AppServiceProvider extends ServiceProvider
             maxCompanies: (int) config('cnpj.graph.max_companies', 300),
             maxBranches: (int) config('cnpj.graph.branch_limit', 60),
             addressLimit: (int) config('cnpj.graph.address_limit', 25),
+            addressCrowdedMax: (int) config('cnpj.graph.address_crowded_max', 6),
         ));
 
         $this->app->singleton(EmpresaLookup::class, fn (): EmpresaLookup => new EmpresaLookup(
