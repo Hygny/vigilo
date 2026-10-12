@@ -36,3 +36,21 @@ it('ignores non-CNPJ (CPF-length) documents', function () {
 
     expect(carteiraLines())->toBe([]);
 });
+
+it('--pending lists only CNPJs not yet synced with the PGFN', function () {
+    $org = Organization::factory()->create();
+    $portfolio = Portfolio::factory()->for($org)->create();
+    $synced = MonitoredCompany::factory()->for($portfolio)->create(['cnpj' => '11222333000181']);
+    MonitoredCompany::factory()->for($portfolio)->create(['cnpj' => '44555666000199']); // novo (pgfn_synced_at nulo)
+
+    // Query builder update burla o fillable (igual ao vigilo:pgfn-marcar-sincronizado).
+    MonitoredCompany::query()->whereKey($synced->id)->update(['pgfn_synced_at' => now()]);
+
+    Artisan::call('vigilo:carteira-cnpjs', ['--pending' => true]);
+    $lines = array_values(array_filter(
+        explode("\n", str_replace("\r", '', trim(Artisan::output()))),
+        fn (string $l): bool => $l !== '',
+    ));
+
+    expect($lines)->toBe(['44555666000199']); // só o não-sincronizado
+});

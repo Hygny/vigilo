@@ -28,11 +28,20 @@ COMPOSE="docker compose -f $APP_DIR/docker-compose.yml"
 BASE_URL="https://dadosabertos.pgfn.gov.br"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FILTER="$SCRIPT_DIR/pgfn_filter.py"
+CACHE_ROOT="$APP_DIR/pgfn-cache" # zips ficam aqui p/ o refresh incremental reusar
 
 cd "$APP_DIR" || exit 1
 command -v curl    >/dev/null || { echo "!! curl não encontrado"; exit 1; }
 command -v python3 >/dev/null || { echo "!! python3 não encontrado (instale com: sudo apt-get install -y python3)"; exit 1; }
 [ -f "$FILTER" ] || { echo "!! não achei $FILTER"; exit 1; }
+
+# Lock: o reimport trimestral e o refresh incremental compartilham este lock, para
+# nunca reescreverem a pgfn_debts ao mesmo tempo. flock -n sai se já houver um rodando.
+exec 9>"/tmp/vigilo-pgfn.lock" || exit 1
+if ! flock -n 9; then
+    echo "==> [$(date -Is)] outro import de PGFN já em andamento — saindo"
+    exit 0
+fi
 
 # tipo interno  ->  nome do arquivo (sistema) no CDN
 declare -A SISTEMA=(
@@ -63,6 +72,10 @@ if [ "$QUARTER" = latest ]; then
 fi
 echo "==> trimestre: $QUARTER"
 
+# Cache persistente dos zips (por trimestre) — o refresh incremental reusa sem
+# rebaixar. CSVs filtrados vão num temp descartável.
+CACHE="$CACHE_ROOT/$QUARTER"
+mkdir -p "$CACHE"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -81,12 +94,16 @@ for tipo in "${TIPOS[@]}"; do
     fi
 
     url="$BASE_URL/$QUARTER/$sis.zip"
-    zip="$WORK/$tipo.zip"
+    zip="$CACHE/$tipo.zip" # cacheado: não re-baixa se já estiver completo
     out="$WORK/$tipo.csv"
 
-    echo "==> [$tipo] baixando $url"
-    if ! curl -fL --retry 3 --max-time 7200 -o "$zip" "$url"; then
-        echo "!! [$tipo] download falhou"; rc=1; continue
+    if [ -s "$zip" ]; then
+        echo "==> [$tipo] usando zip em cache ($zip)"
+    else
+        echo "==> [$tipo] baixando $url"
+        if ! curl -fL --retry 3 --max-time 7200 -o "$zip" "$url"; then
+            echo "!! [$tipo] download falhou"; rm -f "$zip"; rc=1; continue
+        fi
     fi
 
     echo "==> [$tipo] filtrando pela carteira (streaming, sem descompactar tudo)"
@@ -94,7 +111,6 @@ for tipo in "${TIPOS[@]}"; do
         echo "!! [$tipo] filtro falhou (zip corrompido ou sem coluna de documento) — nada importado"; rm -f "$zip" "$out"; rc=1; continue
     fi
     echo "==> [$tipo] $n inscrição(ões) da carteira encontrada(s)"
-    rm -f "$zip"
 
     echo "==> [$tipo] importando no container"
     if ! $COMPOSE cp "$out" app:/tmp/pgfn.csv; then
@@ -107,6 +123,17 @@ for tipo in "${TIPOS[@]}"; do
     $COMPOSE exec -T app rm -f /tmp/pgfn.csv </dev/null || true
     rm -f "$out"
 done
+
+# Mantém só o cache do trimestre atual (evita acumular ~1,5 GB por trimestre).
+find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name "$QUARTER" -exec rm -rf {} + 2>/dev/null || true
+
+# Só marca a carteira como sincronizada se TODOS os tipos entraram — senão deixa
+# pendente para o refresh incremental tentar de novo (auto-cura).
+if [ "$rc" -eq 0 ]; then
+    $COMPOSE exec -T app php artisan vigilo:pgfn-marcar-sincronizado </dev/null || true
+else
+    echo "!! algum tipo falhou — carteira NÃO marcada como sincronizada (será retentada)"
+fi
 
 echo "==> concluído (trimestre $QUARTER)"
 exit "$rc"
