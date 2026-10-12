@@ -401,9 +401,9 @@ it('caps the number of companies in a person-centered graph', function () {
 it('includes other companies at the same address (cep + numero) with includeAddress', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
-        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'], // mesmo prédio (número normaliza)
-        ['cnpj_basico' => '77888999', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '500'], // número diferente
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => 'Nº 100'], // mesmo prédio (número normaliza)
+        ['cnpj_basico' => '77888999', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '500'], // número diferente
         ['cnpj_basico' => '12121212', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '80000000', 'numero' => '100'], // CEP diferente
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
@@ -426,8 +426,8 @@ it('includes other companies at the same address (cep + numero) with includeAddr
 it('omits address neighbors by default', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
-        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '07', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
         ['cnpj_basico' => '11222333', 'razao_social' => 'CENTRO'],
@@ -441,9 +441,9 @@ it('omits address neighbors by default', function () {
 it('caps the number of address neighbors at addressLimit', function () {
     bootGraphBase();
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
-        ['cnpj_basico' => '22222222', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
-        ['cnpj_basico' => '33333333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
+        ['cnpj_basico' => '22222222', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
+        ['cnpj_basico' => '33333333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
     ]);
 
     // addressLimit = 1 → só um dos dois vizinhos entra.

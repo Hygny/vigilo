@@ -200,6 +200,13 @@ final class OwnershipGraphService
             return;
         }
 
+        // CEP "especial" (grande usuário / caixa postal / unidade dos Correios) =
+        // um edifício ou entidade com CEP próprio, não um logradouro compartilhável.
+        // Co-ocupantes ali (condomínio, agência de banco, lojas) NÃO são vínculo.
+        if ($this->cepEspecial($cepDigits)) {
+            return;
+        }
+
         $alvoNumero = AddressNumber::normalize((string) $numero);
 
         // Número ausente/genérico (vazio, "S/N", "0") não identifica um endereço:
@@ -283,6 +290,17 @@ final class OwnershipGraphService
                 $added++;
             }
         }
+    }
+
+    /**
+     * CEP de 8 dígitos NNNNN-SSS cujo sufixo (3 últimos) é >= 900: "grande
+     * usuário" (edifício/entidade com CEP próprio), caixa postal ou unidade
+     * operacional dos Correios. Não é um logradouro que empresas distintas
+     * "compartilham" por acaso — é um único endereço-entidade.
+     */
+    private function cepEspecial(string $cepDigits): bool
+    {
+        return strlen($cepDigits) === 8 && (int) substr($cepDigits, 5, 3) >= 900;
     }
 
     /** Número sem dígitos úteis (vazio, "S/N", "0", "00") — não identifica endereço. */

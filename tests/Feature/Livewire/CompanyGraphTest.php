@@ -67,7 +67,7 @@ function bootCompanyGraphBase(bool $withData = true): void
     });
 
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100',
+        'cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100',
     ]);
     DB::connection('cnpj')->table('empresas')->insert([
         ['cnpj_basico' => '11222333', 'razao_social' => 'EMPRESA CENTRO'],
@@ -177,11 +177,11 @@ it('hides same-address companies by default and reveals them via the toggle', fu
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+    bootCompanyGraphBase(); // centro no CEP 49020000, nº 100
 
     // Empresa vizinha: mesmo CEP + número (empresa diferente, sem vínculo societário).
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => 'Nº 100'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA DE ENDERECO']);
 
@@ -223,7 +223,7 @@ it('excludes a company in a different unit (sala) of the same building', functio
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // centro 11222333 no CEP 49019900, nº 100
+    bootCompanyGraphBase(); // centro 11222333 no CEP 49020000, nº 100
 
     // Centro numa sala específica do edifício.
     DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')
@@ -231,13 +231,13 @@ it('excludes a company in a different unit (sala) of the same building', functio
 
     // Vizinho em OUTRA sala do mesmo prédio (mesmo CEP+número) → NÃO é vínculo.
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100', 'complemento' => 'SALA 319'],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100', 'complemento' => 'SALA 319'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'OUTRA SALA LTDA']);
 
     // Co-tenant na MESMA sala → vínculo legítimo.
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '78787878', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100', 'complemento' => 'SALA 02'],
+        ['cnpj_basico' => '78787878', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100', 'complemento' => 'SALA 02'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '78787878', 'razao_social' => 'MESMA SALA LTDA']);
 
@@ -256,13 +256,13 @@ it('suppresses same-address neighbours when the address is a crowded building', 
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100 (sem complemento)
+    bootCompanyGraphBase(); // centro no CEP 49020000, nº 100 (sem complemento)
 
     // 7 empresas distintas no MESMO CEP+número (prédio) → acima do teto (6).
     for ($i = 1; $i <= 7; $i++) {
         $basico = str_pad((string) (60000000 + $i), 8, '0', STR_PAD_LEFT);
         DB::connection('cnpj')->table('estabelecimentos')->insert([
-            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
         ]);
         DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => "PREDIO EMPRESA {$i}"]);
     }
@@ -283,7 +283,7 @@ it('keeps same-address neighbours when the crowded cap is disabled (0)', functio
     for ($i = 1; $i <= 7; $i++) {
         $basico = str_pad((string) (60000000 + $i), 8, '0', STR_PAD_LEFT);
         DB::connection('cnpj')->table('estabelecimentos')->insert([
-            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
         ]);
         DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => "PREDIO EMPRESA {$i}"]);
     }
@@ -304,13 +304,33 @@ it('keeps a same-address neighbour without complemento even when the center has 
 
     // Vizinho SEM complemento → a guarda de sala não exclui (exige os dois); cai no teto.
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => '100'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'SEM COMPLEMENTO LTDA']);
 
     Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
         ->call('toggleAddress')
         ->assertViewHas('cyto', fn (array $cyto): bool => collect($cyto['nodes'])->firstWhere('data.id', 'empresa:45456767') !== null);
+});
+
+it('suppresses same-address for a "grande usuário" CEP (prédio com CEP próprio)', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    // Reposiciona o centro num CEP especial (sufixo 900 = edifício/entidade com
+    // CEP próprio, ex.: Ed. Cidade de Aracaju 49019900).
+    DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')
+        ->update(['cep' => '49019900']);
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'CO-OCUPANTE DO PREDIO']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('addressCount', 0); // CEP de grande usuário → sem vínculo de endereço
 });
 
 it('ignores same-address when the company has no street number', function () {
@@ -322,7 +342,7 @@ it('ignores same-address when the company has no street number', function () {
     // Centro e vizinho SEM número no mesmo CEP → não deve agrupar os "S/N".
     DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')->update(['numero' => '']);
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => ''],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => ''],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'SEM NUMERO LTDA']);
 
@@ -335,10 +355,10 @@ it('includes same-address neighbours in the report only when the toggle is on', 
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+    bootCompanyGraphBase(); // centro no CEP 49020000, nº 100
 
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => 'Nº 100'],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49020000', 'numero' => 'Nº 100'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA DE ENDERECO']);
 
@@ -419,11 +439,11 @@ it('excludes negative companies from the header counts when the filter is off', 
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = monitoredCompanyFor($org);
-    bootCompanyGraphBase(); // centro no CEP 49019900, nº 100
+    bootCompanyGraphBase(); // centro no CEP 49020000, nº 100
 
     // Vizinha de endereço BAIXADA (situação 08).
     DB::connection('cnpj')->table('estabelecimentos')->insert([
-        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '08', 'cep' => '49019900', 'numero' => '100'],
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '08', 'cep' => '49020000', 'numero' => '100'],
     ]);
     DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'VIZINHA BAIXADA']);
 
