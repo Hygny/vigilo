@@ -81,6 +81,37 @@
         @endif
     @endif
 
+    @if ($beneficiarios !== [])
+        <h2>Beneficiários finais (estrutura de controle)</h2>
+        <ul>
+            @foreach ($beneficiarios as $b)
+                @php($meta = collect(['nível '.$b->depth, $b->document, $b->type === 'ext' ? 'estrangeiro' : null])->filter()->implode(' · '))
+                <li>{{ $b->name }} <span class="muted">— {{ $meta }}</span></li>
+            @endforeach
+        </ul>
+        <p class="muted" style="font-size:9px;">Estrutural — sem % de participação (não consta na base aberta da Receita).</p>
+    @endif
+
+    @if ($grupo !== [])
+        <h2>Grupo econômico (empresas ligadas por sócio)</h2>
+        <ul>
+            @foreach ($grupo as $g)
+                @php($meta = collect([$g['document'], $g['situacao']])->filter()->implode(' · '))
+                <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span></li>
+            @endforeach
+        </ul>
+    @endif
+
+    @if ($filiais !== [])
+        <h2>Filiais</h2>
+        <ul>
+            @foreach ($filiais as $f)
+                @php($meta = collect([$f->isMatriz ? 'MATRIZ' : 'FILIAL', $f->situacao, $f->uf, $f->municipio])->filter()->implode(' · '))
+                <li>{{ $f->cnpj }} <span class="muted">{{ $meta }}</span></li>
+            @endforeach
+        </ul>
+    @endif
+
     @if ($assessment->listaSuja)
         <h2>Trabalho escravo (Lista Suja — MTE)</h2>
         <div class="box" style="background: #FEE2E2;">
