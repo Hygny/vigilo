@@ -273,6 +273,46 @@ it('suppresses same-address neighbours when the address is a crowded building', 
         ->assertViewHas('cyto', fn (array $cyto): bool => collect($cyto['edges'])->firstWhere('data.type', 'endereco') === null);
 });
 
+it('keeps same-address neighbours when the crowded cap is disabled (0)', function () {
+    config()->set('cnpj.graph.address_crowded_max', 0); // desliga a supressão por ocupação
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    for ($i = 1; $i <= 7; $i++) {
+        $basico = str_pad((string) (60000000 + $i), 8, '0', STR_PAD_LEFT);
+        DB::connection('cnpj')->table('estabelecimentos')->insert([
+            ['cnpj_basico' => $basico, 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+        ]);
+        DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => "PREDIO EMPRESA {$i}"]);
+    }
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('addressCount', 7); // teto 0 → todos aparecem (sem supressão)
+});
+
+it('keeps a same-address neighbour without complemento even when the center has one', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+
+    DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '11222333')
+        ->update(['complemento' => 'SALA 02']);
+
+    // Vizinho SEM complemento → a guarda de sala não exclui (exige os dois); cai no teto.
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '45456767', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'cep' => '49019900', 'numero' => '100'],
+    ]);
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '45456767', 'razao_social' => 'SEM COMPLEMENTO LTDA']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->call('toggleAddress')
+        ->assertViewHas('cyto', fn (array $cyto): bool => collect($cyto['nodes'])->firstWhere('data.id', 'empresa:45456767') !== null);
+});
+
 it('ignores same-address when the company has no street number', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

@@ -16,6 +16,7 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Monta o grafo societário de uma empresa (Camada 1) a partir da base CNPJ
@@ -292,10 +293,17 @@ final class OwnershipGraphService
         return $digits === '' || ltrim($digits, '0') === '';
     }
 
-    /** Normaliza o complemento (sala/andar) para comparação: caixa alta, só alfanumérico. */
+    /**
+     * Normaliza o complemento (sala/andar) para comparação: translitera acento
+     * (TÉRREO → TERREO), caixa alta, só alfanumérico, e colapsa zeros à esquerda
+     * dos números (SALA 02 ≡ SALA 2) — para duas grafias da MESMA unidade não
+     * serem tratadas como salas diferentes (e derrubarem um vínculo legítimo).
+     */
     private function normalizeComplemento(?string $value): string
     {
-        return preg_replace('/[^A-Z0-9]/', '', mb_strtoupper(trim((string) $value))) ?? '';
+        $alnum = preg_replace('/[^A-Z0-9]/', '', mb_strtoupper(Str::ascii(trim((string) $value)))) ?? '';
+
+        return preg_replace_callback('/\d+/', static fn (array $m): string => ltrim($m[0], '0') ?: '0', $alnum) ?? $alnum;
     }
 
     /**
