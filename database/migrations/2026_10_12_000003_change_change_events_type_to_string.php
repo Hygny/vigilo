@@ -25,6 +25,11 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Inclui `sancao_adicionada` na lista: depois do up() a produção já pode
+        // ter gravado linhas com esse tipo, e um ENUM sem ele faria o MySQL
+        // (strict) abortar o rollback (1265/1366). Reverter enum→string é
+        // inerentemente com ressalva — tipos adicionados DEPOIS desta migração
+        // já nascem string e não cabem aqui.
         Schema::table('change_events', function (Blueprint $table): void {
             $table->enum('type', [
                 'situacao_changed',
@@ -34,6 +39,7 @@ return new class extends Migration
                 'cnae_changed',
                 'porte_changed',
                 'name_changed',
+                'sancao_adicionada',
             ])->change();
         });
     }
