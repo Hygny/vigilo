@@ -17,13 +17,24 @@ use Illuminate\Support\Str;
 final class CsvColumns
 {
     /**
-     * Índice da 1ª coluna cujo cabeçalho (sem acento/caixa) contém um dos termos.
+     * Índice da coluna que casa um dos termos (sem acento/caixa). Prefere um
+     * cabeçalho IGUAL ao termo antes de um que apenas o CONTÉM — assim colunas
+     * como `SITUACAO_INSCRICAO` ganham de `TIPO_SITUACAO_INSCRICAO`, que também
+     * contém "situacao". Sem match exato, cai no 1º cabeçalho que contém o termo.
      *
      * @param  array<int, string|null>  $header
      * @param  list<string>  $terms
      */
     public static function find(array $header, array $terms): ?int
     {
+        // 1ª preferência: cabeçalho exatamente igual a um dos termos.
+        foreach ($header as $i => $nome) {
+            if (in_array(Str::lower(Str::ascii((string) $nome)), $terms, true)) {
+                return $i;
+            }
+        }
+
+        // Fallback: 1ª coluna cujo cabeçalho contém um dos termos.
         foreach ($header as $i => $nome) {
             $normalizado = Str::lower(Str::ascii((string) $nome));
 

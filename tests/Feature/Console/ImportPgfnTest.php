@@ -79,6 +79,32 @@ it('aborts without touching the table when no valid document is read', function 
     @unlink($csv);
 });
 
+it('picks SITUACAO_INSCRICAO over the TIPO_SITUACAO_INSCRICAO decoy column', function () {
+    pgfnMonitor('11222333000181');
+    // A coluna "tipo" vem ANTES e também contém "situacao" — o match exato tem de vencer.
+    $csv = pgfnCsv(
+        "CPF_CNPJ;TIPO_SITUACAO_INSCRICAO;SITUACAO_INSCRICAO;VALOR_CONSOLIDADO\n".
+        "11222333000181;PARCELADA;EM COBRANCA;100,00\n"
+    );
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'geral'])->assertSuccessful();
+
+    expect(PgfnDebt::query()->value('situacao'))->toBe('EM COBRANCA'); // não "PARCELADA"
+
+    @unlink($csv);
+});
+
+it('reads a plain decimal value without inflating it 100x', function () {
+    pgfnMonitor('11222333000181');
+    $csv = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;1234.56\n"); // ponto decimal, sem vírgula
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'geral'])->assertSuccessful();
+
+    expect(app(PgfnLookup::class)->para('11222333000181')->total)->toEqualWithDelta(1234.56, 0.001);
+
+    @unlink($csv);
+});
+
 it('fails when the file does not exist', function () {
     $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
 });

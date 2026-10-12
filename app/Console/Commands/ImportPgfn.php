@@ -29,6 +29,9 @@ final class ImportPgfn extends Command
 
     protected $description = 'Importa a dívida ativa (PGFN) dos CNPJs da carteira de um CSV (recarga por tipo).';
 
+    /** Linhas por INSERT em lote (a tabela é pequena — só a carteira). */
+    private const CHUNK = 1000;
+
     public function handle(): int
     {
         $path = (string) $this->argument('path');
@@ -74,7 +77,7 @@ final class ImportPgfn extends Command
 
             $col = [
                 'documento' => CsvColumns::find($header, ['cnpj', 'cpf', 'documento']),
-                'situacao' => CsvColumns::find($header, ['situacao']),
+                'situacao' => CsvColumns::find($header, ['situacao_inscricao', 'situacao']),
                 'receita' => CsvColumns::find($header, ['receita']),
                 'valor' => CsvColumns::find($header, ['valor']),
                 'data' => CsvColumns::find($header, ['data_inscricao', 'data']),
@@ -126,7 +129,7 @@ final class ImportPgfn extends Command
         DB::transaction(function () use ($rows, $tipo): void {
             PgfnDebt::query()->where('tipo', $tipo)->delete();
 
-            foreach (array_chunk($rows, 1000) as $chunk) {
+            foreach (array_chunk($rows, self::CHUNK) as $chunk) {
                 PgfnDebt::insert($chunk);
             }
         });
@@ -141,14 +144,21 @@ final class ImportPgfn extends Command
         return $n.' '.($n === 1 ? 'inscrição' : 'inscrições');
     }
 
-    /** "1.234,56" → "1234.56" (formato BR); null se vazio/não-numérico. */
+    /**
+     * "1.234,56" → "1234.56" (formato BR); null se vazio/não-numérico. Se não há
+     * vírgula, o ponto (quando houver) é tratado como decimal — evita que um
+     * valor já em ponto decimal ("1234.56") vire "123456" (erro de 100×) caso o
+     * layout do dump mude.
+     */
     private function parseValor(?string $raw): ?string
     {
         if ($raw === null) {
             return null;
         }
 
-        $v = str_replace(',', '.', str_replace(['.', ' '], '', $raw));
+        $v = str_contains($raw, ',')
+            ? str_replace(',', '.', str_replace(['.', ' '], '', $raw)) // BR: ponto = milhar
+            : str_replace(' ', '', $raw);                              // ponto já é decimal
 
         return is_numeric($v) ? $v : null;
     }
