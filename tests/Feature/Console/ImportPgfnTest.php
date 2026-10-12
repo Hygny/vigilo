@@ -171,6 +171,24 @@ it('clears the tipo (not abort) for a validated empty file when --allow-empty is
     @unlink($csv);
 });
 
+it('converts Latin-1 text (the PGFN encoding) to valid UTF-8', function () {
+    pgfnMonitor('11222333000181');
+    // "dívida"/"Contribuições" com bytes Latin-1 crus (0xED, 0xE7/0xF5) — o que o
+    // dump real traz e o MySQL utf8mb4 rejeita se não for convertido.
+    $csv = pgfnCsv(
+        "CPF_CNPJ;RECEITA_PRINCIPAL;VALOR_CONSOLIDADO\n".
+        "11222333000181;Receita da d\xEDvida ativa - Contribui\xE7\xF5es;100,00\n"
+    );
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'geral'])->assertSuccessful();
+
+    $receita = PgfnDebt::query()->value('receita');
+    expect($receita)->toBe('Receita da dívida ativa - Contribuições')
+        ->and(mb_check_encoding((string) $receita, 'UTF-8'))->toBeTrue();
+
+    @unlink($csv);
+});
+
 it('fails when the path does not exist', function () {
     $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
 });

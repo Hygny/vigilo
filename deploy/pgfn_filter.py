@@ -54,8 +54,11 @@ def main(argv: list[str]) -> int:
         print("carteira vazia", file=sys.stderr)
         return 1
 
+    # Lê o zip em Latin-1 (encoding do dump) e GRAVA em UTF-8: o banco é utf8mb4
+    # e rejeita bytes Latin-1 crus (erro 1366). O documento/valor são ASCII, mas
+    # receita/situação têm acento.
     kept = 0
-    with zipfile.ZipFile(zip_path) as zf, open(out_path, "w", encoding="latin-1", newline="") as out:
+    with zipfile.ZipFile(zip_path) as zf, open(out_path, "w", encoding="utf-8", newline="") as out:
         members = [n for n in zf.namelist() if n.lower().endswith(".csv")]
         if not members:
             print("nenhum .csv dentro do zip", file=sys.stderr)

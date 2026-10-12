@@ -205,8 +205,8 @@ final class ImportPgfn extends Command
                 $rows[] = [
                     'documento' => $documento,
                     'tipo' => $tipo,
-                    'situacao' => CsvColumns::cell($line, $col['situacao']),
-                    'receita' => CsvColumns::cell($line, $col['receita']),
+                    'situacao' => $this->toUtf8(CsvColumns::cell($line, $col['situacao'])),
+                    'receita' => $this->toUtf8(CsvColumns::cell($line, $col['receita'])),
                     'valor' => $this->parseValor(CsvColumns::cell($line, $col['valor'])),
                     'data_inscricao' => $this->parseData(CsvColumns::cell($line, $col['data'])),
                     'imported_at' => $now,
@@ -224,6 +224,22 @@ final class ImportPgfn extends Command
     private function plural(int $n): string
     {
         return $n.' '.($n === 1 ? 'inscrição' : 'inscrições');
+    }
+
+    /**
+     * Garante texto em UTF-8. O dump da PGFN é Latin-1 (ISO-8859-1); bytes
+     * acentuados crus ("dívida", "Contribuições") são UTF-8 inválido e o MySQL
+     * (utf8mb4) rejeita (erro 1366). Se já for UTF-8 válido, mantém; senão,
+     * converte de Latin-1 — cobre tanto o CSV do pgfn_filter.py quanto o import
+     * manual de um CSV cru da PGFN.
+     */
+    private function toUtf8(?string $value): ?string
+    {
+        if ($value === null || mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'ISO-8859-1');
     }
 
     /**
