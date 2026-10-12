@@ -61,7 +61,7 @@ def main(argv: list[str]) -> int:
             print("nenhum .csv dentro do zip", file=sys.stderr)
             return 1
 
-        header_written = False
+        first_header: list[str] | None = None
         for name in members:
             with zf.open(name) as raw:
                 stream = io.TextIOWrapper(raw, encoding="latin-1", newline="")
@@ -70,14 +70,28 @@ def main(argv: list[str]) -> int:
                     continue
 
                 header = first.rstrip("\r\n").split(delim)
+
+                # Cabeçalho com uma coluna só = delimitador errado. Falha-seguro:
+                # sem isto, "0 linhas casam" seria confundido com "carteira limpa"
+                # e, com --allow-empty, LIMPARIA o tipo em vez de abortar.
+                if len(header) < 2:
+                    print(f"cabeçalho com uma coluna só em {name} — delimitador '{delim}' errado?", file=sys.stderr)
+                    return 1
+
                 doc = find_doc_column(header, ("cnpj", "cpf", "documento"))
                 if doc is None:
                     print(f"sem coluna de documento em {name}", file=sys.stderr)
                     return 1
 
-                if not header_written:
+                if first_header is None:
+                    first_header = header
                     out.write(first if first.endswith("\n") else first + "\n")
-                    header_written = True
+                elif header != first_header:
+                    # O PHP reinterpreta a saída concatenada sob UM cabeçalho; se as
+                    # colunas divergirem entre CSVs, leria documento/valor da posição
+                    # errada. O dump da PGFN é uniforme por UF — mas garantimos.
+                    print(f"layout de colunas divergente em {name} (esperava o mesmo cabeçalho do 1º CSV)", file=sys.stderr)
+                    return 1
 
                 for line in stream:
                     cols = line.rstrip("\r\n").split(delim)
