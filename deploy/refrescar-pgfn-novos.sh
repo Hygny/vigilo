@@ -8,13 +8,17 @@
 # trimestral e SEM rebaixar o dump. Quando não há pendência, é um no-op de
 # segundos (só uma consulta rápida à carteira).
 #
+# OBS (DT-20): quando HÁ pendência, o filtro ainda streama o zip inteiro. Por isso
+# a cadência sugerida é 30 min (não 10) — coalesce vários adds numa rodada só e
+# evita re-escanear o dump a cada 10 min quando há onboarding em volume.
+#
 # Como o baixar-importar-pgfn.sh filtra a carteira INTEIRA e reusa o cache, aqui
 # só precisamos chamá-lo quando há pendência — ele reimporta tudo do cache e
 # marca a carteira como sincronizada ao final. O `flock` lá dentro serializa com
 # o reimport trimestral.
 #
-# Cron sugerido (a cada 10 min):
-#   */10 * * * * /usr/bin/bash ~/apps/vigilo/src/deploy/refrescar-pgfn-novos.sh >> ~/apps/vigilo/pgfn-incremental.log 2>&1
+# Cron sugerido (a cada 30 min):
+#   */30 * * * * /usr/bin/bash ~/apps/vigilo/src/deploy/refrescar-pgfn-novos.sh >> ~/apps/vigilo/pgfn-incremental.log 2>&1
 set -uo pipefail
 
 APP_DIR="$HOME/apps/vigilo"
