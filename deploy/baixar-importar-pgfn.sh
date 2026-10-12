@@ -55,6 +55,12 @@ QUARTER="${1:-latest}"
 TIPOS=("$@")
 [ "${#TIPOS[@]}" -eq 0 ] && TIPOS=(nao-previdenciario previdenciario fgts)
 
+# Modo incremental (setado pelo refrescar-pgfn-novos.sh): só os CNPJs pendentes,
+# e com --merge (substitui só eles, sem recarregar o tipo inteiro).
+PENDING_ONLY="${PGFN_PENDING_ONLY:-0}"
+MERGE_FLAG=""
+[ "${PGFN_MERGE:-0}" = 1 ] && MERGE_FLAG="--merge"
+
 # Sonda o tipo MAIS PESADO: um trimestre só é "pronto" quando o não-previdenciário
 # (o último a subir) já está publicado — evita escolher um trimestre incompleto.
 quarter_exists() { curl -fsIL --max-time 60 "$BASE_URL/$1/Dados_abertos_Nao_Previdenciario.zip" >/dev/null 2>&1; }
@@ -79,12 +85,29 @@ mkdir -p "$CACHE"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-echo "==> coletando a carteira..."
-$COMPOSE exec -T app php artisan vigilo:carteira-cnpjs </dev/null > "$WORK/carteira.txt" \
-    || { echo "!! não consegui listar a carteira"; exit 1; }
+# Snapshot da carteira (ou só os pendentes). Este MESMO snapshot é o que será
+# marcado como sincronizado no fim — quem entra DEPOIS dele fica fora e continua
+# pendente (fecha a corrida "add durante o import").
+echo "==> coletando a carteira$([ "$PENDING_ONLY" = 1 ] && echo ' (só pendentes)')..."
+if [ "$PENDING_ONLY" = 1 ]; then
+    $COMPOSE exec -T app php artisan vigilo:carteira-cnpjs --pending </dev/null > "$WORK/carteira.txt" \
+        || { echo "!! não consegui listar a carteira"; exit 1; }
+else
+    $COMPOSE exec -T app php artisan vigilo:carteira-cnpjs </dev/null > "$WORK/carteira.txt" \
+        || { echo "!! não consegui listar a carteira"; exit 1; }
+fi
 N_CART=$(grep -c . "$WORK/carteira.txt" || true)
-[ "${N_CART:-0}" -eq 0 ] && { echo "!! carteira vazia — nada a importar"; exit 1; }
+if [ "${N_CART:-0}" -eq 0 ]; then
+    # Sem pendentes no modo incremental é um no-op normal; sem carteira no modo
+    # completo é que não faz sentido.
+    [ "$PENDING_ONLY" = 1 ] && { echo "==> nada pendente — nada a fazer"; exit 0; }
+    echo "!! carteira vazia — nada a importar"; exit 1
+fi
 echo "==> carteira: $N_CART CNPJ(s)"
+
+# Leva o snapshot para dentro do container (a marcação roda lá).
+$COMPOSE cp "$WORK/carteira.txt" app:/tmp/pgfn-carteira.txt \
+    || { echo "!! falha ao copiar o snapshot da carteira"; exit 1; }
 
 rc=0
 for tipo in "${TIPOS[@]}"; do
@@ -118,7 +141,7 @@ for tipo in "${TIPOS[@]}"; do
     fi
     # --allow-empty: o pgfn_filter.py já validou a estrutura; zero inscrição é
     # legítimo (a carteira pode não ter dívida neste tipo) e deve limpar o tipo.
-    $COMPOSE exec -T app php artisan vigilo:importar-pgfn /tmp/pgfn.csv --tipo="$tipo" --allow-empty </dev/null \
+    $COMPOSE exec -T app php artisan vigilo:importar-pgfn /tmp/pgfn.csv --tipo="$tipo" --allow-empty $MERGE_FLAG </dev/null \
         || { echo "!! [$tipo] import falhou"; rc=1; }
     $COMPOSE exec -T app rm -f /tmp/pgfn.csv </dev/null || true
     rm -f "$out"
@@ -127,13 +150,14 @@ done
 # Mantém só o cache do trimestre atual (evita acumular ~1,5 GB por trimestre).
 find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name "$QUARTER" -exec rm -rf {} + 2>/dev/null || true
 
-# Só marca a carteira como sincronizada se TODOS os tipos entraram — senão deixa
-# pendente para o refresh incremental tentar de novo (auto-cura).
+# Marca como sincronizado SÓ o snapshot usado (--from) e só se TODOS os tipos
+# entraram — senão deixa pendente para o refresh tentar de novo (auto-cura).
 if [ "$rc" -eq 0 ]; then
-    $COMPOSE exec -T app php artisan vigilo:pgfn-marcar-sincronizado </dev/null || true
+    $COMPOSE exec -T app php artisan vigilo:pgfn-marcar-sincronizado --from=/tmp/pgfn-carteira.txt </dev/null || true
 else
     echo "!! algum tipo falhou — carteira NÃO marcada como sincronizada (será retentada)"
 fi
+$COMPOSE exec -T app rm -f /tmp/pgfn-carteira.txt </dev/null || true
 
 echo "==> concluído (trimestre $QUARTER)"
 exit "$rc"

@@ -32,7 +32,8 @@ final class ImportPgfn extends Command
         {path : Caminho de um CSV OU de uma pasta com os CSVs da PGFN (por UF)}
         {--tipo=geral : Categoria recarregada (previdenciario|nao-previdenciario|fgts|geral)}
         {--delimiter=; : Delimitador do CSV (padrão ";")}
-        {--allow-empty : Permite recarregar com ZERO inscrição (limpa o tipo) — para arquivos já validados, p.ex. pré-filtrados pelo pgfn_filter.py}';
+        {--allow-empty : Permite recarregar com ZERO inscrição (limpa o tipo) — para arquivos já validados, p.ex. pré-filtrados pelo pgfn_filter.py}
+        {--merge : Substitui SÓ os documentos presentes no arquivo (não apaga o tipo inteiro) — para o refresh incremental de CNPJs novos}';
 
     protected $description = 'Importa a dívida ativa (PGFN) dos CNPJs da carteira de um CSV ou pasta (recarga por tipo).';
 
@@ -82,16 +83,29 @@ final class ImportPgfn extends Command
             return self::FAILURE;
         }
 
-        // Recarga por tipo: substitui as inscrições deste tipo (0 linhas = limpa).
-        DB::transaction(function () use ($rows, $tipo): void {
-            PgfnDebt::query()->where('tipo', $tipo)->delete();
+        $merge = (bool) $this->option('merge');
+
+        // Recarga do tipo. Padrão: substitui o tipo inteiro (0 linhas = limpa).
+        // --merge: substitui só os documentos presentes (refresh incremental de
+        // CNPJs novos, sem apagar o resto da carteira).
+        DB::transaction(function () use ($rows, $tipo, $merge): void {
+            if ($merge) {
+                $documentos = array_values(array_unique(array_column($rows, 'documento')));
+
+                foreach (array_chunk($documentos, self::CHUNK) as $chunk) {
+                    PgfnDebt::query()->where('tipo', $tipo)->whereIn('documento', $chunk)->delete();
+                }
+            } else {
+                PgfnDebt::query()->where('tipo', $tipo)->delete();
+            }
 
             foreach (array_chunk($rows, self::CHUNK) as $chunk) {
                 PgfnDebt::insert($chunk);
             }
         });
 
-        $this->info("PGFN [{$tipo}]: {$this->plural(count($rows))} da carteira importada(s) de ".count($files).' arquivo(s).');
+        $modo = $merge ? 'merge' : 'recarga';
+        $this->info("PGFN [{$tipo}/{$modo}]: {$this->plural(count($rows))} da carteira importada(s) de ".count($files).' arquivo(s).');
 
         return self::SUCCESS;
     }

@@ -189,6 +189,23 @@ it('converts Latin-1 text (the PGFN encoding) to valid UTF-8', function () {
     @unlink($csv);
 });
 
+it('--merge replaces only the documents present, keeping the rest of the tipo', function () {
+    pgfnMonitor('11222333000181');
+    pgfnMonitor('44555666000199');
+    // Dívida antiga de 2 CNPJs no mesmo tipo.
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'valor' => '100.00', 'imported_at' => now()]);
+    PgfnDebt::query()->create(['documento' => '44555666000199', 'tipo' => 'geral', 'valor' => '200.00', 'imported_at' => now()]);
+
+    // Merge só do primeiro CNPJ, com valor novo — não pode tocar no segundo.
+    $csv = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;999,00\n");
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'geral', '--merge' => true, '--allow-empty' => true])->assertSuccessful();
+
+    expect(app(PgfnLookup::class)->para('11222333000181')->total)->toEqualWithDelta(999.0, 0.001) // substituído
+        ->and(app(PgfnLookup::class)->para('44555666000199')->total)->toEqualWithDelta(200.0, 0.001); // intacto
+
+    @unlink($csv);
+});
+
 it('fails when the path does not exist', function () {
     $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
 });

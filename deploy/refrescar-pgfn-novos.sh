@@ -23,11 +23,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "$APP_DIR" || exit 1
 
-pendentes=$($COMPOSE exec -T app php artisan vigilo:carteira-cnpjs --pending </dev/null 2>/dev/null | grep -c . || true)
+# Consulta os pendentes. Falha do exec (container/DB fora) NÃO pode ser confundida
+# com "0 pendentes" — num produto de risco, não-cobertura silenciosa é perigosa.
+if ! pend_out=$($COMPOSE exec -T app php artisan vigilo:carteira-cnpjs --pending </dev/null 2>/dev/null); then
+    echo "!! [$(date -Is)] falha ao consultar pendentes (container/DB fora?) — abortando, não é '0 pendentes'"
+    exit 1
+fi
 
+pendentes=$(printf '%s\n' "$pend_out" | grep -c . || true)
 if [ "${pendentes:-0}" -eq 0 ]; then
     exit 0 # nada novo — no-op silencioso
 fi
 
-echo "==> [$(date -Is)] $pendentes CNPJ(s) novo(s) sem PGFN — refrescando do cache"
-bash "$SCRIPT_DIR/baixar-importar-pgfn.sh"
+echo "==> [$(date -Is)] $pendentes CNPJ(s) novo(s) sem PGFN — refrescando do cache (incremental)"
+# Incremental: só os pendentes (--pending) e com --merge (não recarrega o tipo
+# inteiro). O baixar reusa o cache, serializa com flock e marca só esse snapshot.
+PGFN_PENDING_ONLY=1 PGFN_MERGE=1 bash "$SCRIPT_DIR/baixar-importar-pgfn.sh"
