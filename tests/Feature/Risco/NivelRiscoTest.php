@@ -32,6 +32,11 @@ it('classifies high risk when the company is on the dirty list', function () {
         ->toBe(NivelRisco::Alto);
 });
 
+it('classifies medium risk when there is active federal debt (PGFN)', function () {
+    expect(NivelRisco::avaliar(sancaoAtiva: false, algumaSancao: false, situacaoNegativa: false, dividaAtiva: true))
+        ->toBe(NivelRisco::Medio);
+});
+
 it('treats a sanction without an end date (or future end) as active', function () {
     expect(RiscoReport::ok('11222333000181', [sancaoComFim(null)])->temSancaoAtiva())->toBeTrue()
         ->and(RiscoReport::ok('11222333000181', [sancaoComFim('2999-12-31')])->temSancaoAtiva())->toBeTrue();

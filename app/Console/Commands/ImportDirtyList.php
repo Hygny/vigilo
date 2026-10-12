@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\DirtyListEmployer;
+use App\Support\CsvColumns;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Importa a "Lista Suja" do trabalho escravo (Cadastro de Empregadores — MTE) de
@@ -57,11 +57,11 @@ final class ImportDirtyList extends Command
             }
 
             $col = [
-                'documento' => $this->findColumn($header, ['cnpj', 'cpf', 'documento']),
-                'nome' => $this->findColumn($header, ['empregador', 'razao', 'nome']),
-                'uf' => $this->findColumn($header, ['uf', 'estado']),
-                'ano' => $this->findColumn($header, ['ano']),
-                'estabelecimento' => $this->findColumn($header, ['estabelecimento']),
+                'documento' => CsvColumns::find($header, ['cnpj', 'cpf', 'documento']),
+                'nome' => CsvColumns::find($header, ['empregador', 'razao', 'nome']),
+                'uf' => CsvColumns::find($header, ['uf', 'estado']),
+                'ano' => CsvColumns::find($header, ['ano']),
+                'estabelecimento' => CsvColumns::find($header, ['estabelecimento']),
             ];
 
             if ($col['documento'] === null) {
@@ -74,7 +74,7 @@ final class ImportDirtyList extends Command
             $rows = [];
 
             while (($line = fgetcsv($handle, 0, $delimiter)) !== false) {
-                $documento = preg_replace('/\D/', '', $this->cell($line, $col['documento']) ?? '') ?? '';
+                $documento = preg_replace('/\D/', '', CsvColumns::cell($line, $col['documento']) ?? '') ?? '';
 
                 // Só CNPJ (14) ou CPF (11). Descarta lixo (cabeçalho repetido,
                 // linha vazia e, sobretudo, delimitador/coluna errados — que
@@ -86,10 +86,10 @@ final class ImportDirtyList extends Command
 
                 $rows[] = [
                     'documento' => $documento,
-                    'nome' => $this->cell($line, $col['nome']),
-                    'uf' => $this->cell($line, $col['uf']),
-                    'ano' => $this->cell($line, $col['ano']),
-                    'estabelecimento' => $this->cell($line, $col['estabelecimento']),
+                    'nome' => CsvColumns::cell($line, $col['nome']),
+                    'uf' => CsvColumns::cell($line, $col['uf']),
+                    'ano' => CsvColumns::cell($line, $col['ano']),
+                    'estabelecimento' => CsvColumns::cell($line, $col['estabelecimento']),
                     'imported_at' => $now,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -119,40 +119,5 @@ final class ImportDirtyList extends Command
         $this->info('Lista Suja importada: '.count($rows).' registros.');
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Índice da 1ª coluna cujo cabeçalho (sem acento/caixa) contém um dos termos.
-     *
-     * @param  array<int, string|null>  $header
-     * @param  list<string>  $termos
-     */
-    private function findColumn(array $header, array $termos): ?int
-    {
-        foreach ($header as $i => $nome) {
-            $normalizado = Str::lower(Str::ascii((string) $nome));
-
-            foreach ($termos as $termo) {
-                if (str_contains($normalizado, $termo)) {
-                    return $i;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<int, string|null>  $line
-     */
-    private function cell(array $line, ?int $index): ?string
-    {
-        if ($index === null) {
-            return null;
-        }
-
-        $value = trim((string) ($line[$index] ?? ''));
-
-        return $value === '' ? null : $value;
     }
 }

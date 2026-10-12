@@ -1,0 +1,84 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\MonitoredCompany;
+use App\Models\Organization;
+use App\Models\PgfnDebt;
+use App\Models\Portfolio;
+use App\Services\Risco\PgfnLookup;
+
+function pgfnCsv(string $contents): string
+{
+    $path = sys_get_temp_dir().'/pgfn_'.uniqid().'.csv';
+    file_put_contents($path, $contents);
+
+    return $path;
+}
+
+function pgfnMonitor(string $cnpj = '11222333000181'): void
+{
+    $org = Organization::factory()->create();
+    MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => $cnpj]);
+}
+
+it('imports only the carteira CNPJs, parsing BR currency', function () {
+    pgfnMonitor('11222333000181'); // na carteira
+    $csv = pgfnCsv(
+        "CPF_CNPJ;SITUACAO_INSCRICAO;RECEITA_PRINCIPAL;VALOR_CONSOLIDADO;DATA_INSCRICAO\n".
+        "11.222.333/0001-81;EM COBRANCA;IRPJ;1.234,56;01/03/2023\n".
+        "11.222.333/0001-81;AJUIZADA;COFINS;500,00;10/01/2024\n".
+        "99.999.999/0001-99;EM COBRANCA;IRPJ;9.999,99;01/01/2020\n" // fora da carteira → descartado
+    );
+
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'nao-previdenciario'])->assertSuccessful();
+
+    expect(PgfnDebt::query()->count())->toBe(2); // só as do CNPJ monitorado
+
+    $summary = app(PgfnLookup::class)->para('11.222.333/0001-81');
+
+    expect($summary)->not->toBeNull()
+        ->and($summary->inscricoes)->toBe(2)
+        ->and($summary->total)->toEqualWithDelta(1734.56, 0.001); // 1.234,56 + 500,00
+
+    @unlink($csv);
+});
+
+it('replaces only the given tipo on re-import', function () {
+    pgfnMonitor('11222333000181');
+
+    $prev = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;100,00\n");
+    $this->artisan('vigilo:importar-pgfn', ['path' => $prev, '--tipo' => 'previdenciario'])->assertSuccessful();
+
+    $fgts = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n11222333000181;200,00\n");
+    $this->artisan('vigilo:importar-pgfn', ['path' => $fgts, '--tipo' => 'fgts'])->assertSuccessful();
+
+    expect(PgfnDebt::query()->count())->toBe(2); // os dois tipos coexistem
+
+    // Reimporta previdenciário sem nenhum da carteira → limpa só esse tipo.
+    $vazio = pgfnCsv("CPF_CNPJ;VALOR_CONSOLIDADO\n99999999000199;50,00\n"); // doc válido, fora da carteira
+    $this->artisan('vigilo:importar-pgfn', ['path' => $vazio, '--tipo' => 'previdenciario'])->assertSuccessful();
+
+    expect(PgfnDebt::query()->where('tipo', 'previdenciario')->count())->toBe(0)
+        ->and(PgfnDebt::query()->where('tipo', 'fgts')->count())->toBe(1);
+
+    @unlink($prev);
+    @unlink($fgts);
+    @unlink($vazio);
+});
+
+it('aborts without touching the table when no valid document is read', function () {
+    pgfnMonitor('11222333000181');
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'imported_at' => now()]);
+
+    $csv = pgfnCsv("CPF_CNPJ\n"); // só cabeçalho → nenhum documento válido
+    $this->artisan('vigilo:importar-pgfn', ['path' => $csv, '--tipo' => 'geral'])->assertFailed();
+
+    expect(PgfnDebt::query()->count())->toBe(1); // preservado
+
+    @unlink($csv);
+});
+
+it('fails when the file does not exist', function () {
+    $this->artisan('vigilo:importar-pgfn', ['path' => sys_get_temp_dir().'/nope_'.uniqid().'.csv'])->assertFailed();
+});

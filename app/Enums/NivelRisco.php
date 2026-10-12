@@ -20,16 +20,16 @@ enum NivelRisco: string
     /**
      * Classifica a partir dos sinais disponíveis:
      *  - sanção VIGENTE, ou constar na Lista Suja do trabalho escravo → alto;
-     *  - sanção já expirada OU situação cadastral negativa → médio;
-     *  - ativa e sem sanção → baixo.
+     *  - sanção já expirada, situação cadastral negativa OU dívida ativa (PGFN) → médio;
+     *  - ativa e limpa → baixo.
      */
-    public static function avaliar(bool $sancaoAtiva, bool $algumaSancao, bool $situacaoNegativa, bool $listaSuja = false): self
+    public static function avaliar(bool $sancaoAtiva, bool $algumaSancao, bool $situacaoNegativa, bool $listaSuja = false, bool $dividaAtiva = false): self
     {
         if ($sancaoAtiva || $listaSuja) {
             return self::Alto;
         }
 
-        if ($algumaSancao || $situacaoNegativa) {
+        if ($algumaSancao || $situacaoNegativa || $dividaAtiva) {
             return self::Medio;
         }
 

@@ -21,6 +21,7 @@ final class RiscoAssessment
         public readonly ?string $motivo,
         public readonly RiscoReport $report,
         public readonly ?DirtyListEmployer $listaSuja,
+        public readonly ?PgfnDebtSummary $pgfn = null,
     ) {}
 
     /** O semáforo pôde ser avaliado (houve sinal confiável)? */

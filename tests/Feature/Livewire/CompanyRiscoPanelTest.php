@@ -7,6 +7,7 @@ use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
+use App\Models\PgfnDebt;
 use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
@@ -183,6 +184,26 @@ it('flags high risk and shows the dirty-list warning even without the CGU key', 
         ->assertSee('EMPRESA RUIM LTDA');
 
     Http::assertNothingSent(); // Lista Suja é consulta local; não chama a CGU
+});
+
+it('flags medium risk and shows the PGFN debt even without the CGU key', function () {
+    config()->set('risco.portal.api_key', null); // CGU não configurada
+    Http::fake();
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = riscoCompanyFor($org);
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'valor' => '2500.00', 'imported_at' => now()]);
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'previdenciario', 'valor' => '1500.00', 'imported_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco Médio')                  // semáforo sobe mesmo sem a CGU
+        ->assertSee('Dívida ativa na União (PGFN)')
+        ->assertSee('2 inscrições')
+        ->assertSee('4.000,00');                     // 2.500,00 + 1.500,00
+
+    Http::assertNothingSent(); // PGFN é consulta local; não chama a CGU
 });
 
 it('forbids viewing the risk of a company from another organization', function () {

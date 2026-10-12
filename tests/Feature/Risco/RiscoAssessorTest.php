@@ -6,6 +6,7 @@ use App\Enums\NivelRisco;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
+use App\Models\PgfnDebt;
 use App\Models\Portfolio;
 use App\Services\Risco\RiscoAssessor;
 use Illuminate\Http\Client\Request;
@@ -50,6 +51,23 @@ it('assesses high risk from the dirty list even without the CGU key', function (
     expect($assessment->nivel)->toBe(NivelRisco::Alto)
         ->and($assessment->listaSuja)->not->toBeNull()
         ->and($assessment->motivo)->toContain('Lista Suja');
+
+    Http::assertNothingSent();
+});
+
+it('assesses medium risk from active PGFN debt, even without the CGU key', function () {
+    config()->set('risco.portal.api_key', null);
+    Http::fake();
+
+    $company = assessorCompany();
+    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'valor' => '12345.67', 'imported_at' => now()]);
+
+    $assessment = app(RiscoAssessor::class)->para($company);
+
+    expect($assessment->nivel)->toBe(NivelRisco::Medio)
+        ->and($assessment->pgfn)->not->toBeNull()
+        ->and($assessment->pgfn->total)->toEqualWithDelta(12345.67, 0.001)
+        ->and($assessment->motivo)->toContain('dívida ativa');
 
     Http::assertNothingSent();
 });

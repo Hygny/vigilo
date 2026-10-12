@@ -7,6 +7,7 @@ use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
+use App\Models\PgfnDebt;
 use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
@@ -101,10 +102,10 @@ it('generates the PDF even before any snapshot exists', function () {
         ->assertOk();
 });
 
-it('renders the rich risk sections in the PDF (sanction, dirty list and partners)', function () {
+it('renders the rich risk sections in the PDF (sanction, dirty list, PGFN and partners)', function () {
     // Exercita as ramificações "caras" do Blade do PDF (box de risco avaliado,
-    // lista de sanções, seção Lista Suja, QSA) — um erro de Blade ali derruba o
-    // render do dompdf e falha o teste.
+    // lista de sanções, seção Lista Suja, seção PGFN, QSA) — um erro de Blade
+    // ali derruba o render do dompdf e falha o teste.
     config()->set('risco.portal.api_key', 'chave-teste');
     Http::fake(function (Request $request) {
         if (str_contains($request->url(), '/ceis')) {
@@ -136,6 +137,12 @@ it('renders the rich risk sections in the PDF (sanction, dirty list and partners
         'nome' => 'MATRIZ INDUSTRIAL LTDA',
         'uf' => 'PA',
         'ano' => '2022',
+        'imported_at' => now(),
+    ]);
+    PgfnDebt::query()->create([
+        'documento' => '11222333000181',
+        'tipo' => 'geral',
+        'valor' => '12345.67',
         'imported_at' => now(),
     ]);
 

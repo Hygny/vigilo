@@ -25,6 +25,17 @@
             </div>
         @endif
 
+        {{-- Dívida ativa (PGFN) --}}
+        @if ($pgfn)
+            <div class="mb-4 flex items-start gap-2 rounded-btn bg-med-soft px-4 py-3 text-sm text-med">
+                <x-ui.icon name="account_balance" :size="18" class="mt-0.5" />
+                <div>
+                    <p class="font-semibold">Dívida ativa na União (PGFN).</p>
+                    <p class="mt-0.5 text-xs">{{ $pgfn->inscricoes }} {{ $pgfn->inscricoes === 1 ? 'inscrição' : 'inscrições' }} · R$ {{ number_format($pgfn->total, 2, ',', '.') }}</p>
+                </div>
+            </div>
+        @endif
+
         {{-- Sanções (CGU) --}}
         <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Sanções (CGU)</h3>
 

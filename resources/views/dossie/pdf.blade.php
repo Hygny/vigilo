@@ -121,6 +121,14 @@
         </div>
     @endif
 
+    @if ($assessment->pgfn)
+        <h2>Dívida ativa (PGFN)</h2>
+        <div class="box" style="background: #FEF3C7;">
+            <strong style="color:#92400E;">Consta dívida ativa na União.</strong>
+            <div style="color:#92400E; font-size:10px; margin-top:2px;">{{ $assessment->pgfn->inscricoes }} inscrição(ões) · R$ {{ number_format($assessment->pgfn->total, 2, ',', '.') }}</div>
+        </div>
+    @endif
+
     <h2>Sanções (CGU — CEIS/CNEP/CEPIM)</h2>
     @if (! $assessment->report->configurado || ! $assessment->report->disponivel)
         <p class="muted">Consulta de sanções indisponível no momento.</p>
