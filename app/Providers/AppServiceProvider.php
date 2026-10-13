@@ -90,8 +90,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Caps how many company refreshes may run per minute across all workers,
-        // protecting the upstream CNPJ provider from bursts. 0 desativa o teto.
+        // protecting an EXTERNAL CNPJ provider (BrasilAPI) from bursts. Com a base
+        // local (CNPJ_DRIVER=local) o refresh só lê dado local em milissegundos e
+        // não há upstream a proteger — o teto só segurava a fila (era o gargalo do
+        // lote). A CGU, que é externa, saiu do refresh (varredura diária própria).
+        // 0 desativa o teto também no modo externo.
         RateLimiter::for('cnpj-refresh', function (): Limit {
+            if (config('cnpj.driver') === 'local') {
+                return Limit::none();
+            }
+
             $perMinute = (int) config('cnpj.throttle.requests_per_minute');
 
             return $perMinute > 0 ? Limit::perMinute($perMinute) : Limit::none();

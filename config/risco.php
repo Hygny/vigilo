@@ -36,4 +36,26 @@ return [
     // martelar o Portal a cada visita da página da empresa.
     'cache_ttl' => (int) env('RISCO_CACHE_TTL', 720),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Varredura diária de sanções (vigilo:varrer-sancoes)
+    |--------------------------------------------------------------------------
+    |
+    | Gera o alerta de sanção nova para a carteira inteira, fora do refresh da
+    | Receita. Cada empresa custa até 3 chamadas à CGU (CEIS/CNEP/CEPIM); o teto
+    | da API é 400 req/min (700 entre 00h–06h). 120 empresas/min ≈ 360 req/min,
+    | abaixo do teto mesmo se a varredura escorregar para o horário comercial.
+    |
+    */
+
+    'sweep' => [
+        // Teto de empresas por minuto (0 = sem pausa — só para testes).
+        'per_minute' => (int) env('RISCO_SWEEP_PER_MINUTE', 120),
+
+        // Disjuntor: aborta a varredura após N empresas SEGUIDAS com a CGU
+        // indisponível — evita esperar o timeout (3 × timeout) em toda a carteira
+        // quando a API está fora. Tenta de novo no dia seguinte.
+        'max_consecutive_failures' => (int) env('RISCO_SWEEP_MAX_FAILURES', 5),
+    ],
+
 ];

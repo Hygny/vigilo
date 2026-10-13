@@ -97,7 +97,7 @@ it('does nothing when the source is unavailable (never infers from a failed look
     $company = sanctionCompany();
     $novas = app(SanctionMonitor::class)->sync($company);
 
-    expect($novas)->toBe([])
+    expect($novas)->toBeNull() // null = "não deu para checar" (≠ [] = checado, nada novo)
         ->and($company->sanctions()->count())->toBe(0)
         ->and($company->fresh()->sanctions_synced_at)->toBeNull();
 });

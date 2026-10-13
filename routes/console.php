@@ -11,6 +11,16 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Alerta de sanção nova (CGU): varre a carteira inteira 1× por dia, fora do
+// refresh da Receita. De madrugada a CGU libera mais req/min (00–06h) e a
+// varredura termina antes dos refreshes das 03:00. runInBackground para não
+// segurar o resto do scheduler enquanto varre.
+Schedule::command('vigilo:varrer-sancoes')
+    ->dailyAt('01:00')
+    ->name('vigilo-sweep-sanctions')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // KYB contínuo: todo dia às 03:00 dispara os refreshes dos portfólios agendados
 // para aquele dia (dia configurável, e vários dias, por portfólio).
 Schedule::command('portfolios:run-scheduled')

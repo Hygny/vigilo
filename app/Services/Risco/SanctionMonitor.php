@@ -10,13 +10,14 @@ use App\Models\MonitoredCompany;
 
 /**
  * Sincroniza as sanções conhecidas de uma empresa monitorada com a fonte (CGU,
- * via {@see RiscoService}) e devolve as NOVAS — para o job de refresh transformar
- * em alerta/evento. É aqui que mora a persistência (tabela `company_sanctions`)
- * e o diff; o job cuida do change_event/notificação/webhook.
+ * via {@see RiscoService}) e devolve as NOVAS — para a varredura diária
+ * (`vigilo:varrer-sancoes`) transformar em alerta/evento. É aqui que mora a
+ * persistência (tabela `company_sanctions`) e o diff; a varredura cuida do
+ * change_event/notificação/webhook.
  *
  * Regras de segurança do diff:
  *  - fonte indisponível/sem chave → NÃO toca em nada (nunca inferir sanção a
- *    partir de uma consulta que falhou);
+ *    partir de uma consulta que falhou) e devolve null;
  *  - 1ª sincronização (ou pedida como silenciosa, ex.: rebaseline) é BASELINE:
  *    grava o que existe mas devolve [] (sanção pré-existente não é "novidade").
  */
@@ -25,16 +26,19 @@ final class SanctionMonitor
     public function __construct(private readonly RiscoService $risco) {}
 
     /**
-     * @return list<CompanySanction> As sanções recém-descobertas (vazio em baseline/indisponível)
+     * @return list<CompanySanction>|null As sanções recém-descobertas ([] em
+     *                                    baseline/nada novo); null quando a fonte
+     *                                    estava indisponível (não deu para checar)
      */
-    public function sync(MonitoredCompany $company, bool $silent = false): array
+    public function sync(MonitoredCompany $company, bool $silent = false): ?array
     {
         $report = $this->risco->para($company->cnpj);
 
         // Indisponível/não configurada: não dá para distinguir "nada consta" de
-        // "não consegui checar" — então não gravamos nem alertamos.
+        // "não consegui checar" — então não gravamos nem alertamos, e avisamos o
+        // chamador (a varredura usa isso como disjuntor).
         if (! $report->disponivel) {
-            return [];
+            return null;
         }
 
         $baseline = $silent || $company->sanctions_synced_at === null;

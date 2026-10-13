@@ -7,18 +7,15 @@ namespace App\Jobs;
 use App\Contracts\CnpjDataProvider;
 use App\DTO\ChangeEventData;
 use App\Enums\ChangeType;
-use App\Enums\FonteSancao;
 use App\Enums\RefreshStatus;
 use App\Enums\Severity;
 use App\Models\ChangeEvent;
-use App\Models\CompanySanction;
 use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
-use App\Notifications\CompanyChangeDetected;
+use App\Services\Alerts\CompanyAlertNotifier;
 use App\Services\CompanyDiffer;
 use App\Services\Risco\DirtyListMonitor;
-use App\Services\Risco\SanctionMonitor;
 use App\Services\SnapshotService;
 use DateTimeInterface;
 use Illuminate\Bus\Batchable;
@@ -30,14 +27,17 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Refresh a single monitored company: fetch its current cadastral data, store a
- * new snapshot, diff it against the previous one, persist any change events and
- * notify the organization.
+ * Refresh a single monitored company: fetch its current cadastral data (Receita),
+ * store a new snapshot, diff it against the previous one, persist any change
+ * events and notify the organization.
+ *
+ * Só fontes LOCAIS/baratas rodam aqui (dado da Receita + Lista Suja). Sanções da
+ * CGU (API externa, 3 chamadas por CNPJ) NÃO rodam no refresh: o alerta de sanção
+ * nova vem da varredura diária `vigilo:varrer-sancoes`, e a página da empresa
+ * consulta a CGU sob demanda. Assim o refresh da carteira não espera API externa.
  */
 class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
 {
@@ -87,8 +87,9 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * Guard the upstream provider: never refresh the same company concurrently,
-     * and cap the global refresh rate (see the 'cnpj-refresh' limiter).
+     * Never refresh the same company concurrently, and cap the global refresh
+     * rate when the CNPJ provider is external (see the 'cnpj-refresh' limiter —
+     * with the local base it is unlimited).
      *
      * @return array<int, object>
      */
@@ -100,7 +101,7 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
         ];
     }
 
-    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ, SanctionMonitor $sanctions, DirtyListMonitor $dirtyList): void
+    public function handle(CnpjDataProvider $provider, SnapshotService $snapshots, CompanyDiffer $differ, DirtyListMonitor $dirtyList, CompanyAlertNotifier $notifier): void
     {
         // A cancelled batch (e.g. the monthly run was aborted) should stop here.
         if ($this->batch()?->cancelled()) {
@@ -125,8 +126,8 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
                 $this->markRefreshed(RefreshStatus::Ok);
             });
 
-            // Baseline silencioso de sanções e Lista Suja junto do rebaseline.
-            $sanctions->sync($this->company, silent: true);
+            // Baseline silencioso da Lista Suja junto do rebaseline. (Sanções têm
+            // baseline próprio na 1ª passada da varredura diária.)
             $dirtyList->sync($this->company, silent: true);
 
             return;
@@ -151,17 +152,9 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
             return $changes;
         });
 
-        // Sanções (fonte externa/CGU): fora da transação do snapshot porque faz
-        // HTTP. Uma sanção NOVA vira change_event crítico ligado ao snapshot
-        // atual e pega carona na notificação + webhook.
+        // Entrou na Lista Suja (trabalho escravo) desde o último refresh → alerta
+        // crítico. Consulta local (tabela pequena), barata o bastante para o refresh.
         if ($snapshot !== null) {
-            $novas = $sanctions->sync($this->company);
-
-            if ($novas !== []) {
-                $events = $events->merge($this->persistSanctionEvents($snapshot, $novas));
-            }
-
-            // Entrou na Lista Suja (trabalho escravo) desde o último refresh → alerta crítico.
             $listaSuja = $dirtyList->sync($this->company);
 
             if ($listaSuja !== null) {
@@ -169,10 +162,7 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
             }
         }
 
-        if ($events->isNotEmpty()) {
-            $this->notifyOrganization($data->razaoSocial, $events);
-            $this->dispatchWebhook($data->razaoSocial, $events);
-        }
+        $notifier->notify($this->company, $data->razaoSocial, $events);
     }
 
     /**
@@ -218,43 +208,6 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * Transforma as sanções recém-descobertas em change_events críticos (ligados
-     * ao snapshot atual, pois `to_snapshot_id` é obrigatório).
-     *
-     * @param  list<CompanySanction>  $novas
-     * @return EloquentCollection<int, ChangeEvent>
-     */
-    private function persistSanctionEvents(CompanySnapshot $snapshot, array $novas): EloquentCollection
-    {
-        $now = Carbon::now();
-
-        /** @var EloquentCollection<int, ChangeEvent> $events */
-        $events = new EloquentCollection;
-
-        foreach ($novas as $sancao) {
-            $events->push($this->company->changeEvents()->create([
-                'from_snapshot_id' => null,
-                'to_snapshot_id' => $snapshot->id,
-                'type' => ChangeType::SancaoAdicionada,
-                'field' => 'sancao',
-                'old_value' => null,
-                'new_value' => $this->describeSancao($sancao),
-                'severity' => Severity::Critical,
-                'detected_at' => $now,
-            ]));
-        }
-
-        return $events;
-    }
-
-    private function describeSancao(CompanySanction $sancao): string
-    {
-        $sigla = FonteSancao::tryFrom($sancao->fonte)?->sigla() ?? mb_strtoupper($sancao->fonte);
-
-        return $sancao->tipo !== null ? "{$sigla} — {$sancao->tipo}" : $sigla;
-    }
-
-    /**
      * Entrada nova na Lista Suja do trabalho escravo → change_event crítico
      * (ligado ao snapshot atual, pois `to_snapshot_id` é obrigatório).
      */
@@ -271,53 +224,6 @@ class RefreshMonitoredCompanyJob implements ShouldBeUnique, ShouldQueue
             'new_value' => $detalhe !== '' ? $detalhe : 'Consta na Lista Suja (MTE)',
             'severity' => Severity::Critical,
             'detected_at' => Carbon::now(),
-        ]);
-    }
-
-    /**
-     * @param  EloquentCollection<int, ChangeEvent>  $events
-     */
-    private function notifyOrganization(string $razaoSocial, EloquentCollection $events): void
-    {
-        $users = $this->company->portfolio->organization->users;
-
-        if ($users->isEmpty()) {
-            return;
-        }
-
-        Notification::send(
-            $users,
-            new CompanyChangeDetected($this->company, $razaoSocial, $events)
-        );
-    }
-
-    /**
-     * Dispara o webhook de saída da organização (se configurado) com as mudanças
-     * detectadas. A entrega assinada/retry fica no job dedicado.
-     *
-     * @param  EloquentCollection<int, ChangeEvent>  $events
-     */
-    private function dispatchWebhook(string $razaoSocial, EloquentCollection $events): void
-    {
-        $organization = $this->company->portfolio->organization;
-
-        if (! $organization->hasWebhook()) {
-            return;
-        }
-
-        SendWebhookNotification::dispatch($organization->id, [
-            'event_id' => (string) Str::uuid(),
-            'event' => 'company.changes',
-            'cnpj' => $this->company->cnpj,
-            'razao_social' => $razaoSocial,
-            'detectado_em' => Carbon::now()->toIso8601String(),
-            'mudancas' => $events->map(fn (ChangeEvent $event): array => [
-                'tipo' => $event->type->value,
-                'campo' => $event->field,
-                'de' => $event->old_value,
-                'para' => $event->new_value,
-                'severidade' => $event->severity->value,
-            ])->values()->all(),
         ]);
     }
 
