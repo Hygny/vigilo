@@ -16,7 +16,10 @@
 # /admin. Como grava TODA semana, o card prova que o cron está vivo.
 #
 # Regras de falha:
-#   - se o REIMPORT falhar, aborta (não mexe em dado parcial);
+#   - o REIMPORT é tentado até REIMPORT_ATTEMPTS vezes (padrão 3), com
+#     REIMPORT_RETRY_WAIT segundos entre tentativas, para absorver hiccups
+#     transitórios do servidor da Receita; só aborta se TODAS falharem (não mexe
+#     em dado parcial);
 #   - (2a) e (2b) são independentes: uma falhar não impede a outra.
 #
 # Cron sugerido (toda segunda, 03:00):
@@ -83,19 +86,38 @@ PG_DSN="postgres://${PG_USER}:${PG_PASS}@data-postgres-1:5432/cnpj"
 
 BEFORE="$(pf_count)"
 
-echo "==> [$(date -Is)] reimport (upsert)"
-if docker run --rm --network data \
-      -e DATABASE_URL="$PG_DSN" \
-      -e LOADING_STRATEGY=upsert \
-      ghcr.io/caiopizzol/cnpj-data-pipeline; then
-    REIMPORT=ok
-else
-    REIMPORT=fail
-    MSG="reimport falhou (ver cnpj-mensal.log)"
-    echo "!! [$(date -Is)] reimport FALHOU — abortando (dado pode estar parcial)"
-    record_run
-    exit 1
-fi
+# O servidor de dados abertos da Receita é instável: às vezes devolve resposta
+# vazia e o pipeline quebra no parse ("no element found") logo na descoberta —
+# falha transitória, não erro de dado. Por isso tentamos algumas vezes com
+# intervalo antes de desistir. (A recarga é upsert/idempotente, então re-tentar
+# é seguro.) Configurável por env.
+REIMPORT_ATTEMPTS="${REIMPORT_ATTEMPTS:-3}"
+REIMPORT_RETRY_WAIT="${REIMPORT_RETRY_WAIT:-180}" # segundos entre tentativas
+
+attempt=1
+while :; do
+    echo "==> [$(date -Is)] reimport (upsert) — tentativa ${attempt}/${REIMPORT_ATTEMPTS}"
+    if docker run --rm --network data \
+          -e DATABASE_URL="$PG_DSN" \
+          -e LOADING_STRATEGY=upsert \
+          ghcr.io/caiopizzol/cnpj-data-pipeline; then
+        REIMPORT=ok
+        break
+    fi
+
+    echo "!! [$(date -Is)] tentativa ${attempt} falhou"
+    if [ "$attempt" -ge "$REIMPORT_ATTEMPTS" ]; then
+        REIMPORT=fail
+        MSG="reimport falhou após ${REIMPORT_ATTEMPTS} tentativa(s) (ver cnpj-mensal.log)"
+        echo "!! [$(date -Is)] reimport FALHOU após ${REIMPORT_ATTEMPTS} tentativas — abortando (dado pode estar parcial)"
+        record_run
+        exit 1
+    fi
+
+    echo "==> [$(date -Is)] aguardando ${REIMPORT_RETRY_WAIT}s antes de retentar..."
+    sleep "$REIMPORT_RETRY_WAIT"
+    attempt=$((attempt + 1))
+done
 
 AFTER="$(pf_count)"
 
