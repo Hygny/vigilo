@@ -7,7 +7,6 @@ use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Services\Risco\SanctionMonitor;
 use Illuminate\Http\Client\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 function sanctionCompany(string $cnpj = '11222333000181'): MonitoredCompany
@@ -62,14 +61,13 @@ it('does not re-alert a sanction already known', function () {
     $monitor = app(SanctionMonitor::class);
 
     $monitor->sync($company); // baseline
-    Cache::flush();           // o relatório de risco é cacheado 12h
     $novas = $monitor->sync($company); // mesma sanção
 
     expect($novas)->toBe([])
         ->and($company->sanctions()->count())->toBe(1); // não duplicou
 });
 
-it('returns a genuinely new sanction on a later sync', function () {
+it('returns a genuinely new sanction on a later sync (reads fresh, past the 12h cache)', function () {
     config()->set('risco.portal.api_key', 'chave-teste');
     Http::fake([
         '*portaldatransparencia*ceis*' => Http::sequence()
@@ -82,7 +80,6 @@ it('returns a genuinely new sanction on a later sync', function () {
     $monitor = app(SanctionMonitor::class);
 
     expect($monitor->sync($company))->toBe([]); // A baselined
-    Cache::flush();
     $novas = $monitor->sync($company);
 
     expect($novas)->toHaveCount(1)

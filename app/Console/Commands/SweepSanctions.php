@@ -15,8 +15,11 @@ use App\Services\Alerts\CompanyAlertNotifier;
 use App\Services\Risco\PortalTransparenciaClient;
 use App\Services\Risco\SanctionMonitor;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -29,17 +32,26 @@ use Throwable;
  * carteira esperando por ela. Agendada de madrugada (routes/console.php).
  *
  * Proteções:
+ *  - atômica por empresa: sanção nova + change_event no MESMO commit (nunca fica
+ *    sanção "conhecida" sem o alerta); a notificação é enfileirada depois;
+ *  - retomável: pula a empresa já checada hoje (`risco.sweep.timezone`), então
+ *    uma 2ª passada na madrugada só pega o que a 1ª não terminou (`--all` força);
  *  - ritmo: no máximo `risco.sweep.per_minute` empresas/min (dorme só o que
  *    sobrar do intervalo, sem somar latência ao tempo da própria consulta);
- *  - disjuntor: N empresas SEGUIDAS com a CGU indisponível → aborta (evita
- *    esperar o timeout em toda a carteira quando a API está fora);
+ *  - disjuntor: N empresas SEGUIDAS com falha (CGU indisponível ou erro
+ *    inesperado) → aborta (evita esperar o timeout em toda a carteira);
  *  - empresa sem coleta ainda é pulada (o evento precisa de um snapshot);
- *  - erro inesperado numa empresa é reportado e a varredura segue.
+ *  - erro inesperado numa empresa é reportado, a transação dela é desfeita e a
+ *    varredura segue para a próxima.
+ *
+ * Resumo e aborto vão para o log da aplicação (roda em background no scheduler,
+ * sem terminal para ler a saída).
  */
 final class SweepSanctions extends Command
 {
     protected $signature = 'vigilo:varrer-sancoes
-        {--per-minute= : Teto de empresas/min (padrão: risco.sweep.per_minute; 0 = sem pausa)}';
+        {--per-minute= : Teto de empresas/min (padrão: risco.sweep.per_minute; 0 = sem pausa)}
+        {--all : Varre também as empresas já checadas hoje}';
 
     protected $description = 'Varre as sanções (CGU) da carteira inteira e alerta as sanções novas.';
 
@@ -52,74 +64,128 @@ final class SweepSanctions extends Command
         }
 
         $option = $this->option('per-minute');
+
+        if ($option !== null && ! ctype_digit($option)) {
+            $this->error('--per-minute precisa ser um inteiro >= 0.');
+
+            return self::INVALID;
+        }
+
         $perMinute = $option !== null ? (int) $option : (int) config('risco.sweep.per_minute');
         $intervalo = $perMinute > 0 ? 60 / $perMinute : 0.0; // segundos por empresa
         $maxFalhas = max(1, (int) config('risco.sweep.max_consecutive_failures'));
 
-        $checadas = 0;
-        $alertas = 0;
-        $semColeta = 0;
+        $stats = ['checadas' => 0, 'alertas' => 0, 'sem_coleta' => 0, 'indisponiveis' => 0, 'erros' => 0];
         $falhasSeguidas = 0;
         $abortou = false;
 
-        MonitoredCompany::query()
-            ->with(['latestSnapshot', 'portfolio.organization.users'])
-            ->chunkById(200, function (EloquentCollection $companies) use ($sanctions, $notifier, $intervalo, $maxFalhas, &$checadas, &$alertas, &$semColeta, &$falhasSeguidas, &$abortou): bool {
-                /** @var EloquentCollection<int, MonitoredCompany> $companies */
-                foreach ($companies as $company) {
-                    $snapshot = $company->latestSnapshot;
+        $this->query()->chunkById(200, function (EloquentCollection $companies) use ($sanctions, $notifier, $intervalo, $maxFalhas, &$stats, &$falhasSeguidas, &$abortou): bool {
+            /** @var EloquentCollection<int, MonitoredCompany> $companies */
+            foreach ($companies as $company) {
+                $snapshot = $company->latestSnapshot;
 
-                    if ($snapshot === null) {
-                        $semColeta++; // sem coleta ainda: nada a ligar o evento; pega na próxima
+                if ($snapshot === null) {
+                    $stats['sem_coleta']++; // sem coleta ainda: nada a ligar o evento; pega na próxima
 
-                        continue;
-                    }
-
-                    $inicio = microtime(true);
-
-                    try {
-                        $novas = $sanctions->sync($company);
-                    } catch (Throwable $e) {
-                        report($e); // erro inesperado (não é "CGU fora"): registra e segue
-
-                        continue;
-                    }
-
-                    if ($novas === null) {
-                        if (++$falhasSeguidas >= $maxFalhas) {
-                            $abortou = true;
-
-                            return false; // para o chunkById
-                        }
-                    } else {
-                        $falhasSeguidas = 0;
-                        $checadas++;
-
-                        if ($novas !== []) {
-                            $events = $this->persistEvents($company, $snapshot, $novas);
-                            $notifier->notify($company, $snapshot->razao_social ?? $company->formattedCnpj(), $events);
-                            $alertas += $events->count();
-                        }
-                    }
-
-                    $this->pace($inicio, $intervalo);
+                    continue;
                 }
 
-                return true;
-            });
+                $inicio = microtime(true);
+
+                try {
+                    $report = $sanctions->consultar($company); // HTTP, fora de transação
+
+                    if ($report === null) {
+                        $stats['indisponiveis']++;
+                        $falhasSeguidas++;
+                    } else {
+                        $events = DB::transaction(function () use ($sanctions, $company, $snapshot, $report): EloquentCollection {
+                            $novas = $sanctions->aplicar($company, $report);
+
+                            return $this->persistEvents($company, $snapshot, $novas);
+                        });
+
+                        $falhasSeguidas = 0;
+                        $stats['checadas']++;
+                        $stats['alertas'] += $events->count();
+
+                        // Depois do commit: o evento já está na Inbox mesmo que a entrega falhe.
+                        $notifier->notify($company, $snapshot->razao_social, $events);
+                    }
+                } catch (Throwable $e) {
+                    report($e); // erro inesperado: registra, desfaz só esta empresa e segue
+                    $stats['erros']++;
+                    $falhasSeguidas++;
+                }
+
+                if ($falhasSeguidas >= $maxFalhas) {
+                    $abortou = true;
+
+                    return false; // para o chunkById
+                }
+
+                $this->pace($inicio, $intervalo);
+            }
+
+            return true;
+        });
+
+        return $this->finish($stats, $abortou, $maxFalhas);
+    }
+
+    /**
+     * Empresas a varrer, com só o que a varredura usa do snapshot (sem raw_json).
+     * Sem `--all`, pula quem já foi checado desde o início do dia — é o que torna
+     * a 2ª passada da madrugada uma retomada, não uma repetição.
+     *
+     * @return Builder<MonitoredCompany>
+     */
+    private function query(): Builder
+    {
+        $query = MonitoredCompany::query()->with([
+            'latestSnapshot:company_snapshots.id,company_snapshots.monitored_company_id,company_snapshots.captured_at,company_snapshots.razao_social',
+            'portfolio.organization.users',
+        ]);
+
+        if (! $this->option('all')) {
+            $inicioDoDia = Carbon::now((string) config('risco.sweep.timezone'))
+                ->startOfDay()
+                ->setTimezone((string) config('app.timezone'));
+
+            $query->where(fn (Builder $q) => $q
+                ->whereNull('sanctions_synced_at')
+                ->orWhere('sanctions_synced_at', '<', $inicioDoDia));
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  array{checadas: int, alertas: int, sem_coleta: int, indisponiveis: int, erros: int}  $stats
+     */
+    private function finish(array $stats, bool $abortou, int $maxFalhas): int
+    {
+        $resumo = sprintf(
+            '%d empresa(s) checada(s), %d alerta(s) de sanção nova, %d sem coleta ainda (puladas), %d com a CGU indisponível, %d com erro',
+            $stats['checadas'],
+            $stats['alertas'],
+            $stats['sem_coleta'],
+            $stats['indisponiveis'],
+            $stats['erros'],
+        );
 
         if ($abortou) {
-            $this->error("CGU indisponível em {$maxFalhas} empresa(s) seguida(s) — varredura abortada (tenta de novo na próxima). Checadas até aqui: {$checadas}.");
+            $this->error("{$maxFalhas} falha(s) seguida(s) (CGU indisponível ou erro) — varredura abortada; a próxima passada retoma de onde parou. {$resumo}.");
+            Log::warning('Varredura de sanções abortada pelo disjuntor.', $stats + ['max_falhas' => $maxFalhas]);
 
             return self::FAILURE;
         }
 
-        $this->info(sprintf(
-            'Varredura de sanções: %d empresa(s) checada(s), %d alerta(s) de sanção nova%s.',
-            $checadas,
-            $alertas,
-            $semColeta > 0 ? ", {$semColeta} sem coleta ainda (puladas)" : '',
-        ));
+        $this->info("Varredura de sanções: {$resumo}.");
+
+        $stats['indisponiveis'] + $stats['erros'] > 0
+            ? Log::warning('Varredura de sanções concluída com falhas.', $stats)
+            : Log::info('Varredura de sanções concluída.', $stats);
 
         return self::SUCCESS;
     }

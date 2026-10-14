@@ -8,6 +8,8 @@ use App\Enums\Severity;
 use App\Models\ChangeEvent;
 use App\Models\MonitoredCompany;
 use App\Support\Cnpj;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -15,9 +17,24 @@ use Illuminate\Notifications\Notification;
 /**
  * Alerts an organization that one or more changes were detected on a monitored
  * company. Delivered in-app (database) and by e-mail.
+ *
+ * Queued: a delivery failure (SMTP down) never aborts the caller — the refresh
+ * job or the sanctions sweep, where an inline e-mail error used to stop the rest
+ * of the portfolio. Each channel is its own queued job, retried with backoff
+ * (~20 min of outage absorbed before it lands in failed_jobs).
  */
-class CompanyChangeDetected extends Notification
+class CompanyChangeDetected extends Notification implements ShouldQueue
 {
+    use Queueable;
+
+    public int $tries = 4;
+
+    /** @var list<int> */
+    public array $backoff = [60, 300, 900];
+
+    /** Company removed before delivery → drop the alert instead of failing. */
+    public bool $deleteWhenMissingModels = true;
+
     /**
      * @param  Collection<int, ChangeEvent>  $events
      */

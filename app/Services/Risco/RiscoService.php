@@ -45,7 +45,12 @@ final class RiscoService
         private readonly int $cacheTtlMinutes,
     ) {}
 
-    public function para(string $cnpj): RiscoReport
+    /**
+     * @param  bool  $fresh  Ignora o cache na LEITURA (mas grava o resultado bom):
+     *                       a varredura de sanções precisa do dado de agora, não
+     *                       do que uma visita à página cacheou horas antes.
+     */
+    public function para(string $cnpj, bool $fresh = false): RiscoReport
     {
         $digits = preg_replace('/\D/', '', $cnpj) ?? '';
 
@@ -57,7 +62,7 @@ final class RiscoService
             return RiscoReport::naoConfigurado($digits);
         }
 
-        $cached = Cache::get($this->cacheKey($digits));
+        $cached = $fresh ? null : Cache::get($this->cacheKey($digits));
 
         if ($cached instanceof RiscoReport) {
             return $cached;

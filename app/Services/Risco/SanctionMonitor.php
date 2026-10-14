@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Risco;
 
+use App\DTO\Risco\RiscoReport;
 use App\DTO\Risco\Sancao;
 use App\Models\CompanySanction;
 use App\Models\MonitoredCompany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Sincroniza as sanções conhecidas de uma empresa monitorada com a fonte (CGU,
@@ -14,6 +16,10 @@ use App\Models\MonitoredCompany;
  * (`vigilo:varrer-sancoes`) transformar em alerta/evento. É aqui que mora a
  * persistência (tabela `company_sanctions`) e o diff; a varredura cuida do
  * change_event/notificação/webhook.
+ *
+ * Dividido em duas etapas para a varredura poder gravar sanção + change_event
+ * num único átomo: {@see consultar()} faz o HTTP (fora de transação) e
+ * {@see aplicar()} só mexe no banco. {@see sync()} junta as duas.
  *
  * Regras de segurança do diff:
  *  - fonte indisponível/sem chave → NÃO toca em nada (nunca inferir sanção a
@@ -32,52 +38,86 @@ final class SanctionMonitor
      */
     public function sync(MonitoredCompany $company, bool $silent = false): ?array
     {
-        $report = $this->risco->para($company->cnpj);
+        $report = $this->consultar($company);
 
-        // Indisponível/não configurada: não dá para distinguir "nada consta" de
-        // "não consegui checar" — então não gravamos nem alertamos, e avisamos o
-        // chamador (a varredura usa isso como disjuntor).
-        if (! $report->disponivel) {
+        if ($report === null) {
             return null;
         }
 
-        $baseline = $silent || $company->sanctions_synced_at === null;
+        return $this->aplicar($company, $report, $silent);
+    }
 
-        /** @var array<string, true> $conhecidas */
-        $conhecidas = [];
-        foreach ($company->sanctions()->pluck('fingerprint') as $fingerprint) {
-            $conhecidas[(string) $fingerprint] = true;
-        }
+    /**
+     * Consulta a fonte SEM cache de leitura (o monitor precisa do dado de agora).
+     * Null quando indisponível/não configurada: não dá para distinguir "nada
+     * consta" de "não consegui checar" — o chamador não grava nem alerta (a
+     * varredura usa isso como disjuntor).
+     */
+    public function consultar(MonitoredCompany $company): ?RiscoReport
+    {
+        $report = $this->risco->para($company->cnpj, fresh: true);
 
-        $novas = [];
+        return $report->disponivel ? $report : null;
+    }
 
-        foreach ($report->sancoes as $sancao) {
-            $fingerprint = $this->fingerprint($sancao);
+    /**
+     * Aplica um relatório disponível: grava as sanções ainda desconhecidas e
+     * marca a empresa como sincronizada. Só banco — o chamador pode envolver
+     * numa transação maior (a varredura grava os change_events no mesmo átomo).
+     *
+     * Trava a linha da empresa: duas execuções concorrentes (varredura manual ×
+     * agendada) serializam aqui, e a 2ª já enxerga o que a 1ª gravou — sem
+     * duplicar sanção nem alerta.
+     *
+     * @return list<CompanySanction>
+     */
+    public function aplicar(MonitoredCompany $company, RiscoReport $report, bool $silent = false): array
+    {
+        return DB::transaction(function () use ($company, $report, $silent): array {
+            $atual = MonitoredCompany::query()->whereKey($company->id)->lockForUpdate()->first();
 
-            if (isset($conhecidas[$fingerprint])) {
-                continue;
+            if ($atual === null) {
+                return []; // removida da carteira no meio da varredura
             }
 
-            $conhecidas[$fingerprint] = true; // evita duplicar na mesma passada
+            $baseline = $silent || $atual->sanctions_synced_at === null;
 
-            $registro = $company->sanctions()->create([
-                'fonte' => $sancao->fonte->value,
-                'fingerprint' => $fingerprint,
-                'tipo' => $sancao->tipo,
-                'orgao' => $sancao->orgao,
-                'data_inicio' => $sancao->dataInicio,
-                'data_fim' => $sancao->dataFim,
-                'detected_at' => now(),
-            ]);
-
-            if (! $baseline) {
-                $novas[] = $registro;
+            /** @var array<string, true> $conhecidas */
+            $conhecidas = [];
+            foreach ($company->sanctions()->pluck('fingerprint') as $fingerprint) {
+                $conhecidas[(string) $fingerprint] = true;
             }
-        }
 
-        $company->forceFill(['sanctions_synced_at' => now()])->save();
+            $novas = [];
 
-        return $novas;
+            foreach ($report->sancoes as $sancao) {
+                $fingerprint = $this->fingerprint($sancao);
+
+                if (isset($conhecidas[$fingerprint])) {
+                    continue;
+                }
+
+                $conhecidas[$fingerprint] = true; // evita duplicar na mesma passada
+
+                $registro = $company->sanctions()->create([
+                    'fonte' => $sancao->fonte->value,
+                    'fingerprint' => $fingerprint,
+                    'tipo' => $sancao->tipo,
+                    'orgao' => $sancao->orgao,
+                    'data_inicio' => $sancao->dataInicio,
+                    'data_fim' => $sancao->dataFim,
+                    'detected_at' => now(),
+                ]);
+
+                if (! $baseline) {
+                    $novas[] = $registro;
+                }
+            }
+
+            $company->forceFill(['sanctions_synced_at' => now()])->save();
+
+            return $novas;
+        });
     }
 
     /**

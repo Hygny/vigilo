@@ -43,18 +43,25 @@ return [
     |
     | Gera o alerta de sanção nova para a carteira inteira, fora do refresh da
     | Receita. Cada empresa custa até 3 chamadas à CGU (CEIS/CNEP/CEPIM); o teto
-    | da API é 400 req/min (700 entre 00h–06h). 120 empresas/min ≈ 360 req/min,
-    | abaixo do teto mesmo se a varredura escorregar para o horário comercial.
+    | da API é 400 req/min (700 entre 00h–06h de Brasília). 120 empresas/min ≈
+    | 360 req/min, abaixo do teto mesmo se a varredura escorregar para o horário
+    | comercial. Medido em prod (2026-10-14): 813 empresas em 6min48s, ou seja, o
+    | ritmo é quem limita (a latência das 3 chamadas cabe nos 0,5 s por empresa).
     |
     */
 
     'sweep' => [
+        // Fuso da agenda e do "dia" da varredura (a empresa checada hoje é pulada
+        // na 2ª passada). A app roda em UTC; a janela folgada da CGU é em Brasília.
+        'timezone' => env('RISCO_SWEEP_TIMEZONE', 'America/Sao_Paulo'),
+
         // Teto de empresas por minuto (0 = sem pausa — só para testes).
         'per_minute' => (int) env('RISCO_SWEEP_PER_MINUTE', 120),
 
-        // Disjuntor: aborta a varredura após N empresas SEGUIDAS com a CGU
-        // indisponível — evita esperar o timeout (3 × timeout) em toda a carteira
-        // quando a API está fora. Tenta de novo no dia seguinte.
+        // Disjuntor: aborta a varredura após N empresas SEGUIDAS com falha (CGU
+        // indisponível ou erro inesperado, ex.: Redis/DB fora) — evita esperar o
+        // timeout (3 × timeout) em toda a carteira quando a API está fora. A
+        // passada seguinte (04:00, ou a do dia seguinte) retoma de onde parou.
         'max_consecutive_failures' => (int) env('RISCO_SWEEP_MAX_FAILURES', 5),
     ],
 
