@@ -159,6 +159,44 @@ nada rodar por mais de **10 dias**, vira aviso **"Atrasado"** (cron parado).
 > - Os **índices persistem** (o reimport é `upsert`, não dropa tabela). O que a normalização mensal refresca é só o **dado** de `socios.nome_norm` (sócio novo entra vazio; nome alterado fica defasado — o pipeline não conhece a coluna). Os índices de `cep`/documento não precisam de manutenção.
 > - O índice `idx_socios_nome_norm` é criado pelo próprio `vigilo:normalizar-socios` (`CREATE INDEX IF NOT EXISTS`), então na 1ª execução ele já nasce.
 
+## 7. Disco: índices removidos e autovacuum (aplicado em 2026-10-21)
+
+O upsert do pipeline é **incondicional** (`ON CONFLICT DO UPDATE SET …,
+data_atualizacao = now()`): cada dump novo reescreve **todas** as linhas. O 1º
+dump por upsert (19/10/2026) levou o volume `vigilo_cnpj-pgdata` de 51 → 65,6 GB.
+Para não estourar o disco do VPS (96 GB, compartilhado com MySQL/n8n/solradar):
+
+**Índices do pipeline sem uso no Vigilo — removidos** (~2,4 GB). Validado com
+`EXPLAIN` das queries reais (coleta, grafo, filiais, beneficiários, OSINT por
+endereço/sócio, com e sem filtro de situação) — nenhuma usa:
+
+```bash
+docker exec data-postgres-1 psql -U cnpj -d cnpj -c "DROP INDEX CONCURRENTLY IF EXISTS idx_estabelecimentos_uf;"
+docker exec data-postgres-1 psql -U cnpj -d cnpj -c "DROP INDEX CONCURRENTLY IF EXISTS idx_estabelecimentos_situacao;"
+docker exec data-postgres-1 psql -U cnpj -d cnpj -c "DROP INDEX CONCURRENTLY IF EXISTS idx_estabelecimentos_cnae;"
+```
+
+O reimport **não** os recria (o `initial.sql` do pipeline só roda quando a tabela
+`processed_files` não existe). **Se a base for recriada do zero, rode de novo.**
+**NÃO remover:** `idx_estabelecimentos_cep` (grafo — vínculo por endereço — e
+OSINT por endereço), `idx_socios_nome_norm` (OSINT por sócio),
+`idx_socios_documento` (grafo reverso / por pessoa).
+
+**Autovacuum mais cedo nas 4 tabelas grandes** — com o gatilho padrão (20% de
+linhas mortas) o espaço do dump anterior ficava sem reciclar até o próximo; com
+2% o autovacuum roda já durante/depois do upsert e o dump seguinte reaproveita o
+espaço em vez de crescer o volume:
+
+```bash
+docker exec data-postgres-1 psql -U cnpj -d cnpj -c "ALTER TABLE estabelecimentos SET (autovacuum_vacuum_scale_factor = 0.02); ALTER TABLE empresas SET (autovacuum_vacuum_scale_factor = 0.02); ALTER TABLE socios SET (autovacuum_vacuum_scale_factor = 0.02); ALTER TABLE dados_simples SET (autovacuum_vacuum_scale_factor = 0.02);"
+```
+
+**Não fazer:** `VACUUM FULL`/`pg_repack` (reescreve a tabela: precisa de espaço
+livre do tamanho dela — `estabelecimentos` tem 27 GB —, trava a tabela inteira, e
+o ganho some no dump seguinte); baixar `fillfactor` (aumenta a tabela); podar
+`socios`/`dados_simples` à carteira (quebra grafo/OSINT). Solução estrutural:
+crescer o disco do VPS.
+
 ## Critério de aceite
 - `cnpj:status` retorna contagens reais das três tabelas.
 - Um lookup por CNPJ e a consulta reversa por documento de sócio retornam correto e rápido (com os índices do passo 4).
