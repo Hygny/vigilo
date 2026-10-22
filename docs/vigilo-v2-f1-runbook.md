@@ -195,7 +195,8 @@ docker exec data-postgres-1 psql -U cnpj -d cnpj -c "ALTER TABLE estabelecimento
 livre do tamanho dela — `estabelecimentos` tem 27 GB —, trava a tabela inteira, e
 o ganho some no dump seguinte); baixar `fillfactor` (aumenta a tabela); podar
 `socios`/`dados_simples` à carteira (quebra grafo/OSINT). Solução estrutural:
-crescer o disco do VPS.
+crescer o disco do VPS — ou tirar a base do VPS (roteiro de migração para a
+Oracle Cloud em `docs/vigilo-cnpj-oracle-migracao.md`).
 
 ## Critério de aceite
 - `cnpj:status` retorna contagens reais das três tabelas.
