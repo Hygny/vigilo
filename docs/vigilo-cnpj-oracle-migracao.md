@@ -62,15 +62,25 @@ O Postgres passa a ficar exposto na internet, então a porta 5432 é fechada em
 2. **iptables** da VM (a imagem Ubuntu da Oracle já vem com REJECT em tudo
    exceto SSH — o Postgres roda com rede do host justamente para essas regras
    valerem; porta publicada pelo Docker passaria por fora delas);
-3. **pg_hba.conf**: só `hostssl` do IP do VPS, com `scram-sha-256`.
+3. **pg_hba.conf**: só `hostssl` do IP do VPS, com `scram-sha-256`, e só para
+   o papel `vigilo_app`.
 
 E mais:
 
+- **App sem superuser**: pela rede só entra o papel `vigilo_app`
+  (`bin/papel-app.sh`) — NÃO-superuser, dono das tabelas (o app lê; a
+  normalização de sócios faz UPDATE/DDL em `socios`, o que exige ser dono). O
+  superuser `cnpj` fica só no socket e no `127.0.0.1` da VM (pipeline,
+  manutenção): nada de `COPY ... TO PROGRAM` vindo da rede.
 - **TLS verificado**: CA própria gerada na VM; o app conecta com
   `sslmode=verify-full` (criptografa e confere que está falando com o servidor
-  certo — `prefer`/`require` não conferem).
-- **Senha nova e forte** gerada na VM. Vai da VM para o `src/.env` do VPS por
-  pipe direto — não passa pelo chat nem aparece na tela.
+  certo — `prefer`/`require` não conferem). O certificado do servidor vence em
+  **out/2031** (a CA em 2036): renovar com o `provisionar-vm.sh` depois de
+  apagar `/data/certs/server.crt` (a `ca.key` fica na VM, só root, para isso).
+- **Senhas novas e fortes** geradas na VM (`CNPJ_DB_PASSWORD` do superuser e
+  `CNPJ_APP_PASSWORD` do app, em `~/cnpj/.env`, modo 600). A do app vai da VM
+  para o `src/.env` do VPS por pipe direto — não passa pelo chat nem aparece
+  na tela.
 - **Acesso SSH à VM só por chave.** Você coloca a chave **pública** deste PC na
   criação da VM. **Nunca** cole senha do console da Oracle, chave privada ou
   senha de banco no chat. Eu não entro no console da Oracle.
@@ -134,7 +144,8 @@ sudo bash ~/cnpj/provisionar-vm.sh 148.230.77.119 159.112.186.240
    (`RequiresMountsFor`) — sem isso, um boot com o disco ausente subiria um
    Postgres vazio no disco do sistema. Logs dos containers com rotação.
 3. **iptables**: ACCEPT `tcp/5432` de `148.230.77.119` antes do REJECT da
-   imagem; salvar com `netfilter-persistent`.
+   imagem, aplicado na hora e escrito no `/etc/iptables/rules.v4` (sem
+   `netfilter-persistent save`, que gravaria junto as chains do Docker).
 4. **TLS**: gerar CA + certificado do servidor com o IP público no SAN; chave
    com dono `70:70` (usuário postgres da imagem alpine) e modo 600.
 5. **Postgres** em `~/cnpj/docker-compose.yml`: `postgres:17-alpine`,
@@ -142,7 +153,7 @@ sudo bash ~/cnpj/provisionar-vm.sh 148.230.77.119 159.112.186.240
    `~/cnpj/.env` (gerada com `openssl rand`, modo 600). Config inicial para 24 GB:
 
    ```
-   listen_addresses = '*'          ssl = on (TLSv1.2+)
+   listen_addresses = '0.0.0.0'    ssl = on (TLSv1.2+)
    password_encryption = scram-sha-256
    shared_buffers = 6GB            effective_cache_size = 16GB
    work_mem = 32MB                 maintenance_work_mem = 1GB
@@ -151,8 +162,13 @@ sudo bash ~/cnpj/provisionar-vm.sh 148.230.77.119 159.112.186.240
    ```
 
    `pg_hba.conf`: socket local (dentro do container) + `127.0.0.1` com senha
-   (pipeline) + `hostssl cnpj cnpj 148.230.77.119/32 scram-sha-256`. Nada mais.
-6. Scripts em `~/cnpj/bin/`: `reimport.sh` (roda o pipeline contra
+   (pipeline) + `hostssl cnpj vigilo_app 148.230.77.119/32 scram-sha-256`.
+   Nada mais. Desligamento com prazo de 300 s (`stop_grace_period`,
+   `shutdown-timeout` do Docker e `TimeoutStopSec` do systemd) para o
+   checkpoint final não virar crash recovery.
+6. Scripts em `~/cnpj/bin/`: `restaurar-dump.sh` (Fase 2 e recuperação
+   rápida), `papel-app.sh` (papel `vigilo_app` dono das tabelas),
+   `reimport.sh` (roda o pipeline contra
    `127.0.0.1`, com **checagem de espaço**: aborta se `/data` tiver < 25 GB
    livres; container nomeado e destacado — se o SSH do VPS cair no meio, o
    import continua e o retry só espera por ele), `pf-count.sh` (conta
@@ -179,19 +195,22 @@ a base normalmente.
    background para sobreviver a queda de SSH:
 
    ```bash
-   docker exec data-postgres-1 pg_dump -U cnpj -d cnpj -Fc -Z 3 \
+   docker exec data-postgres-1 pg_dump -U cnpj -d cnpj -Fc -Z zstd:3 \
      | ssh -i ~/.ssh/cnpj_db ubuntu@159.112.186.240 receive-dump
    ```
+
+   (Em 2026-10-23: 15 min, 7,6 GB — zstd gasta bem menos CPU que gzip nos
+   2 vCPU do VPS.)
 
    O dump leva tudo: tabelas, `processed_files` (o pipeline sabe que o dump de
    2026-10 já está carregado e **não** recomeça do zero), a coluna e o índice
    `nome_norm`, os índices `cep`/`documento` e o ajuste de autovacuum.
-4. Restaurar na VM em paralelo e atualizar estatísticas (o PG 17 não leva as
-   estatísticas no dump):
+4. Restaurar na VM em paralelo, refazer as estatísticas (o PG 17 não as leva
+   no dump) e passar as tabelas para o papel `vigilo_app` — tudo no
+   `bin/restaurar-dump.sh` (recusa base que já tenha tabelas):
 
    ```bash
-   pg_restore -U cnpj -d cnpj -j 4 --no-owner --exit-on-error /dump/cnpj.dump
-   vacuumdb -U cnpj -d cnpj -j 4 --analyze
+   nohup ~/cnpj/bin/restaurar-dump.sh > ~/restaurar-dump.log 2>&1 &
    ```
 
 5. **Conferência de paridade** VPS × VM — tem que bater 100%:
@@ -210,12 +229,17 @@ a base normalmente.
 sem as variáveis novas, tudo continua como hoje:
 
 - `config/database.php` (conexão `cnpj`): `sslrootcert` por env e
-  `PDO::ATTR_TIMEOUT` (connect timeout, padrão 5 s — hoje o padrão do driver é
-  30 s; com a base remota fora do ar, a tela não pode ficar pendurada).
+  `PDO::ATTR_TIMEOUT` (connect timeout, padrão 5 s, piso 1 s — hoje o padrão do
+  driver é 30 s; com a base remota fora do ar, a tela não pode ficar pendurada).
 - `deploy/reimport-mensal.sh`: com `CNPJ_REMOTE_SSH` definido, roda o pipeline
   e a contagem de `processed_files` na VM via SSH (`reimport.sh` /
   `pf-count.sh`); retry, card do `/admin`, re-coleta e normalização seguem
-  iguais. Sem a variável, comportamento atual.
+  iguais. Sem a variável, comportamento atual. **Baseline persistido**
+  (`~/apps/vigilo/.cnpj-pf-baseline`): se o VPS cair no meio de um reimport e a
+  VM terminar sozinha, a rodada seguinte ainda vê o dump novo e faz a
+  re-coleta. VM sem espaço (saída 3) não é re-tentada. Testes:
+  `bash tests/deploy/reimport-mensal-remote.test.sh` (Linux; `ssh`/`docker`
+  falsos).
 - `deploy/cnpj-db/`: compose, `postgresql.conf`, `pg_hba.conf` e scripts da VM.
 
 **Virada:**
@@ -225,9 +249,11 @@ sem as variáveis novas, tudo continua como hoje:
 3. Copiar o certificado da CA para
    `src/storage/app/private/cnpj-db-ca.crt` (dentro do container:
    `/var/www/storage/app/private/cnpj-db-ca.crt`; não é segredo).
-4. `src/.env`: `CNPJ_DB_HOST=<IP_VM>`, `CNPJ_DB_PASSWORD=<nova, via pipe>`,
+4. `src/.env`: `CNPJ_DB_HOST=<IP_VM>`, `CNPJ_DB_USERNAME=vigilo_app`,
+   `CNPJ_DB_PASSWORD=<CNPJ_APP_PASSWORD da VM, via pipe>`,
    `CNPJ_DB_SSLMODE=verify-full`,
-   `CNPJ_DB_SSLROOTCERT=/var/www/storage/app/private/cnpj-db-ca.crt`.
+   `CNPJ_DB_SSLROOTCERT=/var/www/storage/app/private/cnpj-db-ca.crt`,
+   `CNPJ_DB_CONNECT_TIMEOUT=5`.
    `~/apps/vigilo/.env`: `CNPJ_REMOTE_SSH=ubuntu@<IP_VM>`.
 5. `config:cache` + `docker compose restart app queue scheduler nginx`
    (o worker da fila segura a conexão antiga até reiniciar).
@@ -258,6 +284,7 @@ sem as variáveis novas, tudo continua como hoje:
    `deploy/docker-compose.yml` (commit) e sincronizar a cópia de ops
    (`cp src/deploy/docker-compose.yml docker-compose.yml`).
 4. Atualizar o runbook V2-F1 (§0, §2, §6, §7) para o modelo novo.
+5. Tirar o verbo `receive-dump` do `gateway.sh` (só servia para a cópia).
 
 O `cnpj.dump` da migração fica em `/data/dump` na VM como **restauração
 rápida** (a base também é reconstruível do dump público da Receita, mas isso

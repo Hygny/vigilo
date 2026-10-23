@@ -28,8 +28,9 @@ apt-get -y -q upgrade
 echo "==> disco de dados em /data"
 if ! findmnt -rn /data >/dev/null; then
     [ -b "$DEVICE" ] || { echo "block volume não encontrado em $DEVICE"; exit 1; }
-    if [ "$(readlink -f "$DEVICE")" = "$(readlink -f "$(findmnt -n -o SOURCE /)")" ]; then
-        echo "$DEVICE é o disco do sistema — abortando"; exit 1
+    # Disco (ou partição dele) já montado = em uso (ex.: o disco do sistema).
+    if lsblk -nro MOUNTPOINT "$DEVICE" | grep -q .; then
+        echo "$DEVICE (ou uma partição dele) já está montado — abortando"; exit 1
     fi
     # Só formata disco VAZIO (sem sistema de arquivos).
     if [ -z "$(blkid -o value -s TYPE "$DEVICE" 2>/dev/null || true)" ]; then
@@ -44,25 +45,43 @@ fi
 echo "==> Docker (dados em /data, só sobe com /data montado)"
 # Sem a dependência, um boot com o disco ausente subiria um Postgres VAZIO no
 # disco do sistema. data-root em /data: imagens e arquivos temporários do
-# pipeline (download da Receita) ficam no disco grande.
+# pipeline (download da Receita) ficam no disco grande. Prazo de parada de 300 s
+# (igual ao stop_grace_period do compose) para o Postgres desligar limpo.
+DOCKER_CHANGED=0
+install_if_changed() { # <destino> (conteúdo no stdin)
+    local tmp
+    tmp="$(mktemp)"
+    cat >"$tmp"
+    if ! cmp -s "$tmp" "$1"; then
+        install -m 644 "$tmp" "$1"
+        DOCKER_CHANGED=1
+    fi
+    rm -f "$tmp"
+}
 mkdir -p /etc/systemd/system/docker.service.d /etc/docker
-cat >/etc/systemd/system/docker.service.d/requer-data.conf <<'EOF'
+install_if_changed /etc/systemd/system/docker.service.d/requer-data.conf <<'EOF'
 [Unit]
 RequiresMountsFor=/data
+
+[Service]
+TimeoutStopSec=330
 EOF
-if [ ! -f /etc/docker/daemon.json ]; then
-    cat >/etc/docker/daemon.json <<'EOF'
+install_if_changed /etc/docker/daemon.json <<'EOF'
 {
   "data-root": "/data/docker",
+  "shutdown-timeout": 300,
   "log-driver": "json-file",
   "log-opts": { "max-size": "20m", "max-file": "5" }
 }
 EOF
-fi
 systemctl daemon-reload
 apt-get -y -q install docker.io docker-compose-v2
 systemctl enable --now docker
-systemctl restart docker
+# Só reinicia quando a config mudou: re-rodar o script não derruba o Postgres
+# nem um reimport em andamento.
+if [ "$DOCKER_CHANGED" = 1 ]; then
+    systemctl restart docker
+fi
 usermod -aG docker "$OWNER"
 
 echo "==> firewall: 5432 só do VPS ($VPS_IP)"
@@ -103,11 +122,15 @@ chown root:root ca.key && chmod 600 ca.key
 chown "$PG_UID:$PG_UID" server.key && chmod 600 server.key
 chmod 644 ca.crt server.crt
 
-echo "==> senha do Postgres (gerada uma vez, nunca impressa)"
+echo "==> senhas do Postgres (geradas uma vez, nunca impressas)"
+# CNPJ_DB_PASSWORD = superuser `cnpj` (só na VM); CNPJ_APP_PASSWORD = papel
+# `vigilo_app` que o VPS usa (bin/papel-app.sh).
 ENV_FILE="$DIR/.env"
-if ! grep -q '^CNPJ_DB_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
-    (umask 077 && echo "CNPJ_DB_PASSWORD=$(openssl rand -hex 24)" >>"$ENV_FILE")
-fi
+for var in CNPJ_DB_PASSWORD CNPJ_APP_PASSWORD; do
+    if ! grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
+        (umask 077 && echo "${var}=$(openssl rand -hex 24)" >>"$ENV_FILE")
+    fi
+done
 chmod 600 "$ENV_FILE"
 
 sed -i "s|VPS_IP/32|$VPS_IP/32|" "$DIR/pg_hba.conf"

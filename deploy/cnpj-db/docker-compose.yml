@@ -14,6 +14,11 @@ services:
     restart: unless-stopped
     network_mode: host
     shm_size: 1g
+    # Desligamento limpo: com 6 GB de shared_buffers o checkpoint final pode
+    # levar minutos no block volume; SIGKILL aos 10 s (padrão) forçaria crash
+    # recovery a cada restart/reboot. (daemon.json e o drop-in do systemd têm
+    # o mesmo prazo — provisionar-vm.sh.)
+    stop_grace_period: 300s
     environment:
       POSTGRES_DB: cnpj
       POSTGRES_USER: cnpj

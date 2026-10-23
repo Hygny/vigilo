@@ -102,8 +102,11 @@ return [
         ],
 
         // Base CNPJ consolidada da Receita (V2) — PostgreSQL próprio, alimentado
-        // pelo pipeline de dump. Lida como somente-leitura pelo app (só SELECTs);
-        // fica inerte até ser usada, então não afeta o fluxo atual (MySQL).
+        // pelo pipeline de dump. O app só lê; a exceção é o `vigilo:normalizar-socios`
+        // (UPDATE/DDL em socios.nome_norm). Fica inerte até ser usada.
+        // Em produção mora numa VM da Oracle (docs/vigilo-cnpj-oracle-migracao.md):
+        // TLS verificado (sslmode=verify-full + CA própria em sslrootcert) e o
+        // papel não-superuser `vigilo_app`.
         'cnpj' => [
             'driver' => 'pgsql',
             'url' => env('CNPJ_DB_URL'),
@@ -117,6 +120,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('CNPJ_DB_SSLMODE', 'prefer'),
+            'sslrootcert' => env('CNPJ_DB_SSLROOTCERT'),
+            // Connect timeout (o pdo_pgsql repassa como connect_timeout; o padrão
+            // do driver é 30 s). Base remota fora do ar não pode pendurar a tela:
+            // os chamadores já degradam (grafo indisponível, OSINT 503, re-tentativa).
+            // Piso de 1 s: no libpq, connect_timeout=0 (env vazia) = esperar para sempre.
+            'options' => [PDO::ATTR_TIMEOUT => max(1, (int) env('CNPJ_DB_CONNECT_TIMEOUT', 5))],
         ],
 
         'sqlsrv' => [
