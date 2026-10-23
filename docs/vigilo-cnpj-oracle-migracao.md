@@ -113,12 +113,26 @@ E mais:
    Mantenha a regra de SSH (22) que já vem.
 6. **Me mande**: o **IP público** da VM. (O usuário é `ubuntu`.) Só isso.
 
-## Fase 1 — Preparar a VM [Claude] (~1 h)
+## Fase 1 — Preparar a VM [Claude] (~1 h) — ✅ feita em 2026-10-23
 
-1. Testar o SSH; atualizar o sistema; instalar Docker + plugin compose;
-   timezone; confirmar `unattended-upgrades` ligado (patches de segurança).
-2. Formatar o block volume (ext4) e montar em `/data` (fstab por UUID, com
-   `_netdev,nofail`). Pastas: `/data/pgdata`, `/data/dump`, `/data/certs`.
+VM `cnpj-db`, IP público `159.112.186.240`, Ubuntu 24.04 aarch64, 4 OCPU /
+24 GB, boot 50 GB + block volume 150 GB. Tudo é feito pelo
+`deploy/cnpj-db/provisionar-vm.sh` (idempotente — não reformata disco nem troca
+senha/certificado se rodar de novo):
+
+```bash
+# do repo, copiar deploy/cnpj-db para ~/cnpj na VM e rodar:
+sudo bash ~/cnpj/provisionar-vm.sh 148.230.77.119 159.112.186.240
+```
+
+1. Atualizar o sistema; instalar Docker (`docker.io` + `docker-compose-v2`);
+   `unattended-upgrades` já vem ligado (patches de segurança).
+2. Formatar o block volume (ext4, só se estiver vazio) e montar em `/data`
+   (fstab por UUID, `nofail`). Pastas: `/data/pgdata`, `/data/dump`,
+   `/data/certs`. O Docker guarda tudo em `/data/docker` (o download da Receita
+   cai no disco grande) e **só sobe com `/data` montado**
+   (`RequiresMountsFor`) — sem isso, um boot com o disco ausente subiria um
+   Postgres vazio no disco do sistema. Logs dos containers com rotação.
 3. **iptables**: ACCEPT `tcp/5432` de `148.230.77.119` antes do REJECT da
    imagem; salvar com `netfilter-persistent`.
 4. **TLS**: gerar CA + certificado do servidor com o IP público no SAN; chave
@@ -140,8 +154,13 @@ E mais:
    (pipeline) + `hostssl cnpj cnpj 148.230.77.119/32 scram-sha-256`. Nada mais.
 6. Scripts em `~/cnpj/bin/`: `reimport.sh` (roda o pipeline contra
    `127.0.0.1`, com **checagem de espaço**: aborta se `/data` tiver < 25 GB
-   livres) e `pf-count.sh` (conta `processed_files`). Os arquivos da VM ficam
-   versionados no repo em `deploy/cnpj-db/` — a VM é reproduzível.
+   livres; container nomeado e destacado — se o SSH do VPS cair no meio, o
+   import continua e o retry só espera por ele), `pf-count.sh` (conta
+   `processed_files`) e `gateway.sh` (comando forçado da chave do VPS: ela só
+   pode pedir `reimport`, `pf-count` e — só durante a migração —
+   `receive-dump`; nada de shell). Os arquivos da VM ficam versionados no repo
+   em `deploy/cnpj-db/` — a VM é reproduzível.
+7. Teste de reboot: disco, Docker, Postgres e regra de firewall voltam sozinhos.
 
 ## Fase 2 — Copiar a base [Claude] (~3–5 h, pode rodar de noite)
 
@@ -151,13 +170,17 @@ a base normalmente.
 1. **[ok seu]** Pausar a linha do reimport no crontab do VPS (`0 3 * * 1 ...`)
    — nada escreve na base durante a cópia. Não rodar em segunda de madrugada.
 2. **[ok seu]** Criar no VPS a chave dedicada `~/.ssh/cnpj_db` e autorizá-la na
-   VM.
+   VM com comando forçado:
+
+   ```
+   restrict,command="/home/ubuntu/cnpj/bin/gateway.sh" ssh-ed25519 AAAA... vigilo-vps-cnpj
+   ```
 3. Dump direto do VPS para o disco da VM (sem ocupar disco no VPS), em
    background para sobreviver a queda de SSH:
 
    ```bash
    docker exec data-postgres-1 pg_dump -U cnpj -d cnpj -Fc -Z 3 \
-     | ssh -i ~/.ssh/cnpj_db ubuntu@<IP_VM> 'cat > /data/dump/cnpj.dump'
+     | ssh -i ~/.ssh/cnpj_db ubuntu@159.112.186.240 receive-dump
    ```
 
    O dump leva tudo: tabelas, `processed_files` (o pipeline sabe que o dump de

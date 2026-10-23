@@ -1,0 +1,33 @@
+# Base CNPJ do Vigilo na VM Oracle Cloud (Always Free). Fica em ~/cnpj na VM.
+# Ver docs/vigilo-cnpj-oracle-migracao.md.
+#
+# Rede do HOST de propósito: assim as regras de iptables da VM (5432 só do IP
+# do VPS) valem para o Postgres — porta publicada pelo Docker passaria por fora
+# da chain INPUT.
+name: cnpj
+
+services:
+  postgres:
+    # Mesma imagem do VPS: musl/alpine → mesma collation en_US.utf8 nos índices.
+    image: postgres:17-alpine
+    container_name: cnpj-postgres
+    restart: unless-stopped
+    network_mode: host
+    shm_size: 1g
+    environment:
+      POSTGRES_DB: cnpj
+      POSTGRES_USER: cnpj
+      POSTGRES_PASSWORD: ${CNPJ_DB_PASSWORD:?defina CNPJ_DB_PASSWORD em ~/cnpj/.env}
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - /data/pgdata:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /data/certs/server.crt:/etc/postgresql/certs/server.crt:ro
+      - /data/certs/server.key:/etc/postgresql/certs/server.key:ro
+      - /data/dump:/dump
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnpj -d cnpj -h 127.0.0.1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
