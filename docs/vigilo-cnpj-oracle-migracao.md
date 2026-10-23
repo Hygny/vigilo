@@ -11,6 +11,24 @@ muda o **endereço** da conexão `cnpj`.
 
 ---
 
+## ✅ Resultado — migração concluída em 2026-10-23
+
+Todas as fases rodaram no mesmo dia (o usuário autorizou seguir sem pausas):
+
+| Fase | Resultado |
+|---|---|
+| 1 · VM | provisionada e testada com reboot; 5432 só do VPS, TLS `verify-full` |
+| 2 · Cópia | `pg_dump` zstd em **15 min** (7,6 GB) → restauração em **~1 h**; paridade **100%** (contagem das 11 tabelas, índices, `reloptions` e md5 de amostras por faixa de PK idênticos) |
+| 3 · Virada | app em `vigilo_app` (não-superuser), **TLS 1.3**; grafo ~10 ms, OSINT por endereço ~25 ms (cache quente — primeiro acesso a frio leva segundos; índices pré-carregados com `pg_prewarm`); re-coleta pela fila ok; **0 alertas falsos**, 0 jobs falhos |
+| 4 · Reimport | `reimport-mensal.sh` rodou o pipeline **na VM** ("All files already processed"), `maintenance_run` #7 ok; cron semanal reativado |
+| 5 · Disco | banco antigo parado, app conferido sem ele, volume apagado: VPS **86% → 25%** (73 GB livres) |
+
+Achado na virada: `CREATE INDEX IF NOT EXISTS` exige `CREATE` no schema mesmo
+quando o índice existe — o `papel-app.sh` concede `USAGE, CREATE ON SCHEMA
+public` ao `vigilo_app` (continua sem superuser).
+
+---
+
 ## Por quê e quanto ganha
 
 - Disco do VPS em **84%** (16 GB livres de 96) em 22/10/2026. O volume
@@ -178,7 +196,7 @@ sudo bash ~/cnpj/provisionar-vm.sh 148.230.77.119 159.112.186.240
    em `deploy/cnpj-db/` — a VM é reproduzível.
 7. Teste de reboot: disco, Docker, Postgres e regra de firewall voltam sozinhos.
 
-## Fase 2 — Copiar a base [Claude] (~3–5 h, pode rodar de noite)
+## Fase 2 — Copiar a base [Claude] (~3–5 h, pode rodar de noite) — ✅ 2026-10-23
 
 O site **não para**: o `pg_dump` lê um snapshot consistente enquanto o app usa
 a base normalmente.
@@ -223,7 +241,7 @@ a base normalmente.
    - teste do VPS para a VM com `sslmode=verify-full` (psql em container
      efêmero) e latência das consultas.
 
-## Fase 3 — Virada [Claude, com ok seu] (~30 min, sem parar o site)
+## Fase 3 — Virada [Claude, com ok seu] (~30 min, sem parar o site) — ✅ 2026-10-23
 
 **Código (fatia normal: gates + Juiz + commit), compatível com o modo atual** —
 sem as variáveis novas, tudo continua como hoje:
@@ -265,7 +283,7 @@ sem as variáveis novas, tudo continua como hoje:
 **Rollback (instantâneo):** `cp src/.env.bak-pre-oci src/.env` +
 `config:cache` + restart. A base local continua intacta até a Fase 5.
 
-## Fase 4 — 1º reimport pela VM [Claude] (na segunda seguinte)
+## Fase 4 — 1º reimport pela VM [Claude] (na segunda seguinte) — ✅ 2026-10-23 (rodada manual)
 
 1. **[ok seu]** Reativar a linha do cron no VPS.
 2. Rodar o `reimport-mensal.sh` uma vez na mão (sem dump novo, é um no-op de
@@ -274,7 +292,7 @@ sem as variáveis novas, tudo continua como hoje:
 3. Quando sair o dump de novembro: acompanhar o crescimento de `/data` e a
    duração do reimport na VM.
 
-## Fase 5 — Liberar o disco do VPS [com ok seu — irreversível] (após ~7 dias estável)
+## Fase 5 — Liberar o disco do VPS [com ok seu — irreversível] (após ~7 dias estável) — ✅ 2026-10-23 (autorizado a fazer no mesmo dia)
 
 1. `docker compose stop postgres` e esperar 1–2 dias sem nenhuma reclamação
    (prova de que nada mais usa a base local).

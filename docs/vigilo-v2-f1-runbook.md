@@ -1,5 +1,16 @@
 # V2-F1 — Runbook da base CNPJ (PostgreSQL) no VPS
 
+> 🔁 **Histórico — a base saiu do VPS em 2026-10-23.** Hoje ela mora numa VM da
+> Oracle Cloud (`cnpj-db`, 159.112.186.240): provisionamento, TLS, papel
+> `vigilo_app`, reimport remoto e recuperação estão em
+> **`docs/vigilo-cnpj-oracle-migracao.md`** e `deploy/cnpj-db/`. O serviço
+> `postgres` saiu do compose do VPS. Seguem valendo daqui: o §4 (índices que o
+> produto usa), o §5 (driver local + re-baseline) e o §6 (cron semanal no VPS —
+> o mesmo `reimport-mensal.sh`, agora com `CNPJ_REMOTE_SSH` no
+> `~/apps/vigilo/.env`, executa o pipeline na VM). Os §0–§3 e os comandos
+> `docker compose exec postgres`/`docker exec data-postgres-1` descrevem o
+> modelo antigo — na VM o equivalente é `docker exec cnpj-postgres psql -U cnpj -d cnpj`.
+
 Passo a passo operacional para subir a base CNPJ própria e carregar o dump da Receita. A parte de **código** ([repo]) já está no projeto (serviço `postgres` no compose, conexão `cnpj` read-only, comando `cnpj:status`); aqui está a parte que **você** roda no VPS.
 
 > ⚠️ A carga inicial leva **horas** e ocupa dezenas de GB. Rode fora de pico e **monitore o disco** (`df -h`). Você tem ~92 GB livres; a base normalizada com índices costuma ficar em ~40–80 GB.

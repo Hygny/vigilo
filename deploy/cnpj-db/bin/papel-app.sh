@@ -26,6 +26,9 @@ set +a
 SELECT format('CREATE ROLE vigilo_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'pw')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vigilo_app') \gexec
 SELECT format('ALTER ROLE vigilo_app PASSWORD %L', :'pw') \gexec
+-- `CREATE INDEX IF NOT EXISTS` (vigilo:normalizar-socios) checa o privilégio
+-- de CREATE no schema ANTES de ver que o índice já existe.
+GRANT USAGE, CREATE ON SCHEMA public TO vigilo_app;
 SELECT format('ALTER TABLE public.%I OWNER TO vigilo_app', tablename)
   FROM pg_tables WHERE schemaname = 'public' AND tableowner <> 'vigilo_app' \gexec
 SQL
