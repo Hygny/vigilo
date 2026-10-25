@@ -12,6 +12,7 @@ use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Risco\PgfnLookup;
 use App\Support\AddressNumber;
 use App\Support\NomeSocio;
+use App\Support\RazaoSocial;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
@@ -221,7 +222,7 @@ final class EmpresaLookup
     {
         return new Empresa(
             cnpj: $cnpj,
-            razaoSocial: $this->str($e['razao_social'] ?? null),
+            razaoSocial: RazaoSocial::exibir($this->str($e['razao_social'] ?? null)), // CPF de MEI mascarado (LGPD)
             nomeFantasia: $this->str($e['nome_fantasia'] ?? null),
             situacao: SituacaoCadastral::label($e['situacao_cadastral'] ?? null),
             dataSituacao: $this->date($e['data_situacao_cadastral'] ?? null),

@@ -9,6 +9,7 @@ use App\Models\ChangeEvent;
 use App\Models\MonitoredCompany;
 use App\Models\User;
 use App\Support\Cnpj;
+use App\Support\RazaoSocial;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,7 +59,7 @@ final class CnpjLookupController extends Controller
             'cnpj' => $digits,
             'situacao_cadastral' => $snapshot->situacao_cadastral,
             'cnae_principal' => $snapshot->cnae_principal,
-            'razao_social' => $snapshot->razao_social,
+            'razao_social' => RazaoSocial::exibir($snapshot->razao_social),
             'historico' => $company->changeEvents()
                 ->orderByDesc('detected_at')
                 ->orderByDesc('id')

@@ -383,6 +383,7 @@ class Graph extends Component
                 situacao: $node->situacao,
                 divida: $cnpj !== null ? ($dividas[substr($cnpj, 0, 8)] ?? null) : null,
                 consultaPgfn: $cnpj !== null,
+                cnpj: $cnpj,
             );
         }
 
@@ -392,6 +393,7 @@ class Graph extends Component
                 documento: Cnpj::tryFrom($branch->cnpj)?->formatted() ?? $branch->cnpj,
                 tipo: 'Filial',
                 situacao: $branch->situacao,
+                cnpj: $this->cnpjDigits($branch->cnpj),
             );
         }
 

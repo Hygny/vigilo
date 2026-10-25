@@ -60,3 +60,23 @@ it('redirects guests to login', function () {
 
     $this->get(route('companies.show', $company))->assertRedirect(route('login'));
 });
+
+it('masks the CPF of a MEI company name on the detail page and in the portfolio list', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create();
+    CompanySnapshot::factory()->create([
+        'monitored_company_id' => $company->id,
+        'razao_social' => 'JOANA PRADO 12345678901',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('companies.show', $company))
+        ->assertSee('JOANA PRADO ***456789**')
+        ->assertDontSee('12345678901');
+
+    $this->actingAs($user)
+        ->get(route('portfolios.show', $company->portfolio_id))
+        ->assertSee('JOANA PRADO ***456789**')
+        ->assertDontSee('12345678901');
+});

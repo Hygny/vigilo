@@ -158,9 +158,12 @@ check "pos-reimport: dump incompleto não roda (nada apagado)" "0|3" \
 # --- Sanidade: saídas demais abortam sem apagar --------------------------------
 q -c "INSERT INTO processed_files (directory, filename, processed_at) VALUES ('2026-11', 'Socios1.zip', now())" >/dev/null
 q -c "ANALYZE socios" >/dev/null
+q -c "UPDATE estabelecimentos SET situacao_cadastral = '04', data_atualizacao = CURRENT_TIMESTAMP WHERE cnpj_basico = '44555666'" >/dev/null
 q -v max_saidas_pct=5 -f /dev/stdin <"$SQL_DIR/pos-reimport.sql" >/dev/null 2>&1
 check "pos-reimport: saídas acima do limite abortam e não apagam nada" "abortado|3" \
     "SELECT (SELECT status FROM historico_execucoes WHERE referencia = '2026-11') || '|' || (SELECT count(*) FROM socios)"
+check "pos-reimport abortado: eventos de gatilho do dump ainda são carimbados" "1" \
+    "SELECT count(*) FROM historico_cadastral WHERE referencia = '2026-11' AND campo = 'situacao'"
 
 # --- Sanidade: campo com mudanças demais num dump é descartado ---------------
 q >/dev/null <<'SQL'

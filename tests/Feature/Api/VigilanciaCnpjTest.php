@@ -229,6 +229,18 @@ it('serves the company with historico_cadastral null when the history is unavail
         ->assertJsonPath('data.historico_cadastral', null);
 });
 
+it('never returns the full CPF that the Receita puts in a MEI company name', function () {
+    $token = osintToken();
+    seedVigilanciaBase();
+    seedNovaLingua();
+    DB::connection('cnpj')->table('empresas')->where('cnpj_basico', '44555666')->update(['razao_social' => 'MARIANA BRANDT SOUZA 12345678901']);
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.razao_social', 'MARIANA BRANDT SOUZA ***456789**');
+});
+
 it('returns 404 for a CNPJ outside the base', function () {
     $token = osintToken();
     seedVigilanciaBase(); // base no ar, mas o CNPJ não existe

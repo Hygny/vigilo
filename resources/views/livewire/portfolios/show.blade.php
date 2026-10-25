@@ -154,7 +154,7 @@
                                 <td class="px-[22px] py-3.5">
                                     <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                                         <a href="{{ route('companies.show', $company) }}" wire:navigate class="text-sm font-semibold text-accent hover:underline">
-                                            {{ $company->latestSnapshot?->razao_social ?? $company->label ?? 'Sem dados ainda' }}
+                                            {{ \App\Support\RazaoSocial::exibir($company->latestSnapshot?->razao_social) ?? $company->label ?? 'Sem dados ainda' }}
                                         </a>
                                         @if ($company->label !== null && $company->latestSnapshot?->razao_social !== null)
                                             <span class="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2 ring-1 ring-inset ring-line" title="Seu rótulo para esta unidade">

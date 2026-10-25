@@ -23,6 +23,8 @@ final readonly class GraphConnection
         public ?PgfnDebtSummary $divida = null,
         // A PGFN se aplica a esta linha (empresa com CNPJ, fora as filiais)?
         public bool $consultaPgfn = false,
+        // CNPJ em dígitos (empresa/filial/sócio PJ) — p/ linkar o perfil; null p/ pessoa.
+        public ?string $cnpj = null,
     ) {}
 
     /**

@@ -32,7 +32,7 @@
 
     <h2>Empresa</h2>
     <table class="kv">
-        <tr><td class="k">Razão social</td><td>{{ $snapshot?->razao_social ?? $company->label ?? '—' }}</td></tr>
+        <tr><td class="k">Razão social</td><td>{{ \App\Support\RazaoSocial::exibir($snapshot?->razao_social) ?? $company->label ?? '—' }}</td></tr>
         <tr><td class="k">CNPJ</td><td>{{ $company->formattedCnpj() }}</td></tr>
         @if ($company->label)<tr><td class="k">Rótulo interno</td><td>{{ $company->label }}</td></tr>@endif
     </table>

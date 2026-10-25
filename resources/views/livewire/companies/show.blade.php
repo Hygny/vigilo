@@ -6,7 +6,7 @@
                     <x-ui.icon name="arrow_back" :size="17" />Voltar ao portfólio
                 </a>
                 <div class="flex flex-wrap items-center gap-2">
-                    <h1 class="text-[26px] font-bold tracking-[-0.03em] text-ink">{{ $latest?->razao_social ?? $company->label ?? 'Empresa monitorada' }}</h1>
+                    <h1 class="text-[26px] font-bold tracking-[-0.03em] text-ink">{{ \App\Support\RazaoSocial::exibir($latest?->razao_social) ?? $company->label ?? 'Empresa monitorada' }}</h1>
                     @if ($company->label !== null && $latest?->razao_social !== null)
                         <span class="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-sm font-medium text-ink-2 ring-1 ring-inset ring-line" title="Seu rótulo para esta unidade">
                             <x-ui.icon name="sell" :size="14" class="text-ink-muted" />{{ $company->label }}
@@ -86,7 +86,7 @@
             <div class="border-b border-line px-[22px] py-4"><h2 class="text-[15px] font-semibold text-ink">Coletas ({{ $snapshots->count() }})</h2></div>
             @foreach ($snapshots as $snapshot)
                 <div class="flex items-center justify-between border-b border-line px-[22px] py-2.5 text-sm last:border-b-0">
-                    <span class="text-ink-2">{{ $snapshot->situacao_cadastral }} — {{ $snapshot->razao_social }}</span>
+                    <span class="text-ink-2">{{ $snapshot->situacao_cadastral }} — {{ \App\Support\RazaoSocial::exibir($snapshot->razao_social) }}</span>
                     <span class="font-mono text-xs text-ink-muted">{{ $snapshot->captured_at->format('d/m/Y H:i') }}</span>
                 </div>
             @endforeach

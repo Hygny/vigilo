@@ -7,7 +7,7 @@
                 </a>
                 <h1 class="text-[26px] font-bold tracking-[-0.03em] text-ink">Grafo societário</h1>
                 <p class="mt-1 text-[14px] text-ink-muted">
-                    {{ $company->latestSnapshot?->razao_social ?? $company->label ?? $company->formattedCnpj() }}
+                    {{ \App\Support\RazaoSocial::exibir($company->latestSnapshot?->razao_social) ?? $company->label ?? $company->formattedCnpj() }}
                     @if ($available)
                         @if ($personMode)
                             <span class="text-ink-2">· {{ $groupCount }} empresa(s) desta pessoa</span>
@@ -232,10 +232,9 @@
                             <tbody class="divide-y divide-line">
                                 @foreach ($connections as $c)
                                     <tr>
-                                        @php($cnpjLigado = preg_replace('/\D/', '', $c->documento ?? ''))
                                         <td class="px-4 py-2.5 font-medium text-ink">
-                                            @if (strlen($cnpjLigado) === 14)
-                                                <a href="{{ route('empresas.perfil', $cnpjLigado) }}" wire:navigate class="hover:underline">{{ $c->nome }}</a>
+                                            @if ($c->cnpj !== null)
+                                                <a href="{{ route('empresas.perfil', $c->cnpj) }}" wire:navigate class="hover:underline">{{ $c->nome }}</a>
                                             @else
                                                 {{ $c->nome }}
                                             @endif

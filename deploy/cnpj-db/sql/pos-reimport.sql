@@ -41,7 +41,8 @@ DECLARE
     marco timestamptz;
     total_socios numeric;
     n_saidas bigint;
-    n_entradas bigint;
+    n_entradas bigint := 0;
+    abortar boolean;
     n_eventos bigint;
     obs text := '';
     campo_ruim record;
@@ -90,33 +91,32 @@ BEGIN
     SELECT count(*) INTO n_saidas FROM pos_saidas;
     SELECT greatest(reltuples, 1) INTO total_socios FROM pg_class WHERE relname = 'socios';
 
-    IF n_saidas > total_socios * max_saidas_pct / 100 THEN
-        INSERT INTO historico_execucoes (referencia, status, corte, socios_saida, observacao)
-            VALUES (dir_novo, 'abortado', corte, n_saidas,
-                    format('%s saídas de sócios (> %s%% da base) — nada apagado; conferir o dump/pipeline e apagar esta linha para reprocessar', n_saidas, max_saidas_pct));
-        RAISE WARNING 'pos-reimport: % saídas de sócios no dump % (acima de % por cento da base) — abortado, nada apagado', n_saidas, dir_novo, max_saidas_pct;
-        RETURN;
+    -- Saídas demais = dump/pipeline suspeito: NÃO mexe em sócio nenhum. Os passos
+    -- 3 e 4 (carimbo + sanidade dos eventos de gatilho) rodam mesmo assim — eles
+    -- não dependem das saídas, e um evento sem carimbo escaparia da sanidade.
+    abortar := n_saidas > total_socios * max_saidas_pct / 100;
+
+    IF NOT abortar THEN
+        INSERT INTO historico_cadastral (cnpj_basico, campo, valor_anterior, valor_novo, detectado_em, referencia)
+            SELECT cnpj_basico, 'socio_saida',
+                   jsonb_build_object('nome', nome_socio, 'documento', cnpj_cpf_do_socio,
+                                      'qualificacao', qualificacao_do_socio, 'entrada', data_entrada_sociedade)::text,
+                   NULL, marco, dir_novo
+            FROM pos_saidas;
+
+        DELETE FROM socios s USING pos_saidas x WHERE s.socio_id = x.socio_id;
+
+        -- 2) Entradas (só em empresa que já existia antes do dump novo)
+        INSERT INTO historico_cadastral (cnpj_basico, campo, valor_anterior, valor_novo, detectado_em, referencia)
+            SELECT s.cnpj_basico, 'socio_entrada', NULL,
+                   jsonb_build_object('nome', s.nome_socio, 'documento', s.cnpj_cpf_do_socio,
+                                      'qualificacao', s.qualificacao_do_socio, 'entrada', s.data_entrada_sociedade)::text,
+                   marco, dir_novo
+            FROM socios s
+            JOIN empresas e ON e.cnpj_basico = s.cnpj_basico
+            WHERE s.data_criacao > corte AND e.data_criacao <= corte;
+        GET DIAGNOSTICS n_entradas = ROW_COUNT;
     END IF;
-
-    INSERT INTO historico_cadastral (cnpj_basico, campo, valor_anterior, valor_novo, detectado_em, referencia)
-        SELECT cnpj_basico, 'socio_saida',
-               jsonb_build_object('nome', nome_socio, 'documento', cnpj_cpf_do_socio,
-                                  'qualificacao', qualificacao_do_socio, 'entrada', data_entrada_sociedade)::text,
-               NULL, marco, dir_novo
-        FROM pos_saidas;
-
-    DELETE FROM socios s USING pos_saidas x WHERE s.socio_id = x.socio_id;
-
-    -- 2) Entradas (só em empresa que já existia antes do dump novo)
-    INSERT INTO historico_cadastral (cnpj_basico, campo, valor_anterior, valor_novo, detectado_em, referencia)
-        SELECT s.cnpj_basico, 'socio_entrada', NULL,
-               jsonb_build_object('nome', s.nome_socio, 'documento', s.cnpj_cpf_do_socio,
-                                  'qualificacao', s.qualificacao_do_socio, 'entrada', s.data_entrada_sociedade)::text,
-               marco, dir_novo
-        FROM socios s
-        JOIN empresas e ON e.cnpj_basico = s.cnpj_basico
-        WHERE s.data_criacao > corte AND e.data_criacao <= corte;
-    GET DIAGNOSTICS n_entradas = ROW_COUNT;
 
     -- 3) Carimba o dump nos eventos dos gatilhos
     UPDATE historico_cadastral SET referencia = dir_novo
@@ -134,6 +134,14 @@ BEGIN
     END LOOP;
 
     SELECT count(*) INTO n_eventos FROM historico_cadastral WHERE referencia = dir_novo;
+
+    IF abortar THEN
+        INSERT INTO historico_execucoes (referencia, status, corte, socios_saida, eventos, observacao)
+            VALUES (dir_novo, 'abortado', corte, n_saidas, n_eventos,
+                    format('%s saídas de sócios (> %s%% da base) — nenhum sócio apagado; conferir o dump/pipeline e apagar esta linha para reprocessar. %s', n_saidas, max_saidas_pct, obs));
+        RAISE WARNING 'pos-reimport: % saídas de sócios no dump % (acima de % por cento da base) — abortado, nenhum sócio apagado', n_saidas, dir_novo, max_saidas_pct;
+        RETURN;
+    END IF;
 
     INSERT INTO historico_execucoes (referencia, status, corte, socios_saida, socios_entrada, eventos, observacao)
         VALUES (dir_novo, 'ok', corte, n_saidas, n_entradas, n_eventos, nullif(obs, ''));

@@ -8,6 +8,7 @@ use App\Enums\Severity;
 use App\Models\ChangeEvent;
 use App\Models\MonitoredCompany;
 use App\Support\Cnpj;
+use App\Support\RazaoSocial;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Collection;
@@ -44,6 +45,12 @@ class CompanyChangeDetected extends Notification implements ShouldQueue
         public Collection $events,
     ) {}
 
+    /** Razão social para exibir: CPF no fim do nome de MEI sai mascarado (LGPD). */
+    private function nome(): string
+    {
+        return RazaoSocial::exibir($this->razaoSocial) ?? $this->razaoSocial;
+    }
+
     /**
      * @return array<int, string>
      */
@@ -55,9 +62,9 @@ class CompanyChangeDetected extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject("[Vigilo] Mudança cadastral: {$this->razaoSocial}")
+            ->subject("[Vigilo] Mudança cadastral: {$this->nome()}")
             ->greeting('Alerta de monitoramento (KYB)')
-            ->line("Detectamos {$this->events->count()} mudança(s) no cadastro de **{$this->razaoSocial}** (CNPJ {$this->formattedCnpj()}).");
+            ->line("Detectamos {$this->events->count()} mudança(s) no cadastro de **{$this->nome()}** (CNPJ {$this->formattedCnpj()}).");
 
         foreach ($this->events as $event) {
             $mail->line("• [{$event->severity->label()}] {$event->type->label()} — {$this->describe($event)}");
@@ -76,7 +83,7 @@ class CompanyChangeDetected extends Notification implements ShouldQueue
         return [
             'monitored_company_id' => $this->company->id,
             'cnpj' => $this->company->cnpj,
-            'razao_social' => $this->razaoSocial,
+            'razao_social' => $this->nome(),
             'label' => $this->company->label,
             'changes_count' => $this->events->count(),
             'highest_severity' => $highest->value,
