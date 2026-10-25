@@ -94,9 +94,11 @@ final class BuscaEmpresas
             ];
         }
 
-        // Mais relevante primeiro; empate → nome mais curto (mais "exato"), depois CNPJ.
-        usort($itens, fn (array $a, array $b): int => [$b['score'], strlen($a['chave']), $a['item']->cnpj]
-            <=> [$a['score'], strlen($b['chave']), $b['item']->cnpj]);
+        // Mais relevante primeiro; empate → matriz (é "a empresa": sem isso a loja
+        // com fantasia "MAGAZINE LUIZA" passa à frente da matriz "MAGAZINE LUIZA S A"),
+        // depois nome mais curto (mais "exato"), depois CNPJ.
+        usort($itens, fn (array $a, array $b): int => [$b['score'], $b['item']->matriz, strlen($a['chave']), $a['item']->cnpj]
+            <=> [$a['score'], $a['item']->matriz, strlen($b['chave']), $b['item']->cnpj]);
 
         $limite = max(1, $limite);
 

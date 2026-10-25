@@ -56,6 +56,15 @@ it('ranks whole-word and phrase matches first, active companies above', function
     expect(buscarCnpjs('joao silva'))->toBe(['44444444000144', '33333333000133', '22222222000122', '11111111000111']);
 });
 
+it('puts the head office ahead of a branch whose shorter trade name ties on relevance', function () {
+    seedBuscaBase([
+        ['11222333000181', 'MAGAZINE LUIZA S/A', null, '02', 'SP'],
+        ['11222333000262', 'MAGAZINE LUIZA S/A', 'MAGAZINE LUIZA', '02', 'SP', false],
+    ]);
+
+    expect(buscarCnpjs('magazine luiza'))->toBe(['11222333000181', '11222333000262']);
+});
+
 it('filters by UF and by situação', function () {
     seedBuscaBase([
         ['11111111000111', 'AURORA ALIMENTOS', null, '02', 'SP'],
