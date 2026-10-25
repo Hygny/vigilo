@@ -46,9 +46,9 @@ INSERT INTO processed_files (directory, filename, processed_at) VALUES
 INSERT INTO empresas (cnpj_basico, razao_social, natureza_juridica, capital_social, porte, data_criacao, data_atualizacao) VALUES
     ('11222333', 'PADARIA SÃO JOSÉ LTDA', '2062', 1000, '01', '2026-09-21 01:00', '2026-09-21 01:00'),
     ('44555666', 'JOSÉ DA SILVA 12345678901', '2135', 0, '01', '2026-09-21 01:00', '2026-09-21 01:00');
-INSERT INTO estabelecimentos (cnpj_basico, cnpj_ordem, cnpj_dv, nome_fantasia, situacao_cadastral, logradouro, numero, cep, municipio, uf, cnae_fiscal_principal, data_criacao, data_atualizacao) VALUES
-    ('11222333', '0001', '81', 'PÃO QUENTE', '02', 'RUA A', '10', '01001000', '7107', 'SP', '1091102', '2026-09-21 02:00', '2026-09-21 02:00'),
-    ('44555666', '0001', '07', '', '02', 'RUA B', '20', '01002000', '7107', 'SP', '4712100', '2026-09-21 02:00', '2026-09-21 02:00');
+INSERT INTO estabelecimentos (cnpj_basico, cnpj_ordem, cnpj_dv, identificador_matriz_filial, nome_fantasia, situacao_cadastral, logradouro, numero, cep, municipio, uf, cnae_fiscal_principal, data_criacao, data_atualizacao) VALUES
+    ('11222333', '0001', '81', 1, 'PÃO QUENTE', '02', 'RUA A', '10', '01001000', '7107', 'SP', '1091102', '2026-09-21 02:00', '2026-09-21 02:00'),
+    ('44555666', '0001', '07', 1, '', '02', 'RUA B', '20', '01002000', '7107', 'SP', '4712100', '2026-09-21 02:00', '2026-09-21 02:00');
 INSERT INTO socios (socio_id, cnpj_basico, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, qualificacao_do_socio, data_criacao, data_atualizacao) VALUES
     ('00000000-0000-0000-0000-00000000000a', '11222333', '2', 'ANA SOUZA', '***111222**', '49', '2026-09-21 04:00', '2026-09-21 04:00'),
     ('00000000-0000-0000-0000-00000000000b', '11222333', '2', 'BRUNO LIMA', '***333444**', '22', '2026-09-21 04:00', '2026-09-21 04:00');
@@ -64,11 +64,17 @@ done
 
 # Carga inicial da busca (o mesmo INSERT do bin/busca-popular.sh).
 q >/dev/null <<'SQL'
-INSERT INTO busca_razao (cnpj_basico, nome)
-    SELECT cnpj_basico, nome FROM (SELECT cnpj_basico, busca_norm(razao_social) AS nome FROM empresas WHERE razao_social <> '') x
-    WHERE btrim(nome) <> '' ON CONFLICT (cnpj_basico) DO NOTHING;
-INSERT INTO busca_fantasia (cnpj_basico, cnpj_ordem, cnpj_dv, nome)
-    SELECT cnpj_basico, cnpj_ordem, cnpj_dv, nome FROM (SELECT cnpj_basico, cnpj_ordem, cnpj_dv, busca_norm(nome_fantasia) AS nome FROM estabelecimentos WHERE nome_fantasia <> '') x
+INSERT INTO busca_razao (cnpj_basico, nome, uf, situacao)
+    SELECT x.cnpj_basico, x.nome, e.uf, e.situacao_cadastral FROM (
+        SELECT cnpj_basico, busca_norm(razao_social) AS nome FROM empresas WHERE razao_social IS NOT NULL AND razao_social <> ''
+    ) x
+    LEFT JOIN estabelecimentos e ON e.cnpj_basico = x.cnpj_basico AND e.identificador_matriz_filial = 1
+    WHERE btrim(x.nome) <> '' ON CONFLICT (cnpj_basico) DO NOTHING;
+INSERT INTO busca_fantasia (cnpj_basico, cnpj_ordem, cnpj_dv, nome, uf, situacao)
+    SELECT cnpj_basico, cnpj_ordem, cnpj_dv, nome, uf, situacao_cadastral FROM (
+        SELECT cnpj_basico, cnpj_ordem, cnpj_dv, busca_norm(nome_fantasia) AS nome, uf, situacao_cadastral FROM estabelecimentos
+        WHERE nome_fantasia IS NOT NULL AND nome_fantasia <> ''
+    ) x
     WHERE btrim(nome) <> '' ON CONFLICT (cnpj_basico, cnpj_ordem, cnpj_dv) DO NOTHING;
 SQL
 
@@ -80,6 +86,8 @@ check "busca_norm: CPF no fim da razão de MEI sai da chave" " JOSE DA SILVA " "
 check "busca_norm: vazio/nulo vira chave em branco" "t" "SELECT btrim(busca_norm(NULL)) = ''"
 check "carga da busca: razão social (MEI sem o CPF)" " JOSE DA SILVA " "SELECT nome FROM busca_razao WHERE cnpj_basico = '44555666'"
 check "carga da busca: nome fantasia vazio fica de fora" "1" "SELECT count(*) FROM busca_fantasia"
+check "carga da busca: UF/situação da razão social vêm da matriz" "SP|02" \
+    "SELECT uf || '|' || situacao FROM busca_razao WHERE cnpj_basico = '11222333'"
 q -f /dev/stdin <"$SQL_DIR/pos-reimport.sql" >/dev/null 2>&1
 check "pos-reimport na primeira carga: só registra" "primeira_carga" "SELECT status FROM historico_execucoes WHERE referencia = '2026-09'"
 
@@ -94,10 +102,10 @@ ON CONFLICT (cnpj_basico) DO UPDATE SET razao_social = EXCLUDED.razao_social, na
     capital_social = EXCLUDED.capital_social, porte = EXCLUDED.porte, data_atualizacao = CURRENT_TIMESTAMP;
 
 -- estab 1: situação 02→08 e endereço muda; estab 2: igual; estab 3: novo
-INSERT INTO estabelecimentos (cnpj_basico, cnpj_ordem, cnpj_dv, nome_fantasia, situacao_cadastral, logradouro, numero, cep, municipio, uf, cnae_fiscal_principal) VALUES
-    ('11222333', '0001', '81', 'PÃO QUENTE', '08', 'RUA C', '99', '01003000', '7107', 'SP', '1091102'),
-    ('44555666', '0001', '07', '', '02', 'RUA B', '20', '01002000', '7107', 'SP', '4712100'),
-    ('77888999', '0001', '55', 'NOVIDADE', '02', 'RUA D', '1', '01004000', '7107', 'SP', '4712100')
+INSERT INTO estabelecimentos (cnpj_basico, cnpj_ordem, cnpj_dv, identificador_matriz_filial, nome_fantasia, situacao_cadastral, logradouro, numero, cep, municipio, uf, cnae_fiscal_principal) VALUES
+    ('11222333', '0001', '81', 1, 'PÃO QUENTE', '08', 'RUA C', '99', '01003000', '7107', 'SP', '1091102'),
+    ('44555666', '0001', '07', 1, '', '02', 'RUA B', '20', '01002000', '7107', 'SP', '4712100'),
+    ('77888999', '0001', '55', 1, 'NOVIDADE', '02', 'RUA D', '1', '01004000', '7107', 'SP', '4712100')
 ON CONFLICT (cnpj_basico, cnpj_ordem, cnpj_dv) DO UPDATE SET nome_fantasia = EXCLUDED.nome_fantasia,
     situacao_cadastral = EXCLUDED.situacao_cadastral, logradouro = EXCLUDED.logradouro, numero = EXCLUDED.numero,
     cep = EXCLUDED.cep, municipio = EXCLUDED.municipio, uf = EXCLUDED.uf,
@@ -128,6 +136,12 @@ check "gatilho: inserção (empresa nova) não é 'mudança'" "0" \
 check "busca: razão social alterada é atualizada" " PADARIA SAO JOSE COMERCIO LTDA " "SELECT nome FROM busca_razao WHERE cnpj_basico = '11222333'"
 check "busca: empresa nova entra na busca (razão e fantasia)" "1|1" \
     "SELECT (SELECT count(*) FROM busca_razao WHERE cnpj_basico = '77888999') || '|' || (SELECT count(*) FROM busca_fantasia WHERE cnpj_basico = '77888999')"
+check "busca: situação nova da matriz chega na razão social e no nome fantasia" "08|08" \
+    "SELECT (SELECT situacao FROM busca_razao WHERE cnpj_basico = '11222333') || '|' || (SELECT situacao FROM busca_fantasia WHERE cnpj_basico = '11222333')"
+check "busca: matriz que chega depois da empresa completa a UF da razão social" "SP|02" \
+    "SELECT uf || '|' || situacao FROM busca_razao WHERE cnpj_basico = '77888999'"
+check "busca: filtro de UF/situação + LIKE no mesmo índice" "77888999" \
+    "SELECT cnpj_basico FROM busca_razao WHERE uf = 'SP' AND situacao = '02' AND nome LIKE '% NOVA%'"
 check "busca: LIKE de começo de palavra usa a chave normalizada" "11222333" \
     "SELECT cnpj_basico FROM busca_razao WHERE nome LIKE '% PADARIA%' AND nome LIKE '% JOSE%'"
 

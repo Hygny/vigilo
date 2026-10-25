@@ -152,12 +152,14 @@ final class BuscaEmpresas
             $query->where("{$alias}.nome", 'like', '% '.$termo.'%');
         }
 
+        // UF/situação filtram na PRÓPRIA tabela da busca (estão no mesmo índice GIN
+        // do nome): filtrar pelo estabelecimento cruzaria candidato a candidato.
         if ($uf !== null) {
-            $query->where('e.uf', $uf);
+            $query->where("{$alias}.uf", $uf);
         }
 
         if ($situacaoCode !== null) {
-            $query->where('e.situacao_cadastral', $situacaoCode);
+            $query->where("{$alias}.situacao", $situacaoCode);
         }
 
         $rows = $query

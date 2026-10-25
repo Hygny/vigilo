@@ -181,12 +181,16 @@ function seedBuscaBase(array $empresas): void
     $schema->create('busca_razao', function (Blueprint $t): void {
         $t->string('cnpj_basico')->primary();
         $t->string('nome');
+        $t->string('uf')->nullable();
+        $t->string('situacao')->nullable();
     });
     $schema->create('busca_fantasia', function (Blueprint $t): void {
         $t->string('cnpj_basico');
         $t->string('cnpj_ordem');
         $t->string('cnpj_dv');
         $t->string('nome');
+        $t->string('uf')->nullable();
+        $t->string('situacao')->nullable();
     });
 
     $db = DB::connection('cnpj');
@@ -205,13 +209,14 @@ function seedBuscaBase(array $empresas): void
 
         if ($razao !== null && $db->table('empresas')->where('cnpj_basico', $basico)->doesntExist()) {
             $db->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => $razao]);
-            $db->table('busca_razao')->insert(['cnpj_basico' => $basico, 'nome' => BuscaNome::chave($razao)]);
+            // UF/situação da razão social = as da matriz (como no busca-popular.sh).
+            $db->table('busca_razao')->insert(['cnpj_basico' => $basico, 'nome' => BuscaNome::chave($razao), 'uf' => $uf, 'situacao' => $situacao]);
         }
 
         if ($fantasia !== null && trim(BuscaNome::chave($fantasia)) !== '') {
             $db->table('busca_fantasia')->insert([
                 'cnpj_basico' => $basico, 'cnpj_ordem' => substr($cnpj, 8, 4), 'cnpj_dv' => substr($cnpj, 12, 2),
-                'nome' => BuscaNome::chave($fantasia),
+                'nome' => BuscaNome::chave($fantasia), 'uf' => $uf, 'situacao' => $situacao,
             ]);
         }
     }

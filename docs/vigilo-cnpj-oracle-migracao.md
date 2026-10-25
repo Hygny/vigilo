@@ -375,11 +375,17 @@ Receita.
 
 - `sql/busca.sql`: `busca_norm()` (sem acento, maiúsculas, só letras/dígitos,
   espaço nas pontas; CPF no fim da razão de MEI sai da chave) e as tabelas
-  `busca_razao` (raiz → chave) e `busca_fantasia` (estabelecimento → chave), com
-  índice GIN trigram. **Gatilhos** mantêm as tabelas só quando o nome muda — um
-  GIN direto em `empresas` seria reescrito inteiro pelo upsert de todo mês.
+  `busca_razao` (raiz → chave + UF/situação da matriz) e `busca_fantasia`
+  (estabelecimento → chave + UF/situação), com UM índice GIN por tabela sobre
+  `(uf, situacao, nome gin_trgm_ops)` (`btree_gin`): o filtro de UF/situação
+  anda junto com o LIKE dentro do índice — filtrar pelo estabelecimento cruzava
+  candidato a candidato e estourava o timeout ("padaria" + SE). **Gatilhos**
+  mantêm as tabelas só quando nome/UF/situação mudam — um GIN direto em
+  `empresas` seria reescrito inteiro pelo upsert de todo mês.
 - **Carga inicial** (uma vez por base; depois os gatilhos mantêm):
-  `~/cnpj/bin/busca-popular.sh` (~1 h; os índices são criados depois da carga).
+  `~/cnpj/bin/busca-popular.sh` (~1,5–2 h; os índices são criados depois da
+  carga). `--recriar` esvazia e recarrega (mudança de schema/normalização).
+  2026-10-25: 70,5 M razões sociais + 26,7 M nomes fantasia (~19 GB com índices).
 - O app casa começo de palavra (`nome LIKE '% TERMO%'`), lê no máximo 200
   candidatos por fonte e ranqueia em PHP; `statement_timeout` de 5 s. A mesma
   normalização existe em PHP (`App\Support\BuscaNome`).
