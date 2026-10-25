@@ -5,14 +5,12 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Console\Commands\ImportDirtyList;
-use App\Console\Commands\ImportPgfn;
 use Illuminate\Support\Str;
 
 /**
- * Mapeamento tolerante de colunas de CSV por NOME (fuzzy) — usado pelos
- * importadores de dados abertos (Lista Suja, PGFN) para casar cabeçalhos que
- * variam de layout. Fonte única: {@see ImportDirtyList},
- * {@see ImportPgfn}.
+ * Mapeamento tolerante de colunas de CSV por NOME (fuzzy) — usado pelo
+ * importador da Lista Suja ({@see ImportDirtyList}) para casar cabeçalhos que
+ * variam de layout.
  */
 final class CsvColumns
 {

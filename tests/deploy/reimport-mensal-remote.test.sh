@@ -9,7 +9,7 @@ set -uo pipefail
 SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/deploy/reimport-mensal.sh"
 FAILS=0
 
-# setup <pf antes> <pf depois do reimport> <código do reimport> [recoleta falha: 0|1]
+# setup <pf antes> <pf depois do reimport> <código do reimport> [recoleta falha: 0|1] [código do pgfn]
 setup() {
     T="$(mktemp -d)"
     export T
@@ -20,6 +20,7 @@ setup() {
     echo "$2" >"$T/pf_after"
     echo "$3" >"$T/reimport_rc"
     echo "${4:-0}" >"$T/recoleta_fails"
+    echo "${5:-0}" >"$T/pgfn_rc"
     : >"$T/calls"
 
     # ssh falso: só os verbos do gateway.sh da VM.
@@ -29,6 +30,7 @@ verb="${*: -1}"
 echo "ssh $verb" >>"$T/calls"
 case "$verb" in
     pf-count) cat "$T/pf" ;;
+    pgfn) exit "$(cat "$T/pgfn_rc")" ;;
     reimport)
         rc="$(cat "$T/reimport_rc")"
         [ "$rc" = 0 ] && cp "$T/pf_after" "$T/pf"
@@ -72,7 +74,12 @@ ko() {
     sed 's/^/       | /' "$T/out"
     FAILS=$((FAILS + 1))
 }
-has() { grep -q -- "$1" "$T/calls"; }
+# `has -- "--flag"`: o `--` é só separador (antes era tomado como o padrão e
+# casava qualquer linha com "--", deixando as asserções de flag sempre verdes).
+has() {
+    [ "$1" = -- ] && shift
+    grep -q -- "$1" "$T/calls"
+}
 count() { grep -c -- "$1" "$T/calls"; }
 baseline() { cat "$T/home/apps/vigilo/.cnpj-pf-baseline" 2>/dev/null; }
 
@@ -89,6 +96,33 @@ setup 74 111 0
 run
 if [ "$(cat "$T/rc")" = 0 ] && has "recoletar-carteira" && has "normalizar-socios" \
     && [ -z "$(baseline)" ]; then ok "$t"; else ko "$t"; fi
+
+t="PGFN: roda toda semana (com e sem dump novo) e registra o passo"
+setup 74 74 0
+run
+ok1=0
+has "ssh pgfn" && has -- "--pgfn=ok" && ok1=1
+setup 74 111 0
+run
+if [ "$ok1" = 1 ] && has "ssh pgfn" && has -- "--pgfn=ok" && [ "$(cat "$T/rc")" = 0 ]; then
+    ok "$t"
+else ko "$t"; fi
+
+t="PGFN falhou: marca o passo, explica e não desfaz o resto da rodada"
+setup 74 111 0 0 1
+run
+if has -- "--pgfn=fail" && has "carga da PGFN falhou" && has -- "--recoleta=ok" \
+    && [ -z "$(baseline)" ]; then ok "$t"; else ko "$t"; fi
+
+t="PGFN sem espaço na VM (saída 3): mensagem própria"
+setup 74 74 0 0 3
+run
+if has -- "--pgfn=fail" && has "PGFN não executada: VM sem espaço"; then ok "$t"; else ko "$t"; fi
+
+t="reimport abortado: a PGFN não roda e o passo não é registrado"
+setup 74 74 1
+run
+if ! has "ssh pgfn" && ! has -- "--pgfn"; then ok "$t"; else ko "$t"; fi
 
 t="rodada anterior caiu e a VM terminou o import: baseline salvo garante a re-coleta"
 setup 111 111 0
@@ -122,7 +156,7 @@ setup 74 111 0
 printf 'CNPJ_DB_PASSWORD=x\nREIMPORT_RETRY_WAIT=0\n' >"$T/home/apps/vigilo/.env"
 run
 if [ "$(cat "$T/rc")" = 0 ] && has "cnpj-data-pipeline" && has "recoletar-carteira" \
-    && ! has "ssh "; then ok "$t"; else ko "$t"; fi
+    && ! has "ssh " && has -- "--pgfn=skip"; then ok "$t"; else ko "$t"; fi
 
 t="modo local (sem CNPJ_REMOTE_SSH) continua exigindo a senha do Postgres"
 setup 74 74 0

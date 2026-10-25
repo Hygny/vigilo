@@ -11,6 +11,7 @@ use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
 use App\Support\AddressNumber;
 use App\Support\Cnpj;
+use App\Support\RazaoSocial;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
@@ -77,7 +78,7 @@ final class OwnershipGraphService
             $centerId => new GraphNode(
                 id: $centerId,
                 type: 'empresa',
-                label: $this->str($center['razao_social'] ?? null) ?? $digits,
+                label: $this->razao($center['razao_social'] ?? null) ?? $digits,
                 document: $digits,
                 situacao: $this->situacao($center['situacao_cadastral'] ?? null),
             ),
@@ -155,7 +156,7 @@ final class OwnershipGraphService
                 $nodes[$otherId] ??= new GraphNode(
                     id: $otherId,
                     type: 'empresa',
-                    label: $this->str($o['razao_social'] ?? null) ?? $otherBasico,
+                    label: $this->razao($o['razao_social'] ?? null) ?? $otherBasico,
                     document: Cnpj::matrizFromBasico($otherBasico) ?? $otherBasico,
                     situacao: $this->situacao($o['situacao_cadastral'] ?? null),
                 );
@@ -275,7 +276,7 @@ final class OwnershipGraphService
             $nodes[$id] ??= new GraphNode(
                 id: $id,
                 type: 'empresa',
-                label: $this->str($r['razao_social'] ?? null) ?? $nb,
+                label: $this->razao($r['razao_social'] ?? null) ?? $nb,
                 document: Cnpj::matrizFromBasico($nb) ?? $nb,
                 situacao: $this->situacao($r['situacao_cadastral'] ?? null),
             );
@@ -423,7 +424,7 @@ final class OwnershipGraphService
             $companies[$companyId] ??= new GraphNode(
                 id: $companyId,
                 type: 'empresa',
-                label: $this->str($r['razao_social'] ?? null) ?? $basico,
+                label: $this->razao($r['razao_social'] ?? null) ?? $basico,
                 document: Cnpj::matrizFromBasico($basico) ?? $basico,
                 situacao: $this->situacao($r['situacao_cadastral'] ?? null),
             );
@@ -583,5 +584,11 @@ final class OwnershipGraphService
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
+    }
+
+    /** Razão social para o rótulo do nó: CPF no fim do nome de MEI sai mascarado (LGPD). */
+    private function razao(mixed $value): ?string
+    {
+        return RazaoSocial::exibir($this->str($value));
     }
 }

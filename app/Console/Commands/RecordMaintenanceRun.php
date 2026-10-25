@@ -24,6 +24,7 @@ final class RecordMaintenanceRun extends Command
         {--reimport=skip : ok|fail|skip}
         {--recoleta=skip : ok|fail|skip}
         {--normalizar=skip : ok|fail|skip}
+        {--pgfn= : ok|fail|skip — carga da PGFN na VM (omitido = passo não existiu)}
         {--message= : Mensagem/erro curto}';
 
     protected $description = 'Registra o resultado de uma rodada de manutenção mensal da base CNPJ.';
@@ -35,8 +36,9 @@ final class RecordMaintenanceRun extends Command
             'recoleta' => $this->step('recoleta'),
             'normalizar' => $this->step('normalizar'),
         ];
+        $pgfn = $this->option('pgfn') === null ? null : $this->step('pgfn');
 
-        $status = in_array('fail', $steps, true) ? 'failed' : 'success';
+        $status = in_array('fail', [...$steps, $pgfn], true) ? 'failed' : 'success';
         $message = trim((string) $this->option('message'));
         $startedRaw = trim((string) $this->option('started'));
 
@@ -46,6 +48,7 @@ final class RecordMaintenanceRun extends Command
             'reimport_status' => $steps['reimport'],
             'recoleta_status' => $steps['recoleta'],
             'normalizar_status' => $steps['normalizar'],
+            'pgfn_status' => $pgfn,
             'message' => $message === '' ? null : $message,
             'started_at' => $startedRaw === '' ? now() : $this->parse($startedRaw),
             'finished_at' => now(),

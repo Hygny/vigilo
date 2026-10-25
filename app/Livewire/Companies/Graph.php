@@ -8,9 +8,11 @@ use App\DTO\Graph\CompanyBranch;
 use App\DTO\Graph\GraphConnection;
 use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
+use App\DTO\Risco\PgfnDebtSummary;
 use App\Models\MonitoredCompany;
 use App\Services\Export\GraphConnectionsExport;
 use App\Services\Graph\OwnershipGraphService;
+use App\Services\Risco\PgfnLookup;
 use App\Support\Cnpj;
 use App\Support\SituacaoCadastral;
 use Illuminate\Contracts\View\View;
@@ -210,7 +212,7 @@ class Graph extends Component
     {
         $data = $this->graphData($graphs);
 
-        $path = $export->build($data['connections']);
+        $path = $export->build($data['connections'], $data['pgfnDisponivel']);
         $filename = 'ligacoes-'.Carbon::now()->format('Y-m-d-His').'.xlsx';
 
         return response()->download($path, $filename, [
@@ -254,6 +256,7 @@ class Graph extends Component
         $connections = [];
         $connectionsText = '';
         $focusLabel = null;
+        $pgfnDisponivel = true;
 
         try {
             if ($personMode) {
@@ -289,8 +292,10 @@ class Graph extends Component
             $center = array_values(array_filter($graph->nodes, fn (GraphNode $n): bool => $n->id === $graph->center));
             $focusLabel = $center !== [] ? $center[0]->label : null;
 
-            $connections = $this->buildConnections($graph, $branches);
-            $connectionsText = $this->connectionsText($connections, $focusLabel, $personMode ? $this->focusDocument : $cnpj);
+            $dividas = $this->dividasDoGrafo($graph);
+            $pgfnDisponivel = $dividas !== null;
+            $connections = $this->buildConnections($graph, $branches, $dividas ?? []);
+            $connectionsText = $this->connectionsText($connections, $focusLabel, $personMode ? $this->focusDocument : $cnpj, $pgfnDisponivel);
         } catch (Throwable $e) {
             report($e);
             $available = false;
@@ -306,6 +311,7 @@ class Graph extends Component
             'branches' => $branches,
             'connections' => $connections,
             'connectionsText' => $connectionsText,
+            'pgfnDisponivel' => $pgfnDisponivel,
             'focused' => $focused,
             'focusLabel' => $focusLabel,
             'personMode' => $personMode,
@@ -324,9 +330,10 @@ class Graph extends Component
      * e do Excel.
      *
      * @param  list<CompanyBranch>  $branches
+     * @param  array<string, PgfnDebtSummary>  $dividas  dívida ativa por raiz de CNPJ
      * @return list<GraphConnection>
      */
-    private function buildConnections(OwnershipGraph $graph, array $branches): array
+    private function buildConnections(OwnershipGraph $graph, array $branches, array $dividas = []): array
     {
         $center = $graph->center;
         $personMode = str_starts_with($center, 'socio:');
@@ -367,11 +374,15 @@ class Graph extends Component
                 $tipo = 'Grupo econômico';
             }
 
+            $cnpj = $this->cnpjDigits($node->document);
+
             $rows[] = new GraphConnection(
                 nome: $node->label,
                 documento: $this->formatDocument($node->document),
                 tipo: $tipo,
                 situacao: $node->situacao,
+                divida: $cnpj !== null ? ($dividas[substr($cnpj, 0, 8)] ?? null) : null,
+                consultaPgfn: $cnpj !== null,
             );
         }
 
@@ -385,6 +396,34 @@ class Graph extends Component
         }
 
         return $rows;
+    }
+
+    /**
+     * Dívida ativa (PGFN) das empresas do grafo (nós empresa e sócios PJ, pela
+     * raiz do CNPJ) numa consulta só. Null = PGFN indisponível — o relatório
+     * avisa em vez de sugerir que ninguém deve.
+     *
+     * @return array<string, PgfnDebtSummary>|null
+     */
+    private function dividasDoGrafo(OwnershipGraph $graph): ?array
+    {
+        $basicos = [];
+
+        foreach ($graph->nodes as $node) {
+            $cnpj = $this->cnpjDigits($node->document);
+
+            if ($cnpj !== null && $node->id !== $graph->center) {
+                $basicos[] = substr($cnpj, 0, 8);
+            }
+        }
+
+        try {
+            return app(PgfnLookup::class)->paraBasicos($basicos);
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /** Formata o documento do nó: CNPJ (14 díg) com máscara; CPF mascarado como está. */
@@ -411,11 +450,15 @@ class Graph extends Component
      *
      * @param  list<GraphConnection>  $connections
      */
-    private function connectionsText(array $connections, ?string $centerLabel, string $centerDocument): string
+    private function connectionsText(array $connections, ?string $centerLabel, string $centerDocument, bool $pgfnDisponivel = true): string
     {
         $doc = $this->formatDocument($centerDocument) ?? $centerDocument;
         $header = 'Ligações societárias — '.($centerLabel ?? 'empresa');
-        $lines = [$header, $doc, 'Gerado em '.Carbon::now()->format('d/m/Y H:i'), ''];
+        $lines = [$header, $doc, 'Gerado em '.Carbon::now()->format('d/m/Y H:i')];
+        if (! $pgfnDisponivel) {
+            $lines[] = 'Dívida ativa (PGFN): não consultada — base indisponível no momento.';
+        }
+        $lines[] = '';
 
         // Ordem fixa das seções; só sai a que tiver linhas.
         foreach (['Sócio', 'Grupo econômico', 'Empresa do sócio', 'Mesmo endereço', 'Filial'] as $tipo) {
@@ -434,6 +477,10 @@ class Graph extends Component
                 }
                 if ($c->situacao !== null) {
                     $parte .= ' — '.$c->situacao;
+                }
+                $divida = $c->dividaTexto($pgfnDisponivel);
+                if ($divida !== null && $divida !== '' && $pgfnDisponivel) {
+                    $parte .= ' — dívida ativa: '.$divida;
                 }
                 $lines[] = $parte;
             }

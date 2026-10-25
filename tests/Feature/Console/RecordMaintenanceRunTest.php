@@ -37,3 +37,22 @@ it('records a failed run with a message (any step = fail → failed)', function 
         ->and($run->normalizar_status)->toBe('skip')
         ->and($run->message)->toBe('reimport falhou');
 });
+
+it('records the PGFN step, and a PGFN failure fails the run', function () {
+    $this->artisan('vigilo:maintenance-record', [
+        '--reimport' => 'ok',
+        '--pgfn' => 'fail',
+        '--message' => 'carga da PGFN falhou',
+    ])->assertSuccessful();
+
+    $run = MaintenanceRun::sole();
+
+    expect($run->pgfn_status)->toBe('fail')
+        ->and($run->status)->toBe('failed');
+});
+
+it('leaves the PGFN step empty when the routine did not run it', function () {
+    $this->artisan('vigilo:maintenance-record', ['--reimport' => 'fail'])->assertSuccessful();
+
+    expect(MaintenanceRun::sole()->pgfn_status)->toBeNull();
+});

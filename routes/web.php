@@ -13,6 +13,8 @@ use App\Livewire\Billing\Index as Billing;
 use App\Livewire\Companies\Graph as CompanyGraph;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
+use App\Livewire\Empresas\Busca as EmpresasBusca;
+use App\Livewire\Empresas\Perfil as EmpresasPerfil;
 use App\Livewire\Integrations\Index as Integrations;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
 use App\Livewire\Portfolios\Show as PortfolioShow;
@@ -31,6 +33,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('companies/{company}/dossie', CompanyDossieController::class)->name('companies.dossie');
 
     Route::get('alerts', Inbox::class)->name('alerts.index');
+
+    // Busca por nome e perfil de QUALQUER empresa da base CNPJ (não só da carteira).
+    Route::get('empresas', EmpresasBusca::class)->name('empresas.busca');
+    Route::get('empresas/{cnpj}', EmpresasPerfil::class)->where('cnpj', '[0-9]{14}')->name('empresas.perfil');
 
     Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
 

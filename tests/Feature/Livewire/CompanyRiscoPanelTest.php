@@ -7,7 +7,6 @@ use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
-use App\Models\PgfnDebt;
 use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
@@ -193,17 +192,35 @@ it('flags medium risk and shows the PGFN debt even without the CGU key', functio
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = riscoCompanyFor($org);
-    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'geral', 'valor' => '2500.00', 'imported_at' => now()]);
-    PgfnDebt::query()->create(['documento' => '11222333000181', 'tipo' => 'previdenciario', 'valor' => '1500.00', 'imported_at' => now()]);
+    useCnpjSqlite();
+    createPgfnTables();
+    seedPgfnDivida('11222333000181', 2500.00);
+    seedPgfnDivida('11222333000262', 1500.00, ajuizado: true, tipo: 'previdenciario'); // filial: mesma empresa
 
     Livewire::actingAs($user)
         ->test(RiscoPanel::class, ['company' => $company])
         ->assertSee('Risco Médio')                  // semáforo sobe mesmo sem a CGU
         ->assertSee('Dívida ativa na União (PGFN)')
         ->assertSee('2 inscrições')
-        ->assertSee('4.000,00');                     // 2.500,00 + 1.500,00
+        ->assertSee('4.000,00')                      // 2.500,00 + 1.500,00 (matriz + filial)
+        ->assertSee('1 ajuizada(s)');
 
     Http::assertNothingSent(); // PGFN é consulta local; não chama a CGU
+});
+
+it('says the PGFN could not be checked (not "no debt") when the CNPJ base is down', function () {
+    config()->set('risco.portal.api_key', null);
+    Http::fake();
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = riscoCompanyFor($org);
+    // Sem useCnpjSqlite(): a base CNPJ (onde mora a PGFN) não responde.
+
+    Livewire::actingAs($user)
+        ->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Não foi possível consultar a dívida ativa (PGFN) agora')
+        ->assertDontSee('Dívida ativa na União (PGFN)');
 });
 
 it('forbids viewing the risk of a company from another organization', function () {

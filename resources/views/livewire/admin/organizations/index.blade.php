@@ -47,6 +47,10 @@
                     'Re-coleta' => $lastMaintenance->recoleta_status,
                     'Normalizar sócios' => $lastMaintenance->normalizar_status,
                 ];
+                // Passo da PGFN (desde 2026-10): rodadas antigas não têm — não mostra.
+                if ($lastMaintenance->pgfn_status !== null) {
+                    $steps['PGFN'] = $lastMaintenance->pgfn_status;
+                }
             @endphp
             <div class="mt-3 flex flex-wrap gap-2">
                 @foreach ($steps as $stepLabel => $stepStatus)

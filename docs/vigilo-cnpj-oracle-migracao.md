@@ -310,6 +310,82 @@ leva horas + a normalização de sócios).
 
 ---
 
+## Depois da migração — dados extras na VM (2026-10-25)
+
+Com o disco livre na VM, a base CNPJ passou a guardar mais do que o dump da
+Receita.
+
+### PGFN inteira (dívida ativa de qualquer CNPJ)
+
+- **Tabela** `pgfn_dividas` (só devedores **pessoa jurídica** — CPF fica de
+  fora): uma linha por inscrição, com `cnpj`, `cnpj_basico`, `tipo`
+  (nao-previdenciario/previdenciario/fgts), `tipo_devedor`, situação, receita,
+  data, `ajuizado` e `valor`. Índice coberto `idx_pgfn_dividas_basico`
+  (`cnpj_basico` INCLUDE valor, ajuizado). `pgfn_cargas` registra o trimestre
+  carregado. 2026_trimestre_03: **33,7 M inscrições de PJ**.
+- **Carga**: `~/cnpj/bin/pgfn.sh` (verbo `pgfn` do `gateway.sh`) — detecta o
+  trimestre mais novo em dadosabertos.pgfn.gov.br, baixa os 3 zips em
+  `/data/pgfn`, converte em streaming (`pgfn_carga.py`, aborta se o layout
+  mudar), carrega numa tabela de carga, confere a sanidade (≥ 1 M linhas e
+  ≥ 50% da carga anterior) e só então **troca de forma atômica** com a tabela em
+  uso. Exige 30 GB livres (não encosta no mínimo de 25 GB do reimport). Apaga os
+  zips no fim.
+- **Agenda**: passo 3 do `reimport-mensal.sh` semanal (segunda 03:00) — no-op
+  enquanto o trimestre já estiver em `pgfn_cargas`; o card do `/admin` mostra o
+  passo "PGFN".
+- **Consulta**: pela **raiz do CNPJ** (filial não é pessoa jurídica distinta).
+  Semáforo/painel/dossiê da carteira, grupo econômico do dossiê, relatório de
+  ligações do grafo e `divida_ativa` na API OSINT (objeto com zeros quando não
+  há dívida; `null` quando a PGFN não respondeu).
+- **Recarregar à mão**: `ssh ubuntu@159.112.186.240 '~/cnpj/bin/pgfn.sh latest --force'`.
+- **Virada no VPS** (feita no deploy de 2026-10-25): tirar do `crontab -e` as
+  entradas antigas `refrescar-pgfn-novos.sh` (a cada 30 min) e
+  `baixar-importar-pgfn.sh` (dia 1, 04:00) — os scripts saíram do repo — e
+  apagar o cache de zips `~/apps/vigilo/pgfn-cache` (~1,5 GB).
+
+### Histórico cadastral de qualquer empresa
+
+- **Por quê**: o pipeline faz upsert — o valor antigo some a cada dump — e
+  **nunca apaga sócio que saiu** (o QSA da base acumulava ex-sócios: grafo, API
+  e refresh da carteira mostravam sócio que já tinha saído, e o alerta "sócio
+  saiu" nunca disparava com a base local). Em 2026-10 eram 77.602 linhas.
+- **Gatilhos** (`sql/historico.sql`, aplicado pelo `bin/aplicar-sql.sh` antes de
+  cada reimport): `AFTER UPDATE ... WHEN (algo mudou)` em `estabelecimentos`
+  (situação, motivo, endereço como um JSON, CNAE principal/secundária, nome
+  fantasia) e `empresas` (razão social, natureza, capital, porte) gravam em
+  `historico_cadastral`. Só as linhas que mudaram pagam o custo.
+- **Pós-reimport** (`sql/pos-reimport.sql` via `bin/pos-reimport.sh`, chamado pelo
+  `reimport.sh` depois de um import ok): sócio que o dump novo não reescreveu
+  (`data_atualizacao` ≤ último `processed_at` do dump anterior) vira
+  `socio_saida` e é **apagado**; sócio criado durante o dump numa empresa que já
+  existia vira `socio_entrada`; carimba o dump (`referencia`). Idempotente por
+  dump (`historico_execucoes`); não roda com o dump incompleto; **aborta sem
+  apagar** se as saídas passarem de 5% da base; descarta um campo com mais de
+  5 M mudanças (normalização do pipeline mudou, não a realidade).
+- **Semente**: dump 2026-10 = 77.602 saídas + 109.138 entradas de sócios (os
+  gatilhos de valor foram ligados depois desse dump: mudanças de situação/
+  endereço etc. começam no dump de 2026-11).
+- **Consumo**: API OSINT `GET /cnpjs/{cnpj}` → `historico_cadastral`
+  (`desde`, `sinais_12m`, `eventos`), dossiê PDF e perfil da empresa no app.
+- **Reprocessar um dump abortado**: conferir o motivo em `historico_execucoes`,
+  apagar a linha dele e rodar `~/cnpj/bin/pos-reimport.sh` (com
+  `-v max_saidas_pct=10` para afrouxar o limite, se o volume for legítimo).
+
+### Busca por nome (razão social e nome fantasia)
+
+- `sql/busca.sql`: `busca_norm()` (sem acento, maiúsculas, só letras/dígitos,
+  espaço nas pontas; CPF no fim da razão de MEI sai da chave) e as tabelas
+  `busca_razao` (raiz → chave) e `busca_fantasia` (estabelecimento → chave), com
+  índice GIN trigram. **Gatilhos** mantêm as tabelas só quando o nome muda — um
+  GIN direto em `empresas` seria reescrito inteiro pelo upsert de todo mês.
+- **Carga inicial** (uma vez por base; depois os gatilhos mantêm):
+  `~/cnpj/bin/busca-popular.sh` (~1 h; os índices são criados depois da carga).
+- O app casa começo de palavra (`nome LIKE '% TERMO%'`), lê no máximo 200
+  candidatos por fonte e ranqueia em PHP; `statement_timeout` de 5 s. A mesma
+  normalização existe em PHP (`App\Support\BuscaNome`).
+- Testes dos objetos SQL num Postgres real: `bash tests/deploy/cnpj-db-sql.test.sh`
+  (na VM; cria e apaga o banco `vigilo_sql_teste`).
+
 ## Riscos e mitigação
 
 | Risco | Mitigação |

@@ -106,4 +106,21 @@ return [
         'focus_per_minute' => (int) env('CNPJ_GRAPH_FOCUS_PER_MINUTE', 30),
     ],
 
+    // Busca de empresas por nome (razão social / nome fantasia) em toda a base e
+    // perfil de qualquer CNPJ. Navegam a base inteira, então têm teto por
+    // usuário por minuto (anti-raspagem; 0 desliga).
+    'busca' => [
+        'per_minute' => (int) env('CNPJ_BUSCA_PER_MINUTE', 20),
+        // Resultados mostrados (os mais relevantes entre os candidatos).
+        'limite' => (int) env('CNPJ_BUSCA_LIMITE', 50),
+        // Candidatos lidos do índice por fonte (razão/fantasia) antes de ranquear.
+        'candidatos' => (int) env('CNPJ_BUSCA_CANDIDATOS', 200),
+        // Tempo máximo da consulta no Postgres (termo genérico demais → "refine").
+        'timeout_ms' => (int) env('CNPJ_BUSCA_TIMEOUT_MS', 5000),
+    ],
+
+    'perfil' => [
+        'per_minute' => (int) env('CNPJ_PERFIL_PER_MINUTE', 60),
+    ],
+
 ];

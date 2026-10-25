@@ -219,6 +219,87 @@ it('lists the connected entities in the report with their link type', function (
         });
 });
 
+it('shows the PGFN debt of the connected companies in the report and the copy text', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+    createPgfnTables();
+    seedPgfnDivida('44555666000100', 1000.00);                 // EMPRESA GRUPO (pela raiz)
+    seedPgfnDivida('44555666000281', 250.50, ajuizado: true);   // filial dela: soma na empresa
+    seedPgfnDivida('99888777000166', 80.00);                    // HOLDING (sócio PJ)
+    seedPgfnDivida('11222333000181', 999.00);                   // o próprio centro: fora do relatório
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertSee('Dívida ativa (PGFN)')
+        ->assertSee('2 inscrições · R$ 1.250,50')
+        ->assertViewHas('pgfnDisponivel', true)
+        ->assertViewHas('connections', function (array $connections): bool {
+            $byName = collect($connections)->keyBy('nome');
+
+            expect($byName['EMPRESA GRUPO']->divida?->inscricoes)->toBe(2)
+                ->and($byName['EMPRESA GRUPO']->divida?->ajuizadas)->toBe(1)
+                ->and($byName['HOLDING']->divida?->total)->toEqualWithDelta(80.0, 0.001)
+                ->and($byName['MARIA']->divida)->toBeNull(); // PF: sem consulta
+
+            return true;
+        })
+        ->assertViewHas('connectionsText', function (string $text): bool {
+            expect($text)->toContain('EMPRESA GRUPO')
+                ->and($text)->toContain('dívida ativa: 2 inscrições · R$ 1.250,50');
+
+            return true;
+        });
+});
+
+it('warns that the PGFN column was not checked when the PGFN table is unavailable', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // sem createPgfnTables()
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('available', true) // o grafo segue de pé
+        ->assertViewHas('pgfnDisponivel', false)
+        ->assertSee('Dívida ativa (PGFN) indisponível no momento');
+});
+
+it('marks the PGFN as "não consultada" in the copy text and the Excel when it is unavailable', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase(); // sem createPgfnTables()
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertViewHas('connectionsText', function (string $text): bool {
+            expect($text)->toContain('Dívida ativa (PGFN): não consultada');
+
+            return true;
+        })
+        ->assertViewHas('connections', function (array $connections): bool {
+            $porNome = collect($connections)->keyBy('nome');
+
+            expect($porNome['EMPRESA GRUPO']->dividaTexto(false))->toBe('não consultada')
+                ->and($porNome['MARIA']->dividaTexto(false))->toBeNull(); // pessoa física: não se aplica
+
+            return true;
+        })
+        ->call('exportConnections')
+        ->assertFileDownloaded();
+});
+
+it('never shows the full CPF of a MEI company in the graph', function () {
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = monitoredCompanyFor($org);
+    bootCompanyGraphBase();
+    DB::connection('cnpj')->table('empresas')->where('cnpj_basico', '44555666')->update(['razao_social' => 'JOANA PRADO 12345678901']);
+
+    Livewire::actingAs($user)->test(Graph::class, ['company' => $company])
+        ->assertSee('JOANA PRADO ***456789**')
+        ->assertDontSee('12345678901');
+});
+
 it('excludes a company in a different unit (sala) of the same building', function () {
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();

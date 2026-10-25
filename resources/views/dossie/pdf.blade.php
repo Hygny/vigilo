@@ -97,7 +97,7 @@
         <ul>
             @foreach ($grupo as $g)
                 @php($meta = collect([$g['document'], $g['situacao']])->filter()->implode(' · '))
-                <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span></li>
+                <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span>@if (! $g['pgfn_consultada']) <span class="muted">— dívida ativa não consultada</span>@elseif ($g['divida']) <span style="color:#92400E;">— dívida ativa: {{ $g['divida']->resumo() }}</span>@endif</li>
             @endforeach
         </ul>
     @endif
@@ -112,6 +112,31 @@
         </ul>
     @endif
 
+    @if ($historico !== null)
+        <h2>Histórico cadastral (Receita)</h2>
+        @if ($historico->eventos === [])
+            <p class="muted">Nenhuma mudança cadastral registrada{{ $historico->desde ? ' desde '.$historico->desde : '' }}.</p>
+        @else
+            <ul>
+                @foreach ($historico->eventos as $evento)
+                    <li>
+                        <span class="muted">{{ \Illuminate\Support\Carbon::parse($evento->detectadoEm)->format('d/m/Y') }}</span>
+                        <strong>{{ $evento->rotulo }}</strong>:
+                        @if ($evento->antes !== null && $evento->depois !== null)
+                            {{ $evento->antes }} → {{ $evento->depois }}
+                        @else
+                            {{ $evento->depois ?? $evento->antes }}
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+            @if ($historico->alertaEndereco())
+                <p style="color:#92400E; font-size:10px;">Atenção: {{ $historico->mudancasEndereco12m() }} mudanças de endereço nos últimos 12 meses.</p>
+            @endif
+        @endif
+        <p class="muted" style="font-size:9px;">Mudanças detectadas entre os dumps mensais da Receita Federal{{ $historico->desde ? ', registradas desde '.$historico->desde : '' }}.</p>
+    @endif
+
     @if ($assessment->listaSuja)
         <h2>Trabalho escravo (Lista Suja — MTE)</h2>
         <div class="box" style="background: #FEE2E2;">
@@ -121,11 +146,14 @@
         </div>
     @endif
 
-    @if ($assessment->pgfn)
+    @if (! $assessment->pgfnDisponivel)
+        <h2>Dívida ativa (PGFN)</h2>
+        <p class="muted">Não foi possível consultar a dívida ativa no momento da geração — confira de novo antes de concluir.</p>
+    @elseif ($assessment->pgfn)
         <h2>Dívida ativa (PGFN)</h2>
         <div class="box" style="background: #FEF3C7;">
             <strong style="color:#92400E;">Consta dívida ativa na União.</strong>
-            <div style="color:#92400E; font-size:10px; margin-top:2px;">{{ $assessment->pgfn->inscricoes }} inscrição(ões) · R$ {{ number_format($assessment->pgfn->total, 2, ',', '.') }}</div>
+            <div style="color:#92400E; font-size:10px; margin-top:2px;">{{ $assessment->pgfn->resumo() }}@if ($assessment->pgfn->ajuizadas > 0) · {{ $assessment->pgfn->ajuizadas }} ajuizada(s)@endif</div>
         </div>
     @endif
 
@@ -147,7 +175,7 @@
     @endif
 
     <div class="footer">
-        Documento gerado automaticamente pelo Vigilo a partir de fontes públicas (Receita Federal, Portal da Transparência/CGU e Lista Suja/MTE). Dados sujeitos a atualização — confirme nas fontes oficiais antes de qualquer decisão.
+        Documento gerado automaticamente pelo Vigilo a partir de fontes públicas (Receita Federal, PGFN, Portal da Transparência/CGU e Lista Suja/MTE). Dados sujeitos a atualização — confirme nas fontes oficiais antes de qualquer decisão.
     </div>
 </body>
 </html>

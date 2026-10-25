@@ -45,6 +45,7 @@ class RiscoPanel extends Component
             'motivo' => $assessment->motivo,
             'listaSuja' => $assessment->listaSuja,
             'pgfn' => $assessment->pgfn,
+            'pgfnDisponivel' => $assessment->pgfnDisponivel,
         ]);
     }
 }

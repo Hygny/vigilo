@@ -8,6 +8,7 @@ use App\DTO\Risco\RiscoAssessment;
 use App\Enums\NivelRisco;
 use App\Models\MonitoredCompany;
 use App\Support\SituacaoCadastral;
+use Throwable;
 
 /**
  * Avalia o risco de uma empresa num lugar só (sanções CGU + Lista Suja + dívida
@@ -26,7 +27,18 @@ final class RiscoAssessor
     {
         $report = $this->risco->para($company->cnpj);
         $listaSuja = $this->listaSujaLookup->consta($company->cnpj);
-        $pgfn = $this->pgfnLookup->para($company->cnpj);
+        $pgfnDisponivel = true;
+
+        try {
+            $pgfn = $this->pgfnLookup->para($company->cnpj);
+        } catch (Throwable $e) {
+            // Base CNPJ (onde mora a PGFN) fora do ar: sem o sinal, mas nunca
+            // "sem dívida" — o motivo do nível Baixo avisa que não deu para checar.
+            report($e);
+            $pgfn = null;
+            $pgfnDisponivel = false;
+        }
+
         $naListaSuja = $listaSuja !== null;
         $temDivida = $pgfn !== null;
 
@@ -46,11 +58,13 @@ final class RiscoAssessor
                 : match ($nivel) {
                     NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
                     NivelRisco::Medio => $this->motivoMedio($situacaoNegativa, $situacao, $report->temSancoes(), $temDivida),
-                    NivelRisco::Baixo => 'Empresa ativa, sem sanções nem dívida ativa nas fontes consultadas.',
+                    NivelRisco::Baixo => $pgfnDisponivel
+                        ? 'Empresa ativa, sem sanções nem dívida ativa nas fontes consultadas.'
+                        : 'Empresa ativa, sem sanções nas fontes consultadas (dívida ativa indisponível no momento).',
                 };
         }
 
-        return new RiscoAssessment($nivel, $motivo, $report, $listaSuja, $pgfn);
+        return new RiscoAssessment($nivel, $motivo, $report, $listaSuja, $pgfn, $pgfnDisponivel);
     }
 
     /**

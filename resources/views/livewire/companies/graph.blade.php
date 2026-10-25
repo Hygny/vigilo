@@ -226,12 +226,20 @@
                                     <th class="px-4 py-2 font-semibold">CNPJ / Documento</th>
                                     <th class="px-4 py-2 font-semibold">Tipo de ligação</th>
                                     <th class="px-4 py-2 font-semibold">Situação</th>
+                                    <th class="px-4 py-2 font-semibold">Dívida ativa (PGFN)</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-line">
                                 @foreach ($connections as $c)
                                     <tr>
-                                        <td class="px-4 py-2.5 font-medium text-ink">{{ $c->nome }}</td>
+                                        @php($cnpjLigado = preg_replace('/\D/', '', $c->documento ?? ''))
+                                        <td class="px-4 py-2.5 font-medium text-ink">
+                                            @if (strlen($cnpjLigado) === 14)
+                                                <a href="{{ route('empresas.perfil', $cnpjLigado) }}" wire:navigate class="hover:underline">{{ $c->nome }}</a>
+                                            @else
+                                                {{ $c->nome }}
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-2.5 font-mono text-ink-2">{{ $c->documento ?? '—' }}</td>
                                         <td class="px-4 py-2.5">
                                             <span class="inline-flex rounded-md bg-surface-2 px-2 py-0.5 text-[11.5px] font-medium text-ink-2 ring-1 ring-inset ring-line">{{ $c->tipo }}</span>
@@ -243,6 +251,16 @@
                                                 <span class="text-ink-2">{{ $c->situacao ?? '—' }}</span>
                                             @endif
                                         </td>
+                                        <td class="px-4 py-2.5">
+                                            @php($dividaTexto = $c->dividaTexto($pgfnDisponivel))
+                                            @if ($c->divida && $pgfnDisponivel)
+                                                <span class="font-semibold text-med">{{ $dividaTexto }}</span>
+                                            @elseif ($dividaTexto !== null && $dividaTexto !== '')
+                                                <span class="text-ink-muted">{{ $dividaTexto }}</span>
+                                            @else
+                                                <span class="text-ink-muted">—</span>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -251,6 +269,9 @@
 
                     <p class="mt-3 text-[12px] text-ink-muted">
                         Sócios, empresas do grupo, filiais e vizinhas de endereço ligadas ao centro atual. "Copiar" gera um texto pronto para e-mail; "Exportar Excel" baixa a mesma lista.
+                        @unless ($pgfnDisponivel)
+                            <span class="block mt-1">Dívida ativa (PGFN) indisponível no momento — a coluna não foi consultada.</span>
+                        @endunless
                     </p>
                 </x-ui.card>
             @endif

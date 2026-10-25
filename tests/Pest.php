@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Support\BuscaNome;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /*
@@ -46,7 +50,169 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Base CNPJ (conexão `cnpj`) num SQLite em memória — para testes que leem a
+ * base da Receita/PGFN sem o Postgres da VM.
+ */
+function useCnpjSqlite(): void
 {
-    // ..
+    config()->set('database.connections.cnpj', [
+        'driver' => 'sqlite',
+        'database' => ':memory:',
+        'prefix' => '',
+        'foreign_key_constraints' => false,
+    ]);
+
+    DB::purge('cnpj');
+}
+
+/** Tabelas da PGFN inteira na base CNPJ (o que o deploy/cnpj-db/bin/pgfn.sh carrega). */
+function createPgfnTables(): void
+{
+    $schema = Schema::connection('cnpj');
+
+    $schema->create('pgfn_dividas', function (Blueprint $t): void {
+        $t->string('cnpj');
+        $t->string('cnpj_basico')->index();
+        $t->string('tipo');
+        $t->string('tipo_devedor')->nullable();
+        $t->string('numero_inscricao')->nullable();
+        $t->string('tipo_situacao')->nullable();
+        $t->string('situacao')->nullable();
+        $t->string('receita')->nullable();
+        $t->date('data_inscricao')->nullable();
+        $t->boolean('ajuizado')->default(false);
+        $t->decimal('valor', 16, 2)->nullable();
+    });
+
+    $schema->create('pgfn_cargas', function (Blueprint $t): void {
+        $t->string('trimestre')->primary();
+        $t->bigInteger('inscricoes');
+        $t->timestamp('carregado_em')->nullable();
+    });
+}
+
+/** Uma inscrição em dívida ativa (PGFN) de um CNPJ. */
+function seedPgfnDivida(string $cnpj, float $valor, bool $ajuizado = false, string $tipo = 'nao-previdenciario'): void
+{
+    DB::connection('cnpj')->table('pgfn_dividas')->insert([
+        'cnpj' => $cnpj,
+        'cnpj_basico' => substr($cnpj, 0, 8),
+        'tipo' => $tipo,
+        'tipo_devedor' => 'PRINCIPAL',
+        'situacao' => 'ATIVA AJUIZADA',
+        'receita' => 'IRPJ',
+        'ajuizado' => $ajuizado,
+        'valor' => $valor,
+    ]);
+}
+
+/** Tabelas do histórico cadastral na base CNPJ (deploy/cnpj-db/sql/historico.sql). */
+function createHistoricoTables(): void
+{
+    $schema = Schema::connection('cnpj');
+
+    $schema->create('historico_cadastral', function (Blueprint $t): void {
+        $t->id();
+        $t->string('cnpj_basico')->index();
+        $t->string('cnpj_ordem')->nullable();
+        $t->string('cnpj_dv')->nullable();
+        $t->string('campo');
+        $t->text('valor_anterior')->nullable();
+        $t->text('valor_novo')->nullable();
+        $t->timestamp('detectado_em');
+        $t->string('referencia')->nullable();
+    });
+
+    $schema->create('historico_execucoes', function (Blueprint $t): void {
+        $t->string('referencia')->primary();
+        $t->string('status');
+    });
+}
+
+/**
+ * Um evento do histórico cadastral. `$cnpj` de 14 díg = evento do
+ * estabelecimento; de 8 díg (raiz) = evento da empresa.
+ */
+function seedHistorico(string $cnpj, string $campo, ?string $antes, ?string $depois, string $quando = '2026-11-20 06:00:00', ?string $referencia = '2026-11'): void
+{
+    DB::connection('cnpj')->table('historico_cadastral')->insert([
+        'cnpj_basico' => substr($cnpj, 0, 8),
+        'cnpj_ordem' => strlen($cnpj) === 14 ? substr($cnpj, 8, 4) : null,
+        'cnpj_dv' => strlen($cnpj) === 14 ? substr($cnpj, 12, 2) : null,
+        'campo' => $campo,
+        'valor_anterior' => $antes,
+        'valor_novo' => $depois,
+        'detectado_em' => $quando,
+        'referencia' => $referencia,
+    ]);
+}
+
+/**
+ * Base CNPJ (sqlite) com as tabelas da busca, chaves geradas pelo normalizador
+ * PHP. Cada empresa: [cnpj, razão social, nome fantasia, situação, uf, matriz?].
+ *
+ * @param  list<array<int, mixed>>  $empresas
+ */
+function seedBuscaBase(array $empresas): void
+{
+    useCnpjSqlite();
+    $schema = Schema::connection('cnpj');
+
+    $schema->create('estabelecimentos', function (Blueprint $t): void {
+        $t->string('cnpj_basico');
+        $t->string('cnpj_ordem');
+        $t->string('cnpj_dv');
+        $t->integer('identificador_matriz_filial')->nullable();
+        $t->string('nome_fantasia')->nullable();
+        $t->string('situacao_cadastral')->nullable();
+        $t->string('uf')->nullable();
+        $t->string('municipio')->nullable();
+        $t->string('data_inicio_atividade')->nullable();
+    });
+    $schema->create('empresas', function (Blueprint $t): void {
+        $t->string('cnpj_basico');
+        $t->string('razao_social')->nullable();
+    });
+    $schema->create('municipios', function (Blueprint $t): void {
+        $t->string('codigo');
+        $t->string('descricao')->nullable();
+    });
+    $schema->create('busca_razao', function (Blueprint $t): void {
+        $t->string('cnpj_basico')->primary();
+        $t->string('nome');
+    });
+    $schema->create('busca_fantasia', function (Blueprint $t): void {
+        $t->string('cnpj_basico');
+        $t->string('cnpj_ordem');
+        $t->string('cnpj_dv');
+        $t->string('nome');
+    });
+
+    $db = DB::connection('cnpj');
+    $db->table('municipios')->insert(['codigo' => '7107', 'descricao' => 'SAO PAULO']);
+
+    foreach ($empresas as $e) {
+        [$cnpj, $razao, $fantasia, $situacao, $uf] = $e;
+        $matriz = $e[5] ?? true;
+        $basico = substr($cnpj, 0, 8);
+
+        $db->table('estabelecimentos')->insert([
+            'cnpj_basico' => $basico, 'cnpj_ordem' => substr($cnpj, 8, 4), 'cnpj_dv' => substr($cnpj, 12, 2),
+            'identificador_matriz_filial' => $matriz ? 1 : 2, 'nome_fantasia' => $fantasia,
+            'situacao_cadastral' => $situacao, 'uf' => $uf, 'municipio' => '7107', 'data_inicio_atividade' => '2020-01-01',
+        ]);
+
+        if ($razao !== null && $db->table('empresas')->where('cnpj_basico', $basico)->doesntExist()) {
+            $db->table('empresas')->insert(['cnpj_basico' => $basico, 'razao_social' => $razao]);
+            $db->table('busca_razao')->insert(['cnpj_basico' => $basico, 'nome' => BuscaNome::chave($razao)]);
+        }
+
+        if ($fantasia !== null && trim(BuscaNome::chave($fantasia)) !== '') {
+            $db->table('busca_fantasia')->insert([
+                'cnpj_basico' => $basico, 'cnpj_ordem' => substr($cnpj, 8, 4), 'cnpj_dv' => substr($cnpj, 12, 2),
+                'nome' => BuscaNome::chave($fantasia),
+            ]);
+        }
+    }
 }

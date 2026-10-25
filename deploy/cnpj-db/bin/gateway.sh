@@ -10,6 +10,7 @@ BIN="$(dirname "$(readlink -f "$0")")"
 case "${SSH_ORIGINAL_COMMAND:-}" in
     reimport) exec "$BIN/reimport.sh" ;;
     pf-count) exec "$BIN/pf-count.sh" ;;
+    pgfn) exec "$BIN/pgfn.sh" ;;
     # (O verbo `receive-dump` da cópia inicial saiu após a migração — se um dia
     # precisar re-copiar, ver a Fase 2 de docs/vigilo-cnpj-oracle-migracao.md.)
     *)

@@ -44,6 +44,16 @@ final class SituacaoCadastral
     }
 
     /**
+     * Todos os rótulos conhecidos (ATIVA, BAIXADA...) — p/ filtros de tela.
+     *
+     * @return list<string>
+     */
+    public static function labels(): array
+    {
+        return array_values(self::MAP);
+    }
+
+    /**
      * Rótulos de situação "negativa" (tudo exceto ATIVA) — fonte única derivada
      * do MAP. Consumido pelo contador do grafo e exposto ao grifo.js.
      *

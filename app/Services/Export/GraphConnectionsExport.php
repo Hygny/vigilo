@@ -17,20 +17,20 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 final class GraphConnectionsExport
 {
     /** @var list<string> */
-    private const HEADINGS = ['Nome / Razão social', 'CNPJ / Documento', 'Tipo de ligação', 'Situação'];
+    private const HEADINGS = ['Nome / Razão social', 'CNPJ / Documento', 'Tipo de ligação', 'Situação', 'Dívida ativa (PGFN)'];
 
     /**
      * @param  iterable<int, GraphConnection>  $connections
      * @return string caminho do .xlsx temporário
      */
-    public function build(iterable $connections): string
+    public function build(iterable $connections, bool $pgfnDisponivel = true): string
     {
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Ligações');
 
         $sheet->fromArray(self::HEADINGS, null, 'A1');
-        $sheet->getStyle('A1:D1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:E1')->getFont()->setBold(true);
 
         $rowNumber = 2;
 
@@ -40,12 +40,13 @@ final class GraphConnectionsExport
                 $connection->documento ?? '',
                 $connection->tipo,
                 $connection->situacao ?? '',
+                $connection->dividaTexto($pgfnDisponivel) ?? '',
             ], null, 'A'.$rowNumber);
 
             $rowNumber++;
         }
 
-        foreach (range('A', 'D') as $column) {
+        foreach (range('A', 'E') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 

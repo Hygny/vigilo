@@ -100,9 +100,9 @@ if [ -f "$RULES_FILE" ] && ! grep -qF -- "$LINE" "$RULES_FILE"; then
 fi
 
 echo "==> pastas"
-mkdir -p /data/pgdata /data/dump /data/certs
+mkdir -p /data/pgdata /data/dump /data/certs /data/pgfn
 chown "$PG_UID:$PG_UID" /data/pgdata
-chown "$OWNER:$OWNER" /data/dump
+chown "$OWNER:$OWNER" /data/dump /data/pgfn # pgfn: zips da carga trimestral (bin/pgfn.sh)
 
 echo "==> TLS (CA própria + certificado do servidor com o IP público no SAN)"
 cd /data/certs

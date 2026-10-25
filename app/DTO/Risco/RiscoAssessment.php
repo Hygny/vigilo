@@ -22,6 +22,8 @@ final class RiscoAssessment
         public readonly RiscoReport $report,
         public readonly ?DirtyListEmployer $listaSuja,
         public readonly ?PgfnDebtSummary $pgfn = null,
+        // false = a base da PGFN não respondeu: `pgfn` null NÃO quer dizer "sem dívida".
+        public readonly bool $pgfnDisponivel = true,
     ) {}
 
     /** O semáforo pôde ser avaliado (houve sinal confiável)? */

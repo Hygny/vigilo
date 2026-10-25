@@ -26,6 +26,10 @@
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="DB_URL" value=""/>
+        <!-- Base CNPJ (Postgres) inexistente nos testes: conexão recusada na hora
+             (porta 1) em vez de esperar DNS/timeout; quem precisa usa useCnpjSqlite(). -->
+        <env name="CNPJ_DB_HOST" value="127.0.0.1"/>
+        <env name="CNPJ_DB_PORT" value="1"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

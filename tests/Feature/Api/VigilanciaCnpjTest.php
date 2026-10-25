@@ -156,6 +156,79 @@ it('returns the company in the OSINT contract shape', function () {
     ]);
 });
 
+it('includes the PGFN active debt of the company (by CNPJ root)', function () {
+    $token = osintToken();
+    seedVigilanciaBase();
+    seedNovaLingua();
+    createPgfnTables();
+    seedPgfnDivida('44555666000107', 1500.25, ajuizado: true);
+    seedPgfnDivida('44555666000280', 499.75); // filial da mesma empresa
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.divida_ativa.inscricoes', 2)
+        ->assertJsonPath('data.divida_ativa.ajuizadas', 1)
+        ->assertJsonPath('data.divida_ativa.valor_total', 2000);
+});
+
+it('reports zero debt when the PGFN was checked and the company has none', function () {
+    $token = osintToken();
+    seedVigilanciaBase();
+    seedNovaLingua();
+    createPgfnTables();
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.divida_ativa', ['inscricoes' => 0, 'ajuizadas' => 0, 'valor_total' => 0]);
+});
+
+it('keeps serving the company with divida_ativa null when the PGFN is unavailable', function () {
+    $token = osintToken();
+    seedVigilanciaBase(); // sem as tabelas da PGFN
+    seedNovaLingua();
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.razao_social', 'NOVA LINGUA CURSOS LTDA')
+        ->assertJsonPath('data.divida_ativa', null);
+});
+
+it('includes the cadastral history with the 12-month signals', function () {
+    $token = osintToken();
+    seedVigilanciaBase();
+    seedNovaLingua();
+    createHistoricoTables();
+    DB::connection('cnpj')->table('historico_execucoes')->insert(['referencia' => '2026-10', 'status' => 'ok']);
+    seedHistorico('44555666000107', 'situacao', '04', '02', now()->subDays(10)->toDateTimeString());
+    seedHistorico('44555666', 'socio_saida', json_encode(['nome' => 'BRUNO LIMA', 'documento' => '***333444**']), null, now()->subMonth()->toDateTimeString());
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.historico_cadastral.desde', '2026-10')
+        ->assertJsonPath('data.historico_cadastral.sinais_12m.mudancas_situacao', 1)
+        ->assertJsonPath('data.historico_cadastral.sinais_12m.saidas_socios', 1)
+        ->assertJsonPath('data.historico_cadastral.eventos.0.campo', 'situacao')
+        ->assertJsonPath('data.historico_cadastral.eventos.0.antes', 'INAPTA')
+        ->assertJsonPath('data.historico_cadastral.eventos.0.depois', 'ATIVA')
+        ->assertJsonCount(2, 'data.historico_cadastral.eventos');
+});
+
+it('serves the company with historico_cadastral null when the history is unavailable', function () {
+    $token = osintToken();
+    seedVigilanciaBase(); // sem as tabelas do histórico
+    seedNovaLingua();
+
+    $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/cnpjs/44555666000107')
+        ->assertOk()
+        ->assertJsonPath('data.cnpj', '44555666000107')
+        ->assertJsonPath('data.historico_cadastral', null);
+});
+
 it('returns 404 for a CNPJ outside the base', function () {
     $token = osintToken();
     seedVigilanciaBase(); // base no ar, mas o CNPJ não existe

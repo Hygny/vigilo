@@ -43,6 +43,10 @@ else
     # uma rodada nova — nunca depois do wait (uma chamada órfã removeria o
     # container sob uma reconexão que ainda espera por ele).
     docker rm "$NAME" >/dev/null 2>&1 || true
+    # Gatilhos do histórico cadastral / busca por nome têm de estar no lugar
+    # ANTES do upsert (são eles que guardam o valor antigo). Falha aqui não
+    # segura o dado novo da Receita — só avisa (aquele mês fica sem histórico).
+    "$DIR/bin/aplicar-sql.sh" || echo "!! [$(date -Is)] aplicar-sql.sh falhou — o import segue SEM os gatilhos do histórico"
     docker run -d --name "$NAME" --network host \
         -e DATABASE_URL="postgres://cnpj:${CNPJ_DB_PASSWORD}@127.0.0.1:5432/cnpj" \
         -e LOADING_STRATEGY=upsert \
@@ -56,6 +60,10 @@ code="$(docker wait "$NAME")"
 # As tabelas têm de seguir com o papel do app (uma versão nova do pipeline
 # que crie/recrie tabela as faria nascer do superuser). Idempotente.
 if [ "$code" = 0 ]; then
+    # Saídas/entradas de sócios + carimbo do dump no histórico (idempotente:
+    # numa rodada sem dump novo é no-op). Antes do papel-app: cria tabelas na
+    # 1ª vez, e elas também passam para o papel do app.
+    "$DIR/bin/pos-reimport.sh" || echo "!! [$(date -Is)] pos-reimport.sh falhou — rode ~/cnpj/bin/pos-reimport.sh na VM"
     "$DIR/bin/papel-app.sh" || echo "!! [$(date -Is)] papel-app.sh falhou — rode ~/cnpj/bin/papel-app.sh na VM"
 fi
 

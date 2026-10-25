@@ -62,3 +62,14 @@ it('flags a stale run when the last run is older than the window', function () {
         ->assertSee('Atrasado')
         ->assertSee('agendamento pode ter parado');
 });
+
+it('shows the PGFN step only on runs that have it', function () {
+    $super = User::factory()->superAdmin()->create();
+    recordMaintenance();
+
+    Livewire::actingAs($super)->test(Index::class)->assertDontSee('PGFN');
+
+    recordMaintenance(['pgfn_status' => 'ok', 'finished_at' => now()->addMinute()]);
+
+    Livewire::actingAs($super)->test(Index::class)->assertSee('PGFN');
+});

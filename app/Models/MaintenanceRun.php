@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $reimport_status
  * @property string|null $recoleta_status
  * @property string|null $normalizar_status
+ * @property string|null $pgfn_status
  * @property string|null $message
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
@@ -35,6 +36,7 @@ final class MaintenanceRun extends Model
         'reimport_status',
         'recoleta_status',
         'normalizar_status',
+        'pgfn_status',
         'message',
         'started_at',
         'finished_at',

@@ -8,6 +8,7 @@ use App\Contracts\CnpjDataProvider;
 use App\DTO\CompanyData;
 use App\DTO\PartnerData;
 use App\Support\Cnpj;
+use App\Support\PorteEmpresa;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
@@ -25,13 +26,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class LocalCnpjProvider implements CnpjDataProvider
 {
-    /** Código do porte → rótulo. 00 (não informado) vira null. */
-    private const PORTE = [
-        '01' => 'ME',
-        '03' => 'EPP',
-        '05' => 'DEMAIS',
-    ];
-
     public function __construct(private readonly string $connection) {}
 
     public function fetch(string $cnpj): ?CompanyData
@@ -75,7 +69,7 @@ final class LocalCnpjProvider implements CnpjDataProvider
             situacaoCadastral: SituacaoCadastral::label($e['situacao_cadastral'] ?? null),
             situacaoData: $this->str($e['data_situacao_cadastral'] ?? null),
             cnaePrincipal: $this->str($e['cnae_fiscal_principal'] ?? null),
-            porte: $this->porte($e['porte'] ?? null),
+            porte: PorteEmpresa::label($e['porte'] ?? null),
             naturezaJuridica: $this->str($e['natureza_nome'] ?? null) ?? $this->str($e['natureza_juridica'] ?? null),
             logradouro: $this->logradouro($e),
             municipio: $this->str($e['municipio_nome'] ?? null) ?? $this->str($e['municipio'] ?? null),
@@ -133,13 +127,6 @@ final class LocalCnpjProvider implements CnpjDataProvider
         }
 
         return $numero === null ? $rua : "{$rua}, {$numero}";
-    }
-
-    private function porte(mixed $code): ?string
-    {
-        $code = trim((string) ($code ?? ''));
-
-        return self::PORTE[$code] ?? null;
     }
 
     private function str(mixed $value): ?string

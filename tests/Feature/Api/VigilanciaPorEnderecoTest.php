@@ -135,6 +135,31 @@ it('matches by CEP + normalized number, newest first, with socios', function () 
         ->and($json['data'][0]['socios'][0]['nome'])->toBe('MARIA');
 });
 
+it('attaches the PGFN debt to each listed company in a single query', function () {
+    $token = enderecoToken();
+    seedEnderecoBase();
+    createPgfnTables();
+    seedPgfnDivida('11111111000111', 300.00);
+
+    $queries = [];
+    DB::connection('cnpj')->listen(function ($q) use (&$queries): void {
+        if (str_contains($q->sql, 'pgfn_dividas')) {
+            $queries[] = $q->sql;
+        }
+    });
+
+    $data = $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/api/v1/vigilancia/empresas/por-endereco?cep=49019900&numero=320')
+        ->assertOk()
+        ->json('data');
+
+    $porCnpj = collect($data)->keyBy('cnpj');
+
+    expect($porCnpj['11111111000111']['divida_ativa']['valor_total'])->toEqual(300)
+        ->and(collect($data)->where('cnpj', '!=', '11111111000111')->pluck('divida_ativa.inscricoes')->unique()->all())->toBe([0])
+        ->and($queries)->toHaveCount(1);
+});
+
 it('filters by situacao when provided', function () {
     $token = enderecoToken();
     seedEnderecoBase();

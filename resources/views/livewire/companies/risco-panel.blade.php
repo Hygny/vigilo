@@ -31,8 +31,13 @@
                 <x-ui.icon name="account_balance" :size="18" class="mt-0.5" />
                 <div>
                     <p class="font-semibold">Dívida ativa na União (PGFN).</p>
-                    <p class="mt-0.5 text-xs">{{ $pgfn->inscricoes }} {{ $pgfn->inscricoes === 1 ? 'inscrição' : 'inscrições' }} · R$ {{ number_format($pgfn->total, 2, ',', '.') }}</p>
+                    <p class="mt-0.5 text-xs">{{ $pgfn->resumo() }}@if ($pgfn->ajuizadas > 0) · {{ $pgfn->ajuizadas }} ajuizada(s)@endif</p>
                 </div>
+            </div>
+        @elseif (! $pgfnDisponivel)
+            <div class="mb-4 flex items-start gap-2 text-sm text-ink-muted">
+                <x-ui.icon name="cloud_off" :size="18" class="mt-0.5" />
+                <p>Não foi possível consultar a dívida ativa (PGFN) agora. Tente novamente mais tarde.</p>
             </div>
         @endif
 

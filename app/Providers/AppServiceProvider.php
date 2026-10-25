@@ -9,9 +9,12 @@ use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Graph\OwnershipGraphService;
+use App\Services\Risco\PgfnLookup;
 use App\Services\Risco\PortalTransparenciaClient;
 use App\Services\Risco\RiscoService;
+use App\Services\Vigilancia\BuscaEmpresas;
 use App\Services\Vigilancia\EmpresaLookup;
+use App\Services\Vigilancia\HistoricoLookup;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -64,8 +67,23 @@ class AppServiceProvider extends ServiceProvider
             addressCrowdedMax: (int) config('cnpj.graph.address_crowded_max', 6),
         ));
 
+        $this->app->singleton(PgfnLookup::class, fn (): PgfnLookup => new PgfnLookup(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
+
+        $this->app->singleton(BuscaEmpresas::class, fn (): BuscaEmpresas => new BuscaEmpresas(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            candidatos: max(1, (int) config('cnpj.busca.candidatos', 200)),
+            timeoutMs: (int) config('cnpj.busca.timeout_ms', 5000),
+        ));
+
+        $this->app->singleton(HistoricoLookup::class, fn (): HistoricoLookup => new HistoricoLookup(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
+
         $this->app->singleton(EmpresaLookup::class, fn (): EmpresaLookup => new EmpresaLookup(
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            pgfn: $this->app->make(PgfnLookup::class),
         ));
 
         $this->app->singleton(PortalTransparenciaClient::class, function (): PortalTransparenciaClient {

@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Services\Vigilancia;
 
+use App\DTO\Risco\PgfnDebtSummary;
 use App\DTO\Vigilancia\Empresa;
 use App\DTO\Vigilancia\Endereco;
 use App\DTO\Vigilancia\Socio;
 use App\Providers\Cnpj\LocalCnpjProvider;
+use App\Services\Risco\PgfnLookup;
 use App\Support\AddressNumber;
 use App\Support\NomeSocio;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -31,7 +34,10 @@ final class EmpresaLookup
     /** Ordem do estabelecimento matriz (a empresa, para a busca por sócio). */
     private const ORDEM_MATRIZ = '0001';
 
-    public function __construct(private readonly string $connection) {}
+    public function __construct(
+        private readonly string $connection,
+        private readonly ?PgfnLookup $pgfn = null,
+    ) {}
 
     /**
      * Uma empresa pelo CNPJ (estabelecimento específico). Null = fora da base.
@@ -63,7 +69,7 @@ final class EmpresaLookup
         $e = (array) $row;
         $socios = $this->sociosPorBasico($db, [$basico]);
 
-        return $this->build($e, $digits, $socios[$basico] ?? []);
+        return $this->build($e, $digits, $socios[$basico] ?? [], $this->dividasPorBasico([$basico]));
     }
 
     /**
@@ -109,13 +115,14 @@ final class EmpresaLookup
             $matched,
         )));
         $sociosPorBasico = $this->sociosPorBasico($db, $basicos);
+        $dividas = $this->dividasPorBasico($basicos);
 
         $empresas = [];
 
         foreach ($matched as $e) {
             $basico = $this->strRaw($e['cnpj_basico'] ?? null);
             $cnpj = $basico.$this->strRaw($e['cnpj_ordem'] ?? null).$this->strRaw($e['cnpj_dv'] ?? null);
-            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? []);
+            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? [], $dividas);
         }
 
         return $empresas;
@@ -168,13 +175,14 @@ final class EmpresaLookup
             $matched,
         )));
         $sociosPorBasico = $this->sociosPorBasico($db, $matchedBasicos);
+        $dividas = $this->dividasPorBasico($matchedBasicos);
 
         $empresas = [];
 
         foreach ($matched as $e) {
             $basico = $this->strRaw($e['cnpj_basico'] ?? null);
             $cnpj = $basico.$this->strRaw($e['cnpj_ordem'] ?? null).$this->strRaw($e['cnpj_dv'] ?? null);
-            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? []);
+            $empresas[] = $this->build($e, $cnpj, $sociosPorBasico[$basico] ?? [], $dividas);
         }
 
         return $empresas;
@@ -207,8 +215,9 @@ final class EmpresaLookup
     /**
      * @param  array<string, mixed>  $e
      * @param  list<Socio>  $socios
+     * @param  array<string, PgfnDebtSummary>|null  $dividas  null = PGFN não consultada
      */
-    private function build(array $e, string $cnpj, array $socios): Empresa
+    private function build(array $e, string $cnpj, array $socios, ?array $dividas): Empresa
     {
         return new Empresa(
             cnpj: $cnpj,
@@ -230,7 +239,32 @@ final class EmpresaLookup
                 cep: $this->cep($e['cep'] ?? null),
             ),
             socios: $socios,
+            dividaAtiva: $dividas[substr($cnpj, 0, 8)] ?? null,
+            dividaConsultada: $dividas !== null,
         );
+    }
+
+    /**
+     * Dívida ativa (PGFN) de várias raízes em UMA consulta. Null = PGFN não
+     * consultada (sem lookup, ou a tabela/base não respondeu): a empresa sai com
+     * `divida_ativa: null` em vez de derrubar a resposta cadastral inteira.
+     *
+     * @param  list<string>  $basicos
+     * @return array<string, PgfnDebtSummary>|null
+     */
+    private function dividasPorBasico(array $basicos): ?array
+    {
+        if ($this->pgfn === null) {
+            return null;
+        }
+
+        try {
+            return $this->pgfn->paraBasicos($basicos);
+        } catch (QueryException $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**

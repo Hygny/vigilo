@@ -7,7 +7,6 @@ use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
-use App\Models\PgfnDebt;
 use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
@@ -15,6 +14,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\View;
 
 // Por padrão a base CNPJ (grafo) fica indisponível → o dossiê gera sem as seções
 // do grafo (beneficiários/grupo/filiais), que degradam. O teste dedicado abaixo
@@ -139,12 +139,8 @@ it('renders the rich risk sections in the PDF (sanction, dirty list, PGFN and pa
         'ano' => '2022',
         'imported_at' => now(),
     ]);
-    PgfnDebt::query()->create([
-        'documento' => '11222333000181',
-        'tipo' => 'geral',
-        'valor' => '12345.67',
-        'imported_at' => now(),
-    ]);
+    createPgfnTables();
+    seedPgfnDivida('11222333000181', 12345.67, ajuizado: true);
 
     $this->actingAs($user)
         ->get(route('companies.dossie', $company))
@@ -154,10 +150,17 @@ it('renders the rich risk sections in the PDF (sanction, dirty list, PGFN and pa
 
 it('renders the graph sections (beneficiaries, economic group, branches) when the base is available', function () {
     bootDossieCnpjBase(); // centro + sócio PJ (grupo) + sócio PF + filial
+    createPgfnTables();
+    seedPgfnDivida('44555666000100', 7777.77); // EMPRESA GRUPO: dívida na linha do grupo
 
     $org = Organization::factory()->create();
     $user = User::factory()->for($org)->create();
     $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $grupo = null;
+    View::composer('dossie.pdf', function ($view) use (&$grupo): void {
+        $grupo = $view->getData()['grupo'];
+    });
 
     // Gera o PDF exercitando as 3 ramificações novas do Blade (beneficiários,
     // grupo econômico, filiais). Um erro de Blade ali derrubaria o render.
@@ -165,6 +168,29 @@ it('renders the graph sections (beneficiaries, economic group, branches) when th
         ->get(route('companies.dossie', $company))
         ->assertOk()
         ->assertDownload('dossie-11222333000181.pdf');
+
+    $empresaGrupo = collect($grupo)->firstWhere('label', 'EMPRESA GRUPO');
+    expect($empresaGrupo['divida']?->total)->toEqualWithDelta(7777.77, 0.001);
+});
+
+it('says in the PDF that the PGFN was not checked when it is unavailable', function () {
+    bootDossieCnpjBase(); // grafo de pé, mas sem as tabelas da PGFN
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $dados = null;
+    View::composer('dossie.pdf', function ($view) use (&$dados): void {
+        $dados = $view->getData();
+    });
+
+    $this->actingAs($user)->get(route('companies.dossie', $company))->assertOk();
+
+    $empresaGrupo = collect($dados['grupo'])->firstWhere('label', 'EMPRESA GRUPO');
+    expect($dados['assessment']->pgfnDisponivel)->toBeFalse()
+        ->and($empresaGrupo['pgfn_consultada'])->toBeFalse()
+        ->and($empresaGrupo['divida'])->toBeNull();
 });
 
 it('redirects guests to login', function () {
@@ -178,4 +204,30 @@ it('forbids downloading the dossier of a company from another organization', fun
     $foreign = MonitoredCompany::factory()->create();
 
     $this->actingAs($user)->get(route('companies.dossie', $foreign))->assertForbidden();
+});
+
+it('renders the cadastral history section (with the frequent-move warning)', function () {
+    createHistoricoTables();
+    DB::connection('cnpj')->table('historico_execucoes')->insert(['referencia' => '2026-10', 'status' => 'ok']);
+    foreach ([1, 2, 3] as $i) {
+        seedHistorico('11222333000181', 'endereco', json_encode(['logradouro' => 'RUA '.$i]), json_encode(['logradouro' => 'RUA '.($i + 1)]), now()->subMonths($i)->toDateTimeString());
+    }
+    seedHistorico('11222333', 'socio_saida', json_encode(['nome' => 'BRUNO LIMA']), null, now()->subMonth()->toDateTimeString());
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $historico = null;
+    View::composer('dossie.pdf', function ($view) use (&$historico): void {
+        $historico = $view->getData()['historico'];
+    });
+
+    $this->actingAs($user)
+        ->get(route('companies.dossie', $company))
+        ->assertOk()
+        ->assertDownload('dossie-11222333000181.pdf');
+
+    expect($historico->eventos)->toHaveCount(4)
+        ->and($historico->alertaEndereco())->toBeTrue();
 });

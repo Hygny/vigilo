@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Livewire\Portfolios;
 
+use App\Actions\AddCompanyToPortfolio;
+use App\Actions\Exceptions\CompanyNotAdded;
 use App\Actions\QueuePortfolioRefresh;
 use App\Enums\RefreshStatus;
 use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\MonitoredCompany;
-use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Services\CompanyImporter;
 use App\Support\Cnpj;
@@ -201,7 +202,7 @@ class Show extends Component
         return null;
     }
 
-    public function addCompany(): void
+    public function addCompany(AddCompanyToPortfolio $adder): void
     {
         $this->authorize('update', $this->portfolio);
         $this->validateOnly('cnpj');
@@ -214,37 +215,10 @@ class Show extends Component
             return;
         }
 
-        if ($this->portfolio->monitoredCompanies()->where('cnpj', $cnpj->value)->exists()) {
-            $this->addError('cnpj', 'Este CNPJ já está no portfólio.');
-
-            return;
-        }
-
-        $organization = $this->portfolio->organization;
-
-        // Quota do plano com transação + lock na org (DT-11): a checagem e a
-        // criação são atômicas, então duas abas adicionando o "último" CNPJ ao
-        // mesmo tempo serializam aqui e a segunda vê a vaga já preenchida.
-        $created = DB::transaction(function () use ($organization, $cnpj): bool {
-            $locked = Organization::query()
-                ->whereKey($organization->getKey())
-                ->lockForUpdate()
-                ->first();
-
-            if ($locked === null || $locked->remainingCompanySlots() < 1) {
-                return false;
-            }
-
-            $this->portfolio->monitoredCompanies()->create([
-                'cnpj' => $cnpj->value,
-                'label' => ($this->label !== null && $this->label !== '') ? $this->label : null,
-            ]);
-
-            return true;
-        });
-
-        if (! $created) {
-            $this->addError('cnpj', "Limite do plano {$organization->plan->label()} atingido ({$organization->maxMonitoredCompanies()} CNPJs). Faça upgrade para adicionar mais.");
+        try {
+            $adder->handle($this->portfolio, $cnpj, $this->label);
+        } catch (CompanyNotAdded $e) {
+            $this->addError('cnpj', $e->getMessage());
 
             return;
         }

@@ -10,6 +10,9 @@
 #        2a) re-coleta da carteira (gera os alertas do que mudou entre dumps);
 #        2b) normalização de sócios (refresca socios.nome_norm da busca OSINT).
 #   Nas semanas sem dump novo, (2) é pulado — a rodada é um no-op de segundos.
+#   3) PGFN (dívida ativa), base remota: confere/carrega o trimestre mais novo
+#      da PGFN INTEIRA na VM (verbo `pgfn`). Roda toda semana, independente do
+#      dump da Receita; é no-op enquanto o trimestre já estiver carregado.
 #
 # Ao final (e também quando o reimport aborta) grava uma linha em
 # `maintenance_runs` via `vigilo:maintenance-record`, que o super-admin vê em
@@ -29,8 +32,8 @@
 # Base remota (VM Oracle — docs/vigilo-cnpj-oracle-migracao.md): com
 # CNPJ_REMOTE_SSH (ex.: ubuntu@159.112.186.240) no ~/apps/vigilo/.env, o
 # pipeline e a contagem de processed_files rodam NA VM, via SSH com a chave
-# dedicada ~/.ssh/cnpj_db (comando forçado gateway.sh: verbos `reimport` e
-# `pf-count`). Re-coleta, normalização e o registro continuam aqui. Sem a
+# dedicada ~/.ssh/cnpj_db (comando forçado gateway.sh: verbos `reimport`,
+# `pf-count` e `pgfn`). Re-coleta, normalização e o registro continuam aqui. Sem a
 # variável, tudo roda neste host como antes.
 #
 # Cron sugerido (toda segunda, 03:00):
@@ -67,6 +70,7 @@ STARTED_AT="$(date -Is)"
 REIMPORT=skip
 RECOLETA=skip
 NORMALIZAR=skip
+PGFN="" # vazio = o passo não rodou (abortos antes dele não o registram)
 MSG=""
 
 is_num() { case "${1:-}" in '' | *[!0-9]*) return 1 ;; *) return 0 ;; esac }
@@ -107,8 +111,33 @@ record_run() {
     $COMPOSE exec -T app php artisan vigilo:maintenance-record \
         --kind=cnpj_mensal --started="$STARTED_AT" \
         --reimport="$REIMPORT" --recoleta="$RECOLETA" --normalizar="$NORMALIZAR" \
+        ${PGFN:+--pgfn="$PGFN"} \
         --message="$MSG" \
         || echo "!! [$(date -Is)] não consegui registrar o maintenance-run"
+}
+
+# Passo (3): PGFN inteira na VM. Falha aqui não desfaz o resto da rodada — só
+# marca o passo (e a rodada) como falha no card do /admin; a carga anterior
+# segue em uso na VM.
+run_pgfn() {
+    if [ -z "$REMOTE_SSH" ]; then
+        PGFN=skip # a PGFN inteira só existe na base remota
+        return
+    fi
+    echo "==> [$(date -Is)] PGFN (dívida ativa): confere/carrega o trimestre mais novo na VM"
+    remote pgfn
+    local rc=$?
+    if [ "$rc" = 0 ]; then
+        PGFN=ok
+        return
+    fi
+    PGFN=fail
+    if [ "$rc" = 3 ]; then
+        MSG="${MSG:+$MSG; }carga da PGFN não executada: VM sem espaço livre em /data"
+    else
+        MSG="${MSG:+$MSG; }carga da PGFN falhou (código ${rc}) — a anterior segue em uso"
+    fi
+    echo "!! [$(date -Is)] carga da PGFN falhou (código ${rc})"
 }
 
 # Base local: sem a senha do Postgres não dá para consultar a base nem
@@ -203,8 +232,9 @@ if [ "$NEW_DATA" = 0 ]; then
     echo "==> [$(date -Is)] sem dump novo (processed_files: ${BEFORE} → ${AFTER}) — pulando recoleta/normalizar"
     MSG="${MSG:+$MSG; }sem dump novo (base já atualizada)"
     rm -f "$BASELINE_FILE"
+    run_pgfn
     record_run
-    echo "==> [$(date -Is)] manutenção concluída (no-op)"
+    echo "==> [$(date -Is)] manutenção concluída (sem dump novo da Receita)"
     exit 0
 fi
 
@@ -234,5 +264,6 @@ else
     MSG="${MSG:+$MSG; }a próxima rodada repete a re-coleta/normalização"
 fi
 
+run_pgfn
 record_run
 echo "==> [$(date -Is)] manutenção concluída"

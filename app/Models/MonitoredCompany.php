@@ -25,7 +25,6 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_refresh_error
  * @property Carbon|null $sanctions_synced_at
  * @property Carbon|null $dirty_list_flagged_at
- * @property Carbon|null $pgfn_synced_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Portfolio $portfolio
@@ -52,7 +51,6 @@ class MonitoredCompany extends Model
             'last_refresh_status' => RefreshStatus::class,
             'sanctions_synced_at' => 'datetime',
             'dirty_list_flagged_at' => 'datetime',
-            'pgfn_synced_at' => 'datetime',
         ];
     }
 
