@@ -46,17 +46,17 @@ new class extends Component
             <span class="text-[17px] font-semibold tracking-tight text-ink">Vigilo</span>
         </a>
 
-        {{-- Navegação (desktop) --}}
-        <nav class="hidden items-center gap-1 sm:flex">
+        {{-- Navegação (desktop): só ícones entre lg e xl — com rótulo, 7 itens (admin) não cabem antes de ~1150px --}}
+        <nav class="hidden items-center gap-1 lg:flex">
             @foreach ($navItems as $item)
                 @php $on = request()->routeIs($item['active']); @endphp
-                <a href="{{ route($item['route']) }}" wire:navigate
+                <a href="{{ route($item['route']) }}" wire:navigate title="{{ $item['label'] }}"
                    @class([
-                       'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
+                       'flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors xl:px-3.5',
                        'bg-primary-soft text-primary' => $on,
                        'text-ink-2 hover:bg-surface-2' => ! $on,
                    ])>
-                    <x-ui.icon :name="$item['icon']" :size="19" />{{ $item['label'] }}
+                    <x-ui.icon :name="$item['icon']" :size="19" /><span class="sr-only xl:not-sr-only">{{ $item['label'] }}</span>
                 </a>
             @endforeach
         </nav>
@@ -89,14 +89,14 @@ new class extends Component
             </div>
 
             <button @click="open = ! open"
-                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line bg-surface-2 text-ink-2 sm:hidden">
+                    class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line bg-surface-2 text-ink-2 lg:hidden">
                 <span class="msym" style="font-size:20px;" x-text="open ? 'close' : 'menu'" aria-hidden="true">menu</span>
             </button>
         </div>
     </div>
 
     {{-- Navegação (mobile) --}}
-    <div x-show="open" x-cloak class="space-y-1 border-t border-line bg-surface px-4 py-3 sm:hidden">
+    <div x-show="open" x-cloak class="space-y-1 border-t border-line bg-surface px-4 py-3 lg:hidden">
         @foreach ($navItems as $item)
             @php $on = request()->routeIs($item['active']); @endphp
             <a href="{{ route($item['route']) }}" wire:navigate
