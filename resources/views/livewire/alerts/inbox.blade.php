@@ -136,7 +136,7 @@
                             @endif
                             @if ($st->isOpen())
                                 <button wire:click="promoteToCase({{ $event->id }})" title="Virar caso"
-                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-crit transition-colors hover:bg-crit-soft cursor-pointer">
+                                        class="flex h-9 w-9 items-center justify-center rounded-[9px] border border-line-strong bg-surface text-danger transition-colors hover:bg-surface-2 cursor-pointer">
                                     <x-ui.icon name="flag" :size="18" />
                                 </button>
                                 <button wire:click="beginDismiss({{ $event->id }})" title="Descartar"
