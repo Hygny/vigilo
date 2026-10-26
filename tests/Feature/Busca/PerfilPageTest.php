@@ -83,13 +83,14 @@ it('shows any company of the base with partners, PGFN debt and cadastral history
         ->assertSee('MARIA SOUZA ***456789**')       // CPF do MEI mascarado no título
         ->assertDontSee('12345678901')
         ->assertSee('PAO DA AURORA')
-        ->assertSee('1091102 — Padaria e confeitaria')
+        ->assertSee('1091-1/02 — Padaria e confeitaria')
+        ->assertSee('01001-000')
         ->assertSee('Sócio-Administrador')
         ->assertSee('1 inscrição · R$ 1.500,00')
         ->assertSee('1 ajuizada(s)')
         ->assertSee('Situação cadastral:')
         ->assertSee('INAPTA')
-        ->assertSee('registradas desde 2026-10');
+        ->assertSee('registradas desde 10/2026');
 });
 
 it('says "no PGFN debt" only when the PGFN was checked, and degrades otherwise', function () {

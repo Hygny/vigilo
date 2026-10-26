@@ -25,6 +25,16 @@ final readonly class HistoricoCadastral
         public array $eventos,
     ) {}
 
+    /** `desde` para exibição: "2026-10" → "10/2026". */
+    public function desdeMesAno(): ?string
+    {
+        if ($this->desde === null || preg_match('/^(\d{4})-(\d{2})$/', $this->desde, $m) !== 1) {
+            return $this->desde;
+        }
+
+        return $m[2].'/'.$m[1];
+    }
+
     /** Trocas de endereço nos últimos 12 meses (do próprio estabelecimento). */
     public function mudancasEndereco12m(): int
     {

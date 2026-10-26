@@ -54,7 +54,7 @@
                     @if ($portfolios->isEmpty())
                         <p class="text-[13px] text-ink-muted">Crie um portfólio primeiro, em <a href="{{ route('portfolios.index') }}" wire:navigate class="font-medium text-ink underline">Portfólios</a>.</p>
                     @else
-                        <select wire:model="portfolioId" class="rounded-btn border border-line bg-surface px-3 py-2 text-sm text-ink-2" aria-label="Portfólio">
+                        <select wire:model="portfolioId" class="rounded-btn border border-line bg-surface py-2 pl-3 pr-10 text-sm text-ink-2" aria-label="Portfólio">
                             <option value="">Escolha o portfólio…</option>
                             @foreach ($portfolios as $p)
                                 <option value="{{ $p->id }}">{{ $p->name }}</option>
@@ -73,8 +73,8 @@
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                     <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Situação cadastral</dt><dd class="mt-0.5 text-sm text-ink-2">{{ $empresa->situacao !== '' ? $empresa->situacao : '—' }} @if ($empresa->dataSituacao)<span class="text-ink-muted">({{ \Illuminate\Support\Carbon::parse($empresa->dataSituacao)->format('d/m/Y') }})</span>@endif</dd></div>
                     <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Abertura</dt><dd class="mt-0.5 text-sm text-ink-2">{{ $empresa->dataAbertura ? \Illuminate\Support\Carbon::parse($empresa->dataAbertura)->format('d/m/Y') : '—' }}</dd></div>
-                    <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">CNAE principal</dt><dd class="mt-0.5 text-sm text-ink-2">{{ collect([$empresa->cnaeCodigo, $empresa->cnaeDescricao])->filter()->implode(' — ') ?: '—' }}</dd></div>
-                    <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Endereço</dt><dd class="mt-0.5 text-sm text-ink-2">{{ collect([trim($end->tipoLogradouro.' '.$end->logradouro), $end->numero, $end->complemento, $end->bairro, collect([$end->municipio, $end->uf])->filter()->implode('/'), $end->cep])->filter()->implode(' · ') ?: '—' }}</dd></div>
+                    <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">CNAE principal</dt><dd class="mt-0.5 text-sm text-ink-2">{{ collect([$empresa->cnaeCodigo ? preg_replace('/^(\d{4})(\d)(\d{2})$/', '$1-$2/$3', $empresa->cnaeCodigo) : null, $empresa->cnaeDescricao])->filter()->implode(' — ') ?: '—' }}</dd></div>
+                    <div><dt class="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Endereço</dt><dd class="mt-0.5 text-sm text-ink-2">{{ collect([trim($end->tipoLogradouro.' '.$end->logradouro), $end->numero, $end->complemento, $end->bairro, collect([$end->municipio, $end->uf])->filter()->implode('/'), $end->cep ? preg_replace('/^(\d{5})(\d{3})$/', '$1-$2', $end->cep) : null])->filter()->implode(' · ') ?: '—' }}</dd></div>
                 </dl>
             </x-ui.card>
 
@@ -124,7 +124,7 @@
                         </div>
                     @endif
                     @if ($historico->eventos === [])
-                        <p class="text-sm text-ink-muted">Nenhuma mudança registrada{{ $historico->desde ? ' desde '.$historico->desde : '' }}.</p>
+                        <p class="text-sm text-ink-muted">Nenhuma mudança registrada até agora.</p>
                     @else
                         <ol class="space-y-3">
                             @foreach ($historico->eventos as $evento)
@@ -141,7 +141,7 @@
                             @endforeach
                         </ol>
                     @endif
-                    <p class="mt-3 text-[12px] text-ink-muted">Mudanças detectadas entre os dumps mensais da Receita{{ $historico->desde ? ', registradas desde '.$historico->desde : '' }}.</p>
+                    <p class="mt-3 text-[12px] text-ink-muted">Mudanças detectadas entre os dumps mensais da Receita{{ $historico->desde ? ', registradas desde '.$historico->desdeMesAno() : '' }}.</p>
                 @endif
             </x-ui.card>
         @endif

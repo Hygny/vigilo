@@ -115,7 +115,7 @@
     @if ($historico !== null)
         <h2>Histórico cadastral (Receita)</h2>
         @if ($historico->eventos === [])
-            <p class="muted">Nenhuma mudança cadastral registrada{{ $historico->desde ? ' desde '.$historico->desde : '' }}.</p>
+            <p class="muted">Nenhuma mudança cadastral registrada até agora.</p>
         @else
             <ul>
                 @foreach ($historico->eventos as $evento)
@@ -134,7 +134,7 @@
                 <p style="color:#92400E; font-size:10px;">Atenção: {{ $historico->mudancasEndereco12m() }} mudanças de endereço nos últimos 12 meses.</p>
             @endif
         @endif
-        <p class="muted" style="font-size:9px;">Mudanças detectadas entre os dumps mensais da Receita Federal{{ $historico->desde ? ', registradas desde '.$historico->desde : '' }}.</p>
+        <p class="muted" style="font-size:9px;">Mudanças detectadas entre os dumps mensais da Receita Federal{{ $historico->desde ? ', registradas desde '.$historico->desdeMesAno() : '' }}.</p>
     @endif
 
     @if ($assessment->listaSuja)

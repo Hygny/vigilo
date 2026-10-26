@@ -15,7 +15,7 @@
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-3 text-[13px]">
                 <label class="flex items-center gap-2 text-ink-muted">UF
-                    <select wire:model.live="uf" class="rounded-btn border border-line bg-surface px-2 py-1 text-ink-2">
+                    <select wire:model.live="uf" class="rounded-btn border border-line bg-surface py-1 pl-2.5 pr-9 text-ink-2">
                         <option value="">Todas</option>
                         @foreach ($ufs as $sigla)
                             <option value="{{ $sigla }}">{{ $sigla }}</option>
@@ -23,7 +23,7 @@
                     </select>
                 </label>
                 <label class="flex items-center gap-2 text-ink-muted">Situação
-                    <select wire:model.live="situacao" class="rounded-btn border border-line bg-surface px-2 py-1 text-ink-2">
+                    <select wire:model.live="situacao" class="rounded-btn border border-line bg-surface py-1 pl-2.5 pr-9 text-ink-2">
                         <option value="">Todas</option>
                         @foreach ($situacoes as $s)
                             <option value="{{ $s }}">{{ $s }}</option>
@@ -58,8 +58,8 @@
                     <ul class="divide-y divide-line">
                         @foreach ($resultados->itens as $r)
                             <li>
-                                <a href="{{ route('empresas.perfil', $r->cnpj) }}" wire:navigate class="-mx-2 flex flex-wrap items-start justify-between gap-3 rounded-btn px-2 py-3 hover:bg-surface-2">
-                                    <div class="min-w-0">
+                                <a href="{{ route('empresas.perfil', $r->cnpj) }}" wire:navigate class="-mx-2 flex items-start justify-between gap-3 rounded-btn px-2 py-3 hover:bg-surface-2">
+                                    <div class="min-w-0 flex-1">
                                         <p class="font-medium text-ink">{{ $r->razaoSocial ?? $r->nomeFantasia ?? 'Empresa sem nome' }}</p>
                                         @if ($r->nomeFantasia && $r->nomeFantasia !== $r->razaoSocial)
                                             <p class="text-[13px] text-ink-2">{{ $r->nomeFantasia }}</p>
@@ -71,7 +71,7 @@
                                         </p>
                                     </div>
                                     @if ($r->situacao !== '')
-                                        <x-ui.badge :tone="$r->situacao === 'ATIVA' ? 'ok' : 'crit'">{{ $r->situacao }}</x-ui.badge>
+                                        <x-ui.badge :tone="$r->situacao === 'ATIVA' ? 'ok' : 'crit'" class="shrink-0">{{ $r->situacao }}</x-ui.badge>
                                     @endif
                                 </a>
                             </li>
