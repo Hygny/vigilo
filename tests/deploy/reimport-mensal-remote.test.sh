@@ -119,6 +119,11 @@ setup 74 74 0 0 3
 run
 if has -- "--pgfn=fail" && has "PGFN não executada: VM sem espaço"; then ok "$t"; else ko "$t"; fi
 
+t="PGFN: CDN só mostra trimestre mais antigo (saída 5): mensagem própria"
+setup 74 74 0 0 5
+run
+if has -- "--pgfn=fail" && has "trimestre mais antigo que o em uso"; then ok "$t"; else ko "$t"; fi
+
 t="reimport abortado: a PGFN não roda e o passo não é registrado"
 setup 74 74 1
 run

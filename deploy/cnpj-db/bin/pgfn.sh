@@ -18,7 +18,11 @@
 #   pgfn.sh 2026_trimestre_03    # trimestre fixo
 #   pgfn.sh latest --force       # recarrega mesmo se já carregado
 #
-# Saída 3 = sem espaço em /data.
+# "Já carregado" = é o trimestre EM USO (a última troca). Trimestre fixo pode
+# ser mais antigo que o em uso (decisão do operador); o automático, nunca.
+#
+# Saída 3 = sem espaço em /data; 5 = CDN só mostra trimestre mais antigo que o
+# em uso.
 set -euo pipefail
 
 DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
@@ -66,16 +70,32 @@ limpar_carga() {
 }
 trap limpar_carga EXIT
 
-# tipo interno -> nome do arquivo no CDN
+# tipo interno -> nome(s) do arquivo no CDN, o 1º publicado vale. Em out/2026 a
+# PGFN renomeou o não-previdenciário para "Sistema_SIDA" (mesmo layout) — o nome
+# antigo dava 404 e a detecção caía no trimestre anterior.
 declare -A SISTEMA=(
-    [nao-previdenciario]=Dados_abertos_Nao_Previdenciario
+    [nao-previdenciario]="Dados_abertos_Sistema_SIDA Dados_abertos_Nao_Previdenciario"
     [previdenciario]=Dados_abertos_Previdenciario
     [fgts]=Dados_abertos_FGTS
 )
 
+# URL do arquivo de um tipo num trimestre (vazio = não publicado).
+arquivo_url() {
+    local nome
+    for nome in ${SISTEMA[$2]}; do
+        if curl -fsIL --max-time 60 "$BASE_URL/$1/$nome.zip" >/dev/null 2>&1; then
+            echo "$BASE_URL/$1/$nome.zip"
+            return
+        fi
+    done
+}
+
 # Um trimestre só está "pronto" quando o não-previdenciário (o maior, último a
 # subir) já foi publicado.
-quarter_exists() { curl -fsIL --max-time 60 "$BASE_URL/$1/Dados_abertos_Nao_Previdenciario.zip" >/dev/null 2>&1; }
+quarter_exists() { [ -n "$(arquivo_url "$1" nao-previdenciario)" ]; }
+
+# Trimestre EM USO = o da última troca (é o que o app mostra como referência).
+EM_USO="$(psql_cnpj -tAc "SELECT trimestre FROM pgfn_cargas ORDER BY carregado_em DESC LIMIT 1")"
 
 if [ "$QUARTER" = latest ]; then
     Y="$(date +%Y)"
@@ -86,10 +106,15 @@ if [ "$QUARTER" = latest ]; then
         done
     done
     [ -n "$QUARTER" ] || die "nenhum trimestre da PGFN encontrado no CDN"
+    # O automático nunca volta no tempo: o CDN "mostrar" um trimestre mais velho
+    # que o em uso é arquivo renomeado/fora do ar — falha visível, base intacta.
+    if [ -n "$EM_USO" ] && [[ "$QUARTER" < "$EM_USO" ]]; then
+        die "CDN da PGFN só mostra ${QUARTER}, mais antigo que o em uso (${EM_USO}) — arquivo renomeado ou fora do ar? Nada trocado" 5
+    fi
 fi
 [[ "$QUARTER" =~ ^[0-9]{4}_trimestre_0[1-4]$ ]] || die "trimestre inválido: $QUARTER"
 
-if [ "$FORCE" = 0 ] && [ "$(psql_cnpj -tAc "SELECT 1 FROM pgfn_cargas WHERE trimestre = '$QUARTER'")" = 1 ]; then
+if [ "$FORCE" = 0 ] && [ "$QUARTER" = "$EM_USO" ]; then
     log "PGFN ${QUARTER} já carregada — nada a fazer"
     exit 0
 fi
@@ -105,7 +130,9 @@ ARGS=()
 for tipo in nao-previdenciario previdenciario fgts; do
     f="$WORK/$tipo.zip"
     if [ ! -s "$f" ]; then
-        curl -fL --retry 3 --retry-delay 30 --max-time 3600 -sS -o "$f.part" "$BASE_URL/$QUARTER/${SISTEMA[$tipo]}.zip"
+        url="$(arquivo_url "$QUARTER" "$tipo")"
+        [ -n "$url" ] || die "PGFN ${QUARTER}: arquivo ${tipo} não publicado no CDN (${SISTEMA[$tipo]})"
+        curl -fL --retry 3 --retry-delay 30 --max-time 3600 -sS -o "$f.part" "$url"
         mv "$f.part" "$f"
     fi
     ARGS+=("$tipo=$f")

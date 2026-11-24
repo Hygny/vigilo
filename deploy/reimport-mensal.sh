@@ -134,6 +134,8 @@ run_pgfn() {
     PGFN=fail
     if [ "$rc" = 3 ]; then
         MSG="${MSG:+$MSG; }carga da PGFN não executada: VM sem espaço livre em /data"
+    elif [ "$rc" = 5 ]; then
+        MSG="${MSG:+$MSG; }PGFN: o CDN só mostra trimestre mais antigo que o em uso (arquivo renomeado?) — base mantida"
     else
         MSG="${MSG:+$MSG; }carga da PGFN falhou (código ${rc}) — a anterior segue em uso"
     fi
