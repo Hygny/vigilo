@@ -103,6 +103,8 @@ echo "==> pastas"
 mkdir -p /data/pgdata /data/dump /data/certs /data/pgfn
 chown "$PG_UID:$PG_UID" /data/pgdata
 chown "$OWNER:$OWNER" /data/dump /data/pgfn # pgfn: zips da carga trimestral (bin/pgfn.sh)
+# Cópia fora do VPS dos backups diários do MySQL do Vigilo (bin/guardar-backup.sh).
+install -d -o "$OWNER" -g "$OWNER" -m 700 /data/backups /data/backups/vigilo
 
 echo "==> TLS (CA própria + certificado do servidor com o IP público no SAN)"
 cd /data/certs

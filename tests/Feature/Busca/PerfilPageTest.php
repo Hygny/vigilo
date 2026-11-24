@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Empresas\Perfil;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
@@ -9,6 +10,7 @@ use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -110,7 +112,8 @@ it('says "no PGFN debt" only when the PGFN was checked, and degrades otherwise',
         ->assertSee('Nenhuma inscrição em dívida ativa');
 });
 
-it('adds the company to a portfolio of the organization', function () {
+it('adds the company to a portfolio of the organization and queues its first check', function () {
+    Queue::fake();
     seedPerfilBase();
     $org = Organization::factory()->create();
     $portfolio = Portfolio::factory()->for($org)->create(['name' => 'Fornecedores']);
@@ -119,12 +122,19 @@ it('adds the company to a portfolio of the organization', function () {
         ->set('portfolioId', $portfolio->id)
         ->call('adicionar')
         ->assertHasNoErrors()
-        ->assertSee('Ver na carteira');
+        ->assertSee('Ver na carteira')
+        ->assertSee('a primeira checagem já está na fila');
 
     expect($portfolio->monitoredCompanies()->where('cnpj', '11222333000181')->exists())->toBeTrue();
+    Queue::assertPushed(RefreshMonitoredCompanyJob::class, 1);
+    Queue::assertPushed(
+        RefreshMonitoredCompanyJob::class,
+        fn (RefreshMonitoredCompanyJob $job): bool => $job->company->cnpj === '11222333000181' && ! $job->rebaseline,
+    );
 });
 
 it('does not add to a portfolio of another organization', function () {
+    Queue::fake();
     seedPerfilBase();
     $alheio = Portfolio::factory()->for(Organization::factory())->create();
 
@@ -134,9 +144,11 @@ it('does not add to a portfolio of another organization', function () {
         ->assertHasErrors('portfolioId');
 
     expect(MonitoredCompany::query()->count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 it('respects the plan quota when adding from the profile', function () {
+    Queue::fake();
     seedPerfilBase();
     config()->set('plans.free.max_companies', 1); // org nova = plano Free
     $org = Organization::factory()->create();
@@ -149,6 +161,7 @@ it('respects the plan quota when adding from the profile', function () {
         ->assertHasErrors('portfolioId');
 
     expect($portfolio->monitoredCompanies()->count())->toBe(1);
+    Queue::assertNothingPushed();
 });
 
 it('links to the portfolio company when the organization already monitors it', function () {

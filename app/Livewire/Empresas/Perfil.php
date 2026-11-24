@@ -76,7 +76,7 @@ class Perfil extends Component
             return;
         }
 
-        session()->flash('status', "Empresa adicionada ao portfólio {$portfolio->name}.");
+        session()->flash('status', "Empresa adicionada ao portfólio {$portfolio->name} — a primeira checagem já está na fila.");
     }
 
     public function render(EmpresaLookup $empresas, HistoricoLookup $historicos): View

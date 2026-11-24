@@ -152,6 +152,37 @@ cd ~/apps/vigilo
 
 ---
 
+## Backup do banco (MySQL) e restauração
+
+**Rotina** — cron do VPS, todo dia 03:00: `deploy/backup-db.sh` (log em `~/apps/vigilo/backup-db.log`).
+
+- `mysqldump --all-databases --single-transaction` do `data-mysql-1` (hoje só a base `vigilo`), validado (gzip íntegro + `-- Dump completed`) antes de virar backup.
+- **Local:** `~/backups/db-AAAA-MM-DD.sql.gz` — 30 mais recentes + o 1º de cada um dos 12 últimos meses.
+- **Fora do VPS:** cópia na VM da base CNPJ, `/data/backups/vigilo/` — 90 mais recentes + o 1º de cada um dos 24 últimos meses. Vai pelo verbo `guardar-backup` do `gateway.sh` (chave `~/.ssh/cnpj_db`), que só **escreve**: aceita nome com data real e não futura, valida o arquivo e **nunca sobrescreve** um backup guardado. O VPS confere o sha256.
+- A rotação só toca `db-AAAA-MM-DD.sql.gz` no próprio diretório — `~/backups/solradar/` (outro app) nunca é tocado.
+
+**Conferir:** `tail -5 ~/apps/vigilo/backup-db.log` → a rodada do dia termina em `cópia fora do VPS ok`. Na VM: `ls -lt /data/backups/vigilo | head`.
+
+**Reenviar à VM** os backups locais (ex.: a VM ficou fora uns dias): `bash ~/apps/vigilo/src/deploy/backup-db.sh --enviar-existentes` (o que a VM já tem igual é ignorado).
+
+**Restaurar** (no VPS — derruba as escritas antes):
+
+```bash
+cd ~/apps/vigilo
+docker compose stop queue scheduler
+zcat ~/backups/db-AAAA-MM-DD.sql.gz \
+  | docker exec -i data-mysql-1 sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'
+docker compose start queue scheduler
+```
+
+O dump é `--all-databases`: restaura também o schema `mysql` (usuários/grants) do dia do backup.
+
+**Trazer um backup da VM** (o verbo do gateway não lê): do PC do operador, com a chave pessoal da VM —
+`scp ubuntu@159.112.186.240:/data/backups/vigilo/db-AAAA-MM-DD.sql.gz .` e depois
+`scp db-AAAA-MM-DD.sql.gz lucas@148.230.77.119:~/backups/`.
+
+---
+
 ## Mapa da instalação (para referência)
 
 - **VPS:** Hostinger Ubuntu, `lucas@148.230.77.119`.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions;
 
 use App\Actions\Exceptions\CompanyNotAdded;
+use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Põe um CNPJ para monitorar num portfólio respeitando a quota do plano. Fonte
  * única do "adicionar empresa" (tela do portfólio e perfil da empresa vindo da
- * busca). Autorização é de quem chama.
+ * busca). Autorização é de quem chama. Já enfileira a 1ª checagem da empresa.
  */
 final class AddCompanyToPortfolio
 {
@@ -51,6 +52,11 @@ final class AddCompanyToPortfolio
         if ($company === null) {
             throw new CompanyNotAdded("Limite do plano {$organization->plan->label()} atingido ({$organization->maxMonitoredCompanies()} CNPJs). Faça upgrade para adicionar mais.");
         }
+
+        // 1ª checagem já na entrada (baseline + achado de due diligence, se a
+        // empresa já entra baixada/inapta ou na Lista Suja), em vez de esperar a
+        // próxima rodada da carteira — que pode ser só no próximo dump da Receita.
+        RefreshMonitoredCompanyJob::dispatch($company);
 
         return $company;
     }

@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Models\Portfolio;
 use App\Services\CompanyImporter;
+use Illuminate\Support\Facades\Queue;
+
+beforeEach(fn () => Queue::fake());
 
 it('imports valid rows and rejects empties, invalids and duplicates', function () {
     $portfolio = Portfolio::factory()->create();
@@ -33,6 +37,13 @@ it('imports valid rows and rejects empties, invalids and duplicates', function (
     ]);
 
     expect($portfolio->monitoredCompanies()->count())->toBe(2);
+
+    // 1ª checagem só da empresa criada (a pré-existente e as rejeitadas, não).
+    Queue::assertPushed(RefreshMonitoredCompanyJob::class, 1);
+    Queue::assertPushed(
+        RefreshMonitoredCompanyJob::class,
+        fn (RefreshMonitoredCompanyJob $job): bool => $job->company->cnpj === '11444777000161' && ! $job->rebaseline,
+    );
 });
 
 it('normalizes CNPJs with dropped leading zeros before storing', function () {

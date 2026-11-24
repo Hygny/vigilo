@@ -26,23 +26,32 @@ function ownedPortfolio(): array
     return [$user, $portfolio];
 }
 
-it('adds a company by CNPJ', function () {
+it('adds a company by CNPJ and queues its first check', function () {
+    Queue::fake();
     [$user, $portfolio] = ownedPortfolio();
 
     Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
         ->set('cnpj', '11.222.333/0001-81')
         ->set('label', 'Fornecedor X')
         ->call('addCompany')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertSee('a primeira checagem já está na fila');
 
     $this->assertDatabaseHas('monitored_companies', [
         'portfolio_id' => $portfolio->id,
         'cnpj' => '11222333000181',
         'label' => 'Fornecedor X',
     ]);
+
+    Queue::assertPushed(RefreshMonitoredCompanyJob::class, 1);
+    Queue::assertPushed(
+        RefreshMonitoredCompanyJob::class,
+        fn (RefreshMonitoredCompanyJob $job): bool => $job->company->cnpj === '11222333000181' && ! $job->rebaseline,
+    );
 });
 
 it('rejects an invalid CNPJ when adding a company', function () {
+    Queue::fake();
     [$user, $portfolio] = ownedPortfolio();
 
     Livewire::actingAs($user)->test(Show::class, ['portfolio' => $portfolio])
@@ -51,9 +60,11 @@ it('rejects an invalid CNPJ when adding a company', function () {
         ->assertHasErrors('cnpj');
 
     expect($portfolio->monitoredCompanies()->count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 it('imports companies from a CSV upload and reports the outcome', function () {
+    Queue::fake();
     [$user, $portfolio] = ownedPortfolio();
 
     $file = UploadedFile::fake()->createWithContent(
@@ -65,7 +76,8 @@ it('imports companies from a CSV upload and reports the outcome', function () {
         ->set('csv', $file)
         ->call('import')
         ->assertHasNoErrors()
-        ->assertViewIs('livewire.portfolios.show');
+        ->assertViewIs('livewire.portfolios.show')
+        ->assertSee('A primeira checagem das novas já está na fila.');
 
     $this->assertDatabaseHas('monitored_companies', [
         'portfolio_id' => $portfolio->id,
@@ -73,6 +85,7 @@ it('imports companies from a CSV upload and reports the outcome', function () {
     ]);
 
     expect($portfolio->monitoredCompanies()->count())->toBe(1);
+    Queue::assertPushed(RefreshMonitoredCompanyJob::class, 1); // só a linha válida
 });
 
 it('rejects a CSV with more rows than the direct-import cap', function () {
@@ -105,6 +118,8 @@ it('caps the rejected list sent to the screen but keeps the true total', functio
 
     expect($report['rejected_total'])->toBe(150)
         ->and($report['rejected'])->toHaveCount(100); // teto de exibição
+
+    $component->assertDontSee('primeira checagem'); // nada entrou, nada na fila
 });
 
 it('queues a refresh for a single company', function () {

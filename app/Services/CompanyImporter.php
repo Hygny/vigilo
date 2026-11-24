@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTO\ImportReport;
+use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Models\Portfolio;
 use App\Support\Cnpj;
 use Generator;
@@ -15,8 +16,9 @@ use Illuminate\Database\UniqueConstraintViolationException;
  *
  * Each row is normalized and validated (mod-11), de-duplicated against both the
  * file itself and the companies already in the portfolio, and either created or
- * rejected with a reason. Nothing here does authorization — the caller must have
- * verified the user owns the portfolio.
+ * rejected with a reason. Each created company gets its first refresh queued.
+ * Nothing here does authorization — the caller must have verified the user owns
+ * the portfolio.
  */
 final class CompanyImporter
 {
@@ -94,11 +96,15 @@ final class CompanyImporter
             $label = trim((string) ($row['label'] ?? ''));
 
             try {
-                $portfolio->monitoredCompanies()->create([
+                $company = $portfolio->monitoredCompanies()->create([
                     'cnpj' => $normalized,
                     'label' => $label !== '' ? $label : null,
                 ]);
                 $imported[] = $normalized;
+
+                // 1ª checagem já na entrada, como no "adicionar" avulso
+                // (AddCompanyToPortfolio) — não espera a próxima rodada.
+                RefreshMonitoredCompanyJob::dispatch($company);
             } catch (UniqueConstraintViolationException) {
                 // Corrida: outro import inseriu o mesmo CNPJ neste portfólio.
                 $rejected[] = ['line' => $line, 'value' => $normalized, 'reason' => self::REASON_DUPLICATE];

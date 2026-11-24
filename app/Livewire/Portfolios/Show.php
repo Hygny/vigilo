@@ -224,7 +224,7 @@ class Show extends Component
         }
 
         $this->reset('cnpj', 'label');
-        session()->flash('status', 'Empresa adicionada ao monitoramento.');
+        session()->flash('status', 'Empresa adicionada ao monitoramento — a primeira checagem já está na fila.');
     }
 
     public function import(CompanyImporter $importer): void
@@ -267,6 +267,10 @@ class Show extends Component
 
         if ($blockedByPlan > 0) {
             $message .= " {$blockedByPlan} não entraram por limite do plano — faça upgrade.";
+        }
+
+        if ($report->importedCount() > 0) {
+            $message .= ' A primeira checagem das novas já está na fila.';
         }
 
         session()->flash('status', $message);

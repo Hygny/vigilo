@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\Plan;
+use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Admin\Organizations\Show as OrgShow;
 use App\Livewire\Portfolios\Show as PortfolioShow;
 use App\Models\MonitoredCompany;
@@ -10,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 it('reads plan limits and labels', function () {
@@ -35,6 +37,7 @@ it('counts monitored companies org-wide and computes remaining slots', function 
 });
 
 it('blocks adding a company when the plan quota is reached', function () {
+    Queue::fake();
     config()->set('plans.free.max_companies', 2);
 
     $org = Organization::factory()->create();
@@ -48,9 +51,11 @@ it('blocks adding a company when the plan quota is reached', function () {
         ->assertHasErrors('cnpj');
 
     expect($portfolio->monitoredCompanies()->count())->toBe(2);
+    Queue::assertNothingPushed(); // sem vaga, sem empresa nova, sem checagem
 });
 
 it('allows adding a company while under the plan quota', function () {
+    Queue::fake();
     config()->set('plans.free.max_companies', 5);
 
     $org = Organization::factory()->create();
@@ -66,6 +71,7 @@ it('allows adding a company while under the plan quota', function () {
 });
 
 it('caps a CSV import at the remaining plan slots', function () {
+    Queue::fake();
     config()->set('plans.free.max_companies', 2);
 
     $org = Organization::factory()->create();
@@ -86,6 +92,7 @@ it('caps a CSV import at the remaining plan slots', function () {
     // Só 1 vaga: importa 1 e para no teto (as outras 2 rejeitadas por limite).
     expect($portfolio->monitoredCompanies()->count())->toBe(2)
         ->and($org->fresh()->monitoredCompaniesCount())->toBe(2);
+    Queue::assertPushed(RefreshMonitoredCompanyJob::class, 1); // só a importada
 });
 
 it('lets the super-admin change an organization plan and raise the quota', function () {
