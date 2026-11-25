@@ -13,13 +13,13 @@ use App\DTO\Graph\Participacao;
 use App\Support\AddressNumber;
 use App\Support\Cnpj;
 use App\Support\DataReceita;
+use App\Support\Endereco;
 use App\Support\RazaoSocial;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Monta o grafo societário de uma empresa (Camada 1) a partir da base CNPJ
@@ -206,16 +206,12 @@ final class OwnershipGraphService
      */
     private function addAddressNeighbors(ConnectionInterface $db, string $basico, ?string $cep, ?string $numero, ?string $complemento, string $centerId, array &$nodes, array &$edges): void
     {
-        $cepDigits = preg_replace('/\D/', '', (string) $cep) ?? '';
+        // CEP vazio/zerado ou "especial" (grande usuário / caixa postal / unidade
+        // dos Correios = um edifício ou entidade com CEP próprio): co-ocupantes ali
+        // (condomínio, agência de banco, lojas) NÃO são vínculo.
+        $cepDigits = Endereco::cepUtil($cep);
 
-        if ($cepDigits === '' || ltrim($cepDigits, '0') === '') {
-            return;
-        }
-
-        // CEP "especial" (grande usuário / caixa postal / unidade dos Correios) =
-        // um edifício ou entidade com CEP próprio, não um logradouro compartilhável.
-        // Co-ocupantes ali (condomínio, agência de banco, lojas) NÃO são vínculo.
-        if ($this->cepEspecial($cepDigits)) {
+        if ($cepDigits === null) {
             return;
         }
 
@@ -223,11 +219,11 @@ final class OwnershipGraphService
 
         // Número ausente/genérico (vazio, "S/N", "0") não identifica um endereço:
         // casaria todos os sem-número do CEP → ruído, não vínculo.
-        if ($this->numeroInespecifico($alvoNumero)) {
+        if (Endereco::numeroInespecifico($alvoNumero)) {
             return;
         }
 
-        $alvoComplemento = $this->normalizeComplemento($complemento);
+        $alvoComplemento = Endereco::complemento($complemento);
 
         $rows = $db->table('estabelecimentos as ea')
             ->leftJoin('empresas as empa', 'ea.cnpj_basico', '=', 'empa.cnpj_basico')
@@ -253,7 +249,7 @@ final class OwnershipGraphService
             // mesmo edifício → NÃO é vínculo (advogado e instituto no mesmo prédio,
             // salas distintas). Só exclui quando AMBOS têm complemento e diferem;
             // com complemento ausente, o teto de ocupação abaixo decide.
-            $compl = $this->normalizeComplemento($this->str($r['complemento'] ?? null));
+            $compl = Endereco::complemento($this->str($r['complemento'] ?? null));
             if ($alvoComplemento !== '' && $compl !== '' && $compl !== $alvoComplemento) {
                 continue;
             }
@@ -299,38 +295,6 @@ final class OwnershipGraphService
                 $added++;
             }
         }
-    }
-
-    /**
-     * CEP de 8 dígitos NNNNN-SSS cujo sufixo (3 últimos) é >= 900: "grande
-     * usuário" (edifício/entidade com CEP próprio), caixa postal ou unidade
-     * operacional dos Correios. Não é um logradouro que empresas distintas
-     * "compartilham" por acaso — é um único endereço-entidade.
-     */
-    private function cepEspecial(string $cepDigits): bool
-    {
-        return strlen($cepDigits) === 8 && (int) substr($cepDigits, 5, 3) >= 900;
-    }
-
-    /** Número sem dígitos úteis (vazio, "S/N", "0", "00") — não identifica endereço. */
-    private function numeroInespecifico(string $numeroNormalizado): bool
-    {
-        $digits = preg_replace('/\D/', '', $numeroNormalizado) ?? '';
-
-        return $digits === '' || ltrim($digits, '0') === '';
-    }
-
-    /**
-     * Normaliza o complemento (sala/andar) para comparação: translitera acento
-     * (TÉRREO → TERREO), caixa alta, só alfanumérico, e colapsa zeros à esquerda
-     * dos números (SALA 02 ≡ SALA 2) — para duas grafias da MESMA unidade não
-     * serem tratadas como salas diferentes (e derrubarem um vínculo legítimo).
-     */
-    private function normalizeComplemento(?string $value): string
-    {
-        $alnum = preg_replace('/[^A-Z0-9]/', '', mb_strtoupper(Str::ascii(trim((string) $value)))) ?? '';
-
-        return preg_replace_callback('/\d+/', static fn (array $m): string => ltrim($m[0], '0') ?: '0', $alnum) ?? $alnum;
     }
 
     /**

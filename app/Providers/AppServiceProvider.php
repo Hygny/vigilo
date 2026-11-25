@@ -9,6 +9,7 @@ use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Admin\StatusRotinas;
 use App\Services\Asaas\AsaasClient;
+use App\Services\Bens\IndiciosEsvaziamento;
 use App\Services\Contratos\ContratosPublicos;
 use App\Services\Graph\OwnershipGraphService;
 use App\Services\Risco\DirtyListLookup;
@@ -95,6 +96,14 @@ class AppServiceProvider extends ServiceProvider
             cacheMinutos: (int) config('risco.contratos.cache_minutos', 1440),
             falhaMinutos: (int) config('risco.contratos.falha_minutos', 5),
             prazoSegundos: (int) config('risco.contratos.prazo_segundos', 20),
+        ));
+
+        $this->app->singleton(IndiciosEsvaziamento::class, fn (): IndiciosEsvaziamento => new IndiciosEsvaziamento(
+            pgfn: $this->app->make(PgfnLookup::class),
+            grafo: $this->app->make(OwnershipGraphService::class),
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            timeoutMs: (int) config('bens.esvaziamento.timeout_ms', 8000),
+            cacheMinutos: (int) config('bens.esvaziamento.cache_minutos', 60),
         ));
 
         $this->app->singleton(RiscoAoRedor::class, fn (): RiscoAoRedor => new RiscoAoRedor(

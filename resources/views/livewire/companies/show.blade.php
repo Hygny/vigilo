@@ -65,6 +65,7 @@
         <livewire:empresas.contratos-publicos :cnpj="$company->cnpj" lazy />
 
         <livewire:empresas.bens-recebiveis :cnpj="$company->cnpj" lazy />
+        <livewire:empresas.indicios-esvaziamento :cnpj="$company->cnpj" lazy />
 
         {{-- Timeline de mudanças --}}
         <x-ui.card>

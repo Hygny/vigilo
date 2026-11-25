@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use App\DTO\Contratos\ContratoPublico;
 use App\DTO\Contratos\ContratosReport;
+use App\DTO\Esvaziamento\EsvaziamentoReport;
+use App\DTO\Esvaziamento\MovimentoSocio;
+use App\DTO\Esvaziamento\PossivelSucessora;
+use App\DTO\Esvaziamento\ReducaoCapital;
+use App\DTO\Graph\Participacao;
 use App\DTO\Risco\EmpresaLigadaRisco;
 use App\DTO\Risco\RiscoAoRedorReport;
 use App\DTO\Risco\RiscoReport;
@@ -151,6 +156,11 @@ return [
         ContratoPublico::class,
         RiscoAoRedorReport::class,
         EmpresaLigadaRisco::class,
+        EsvaziamentoReport::class,
+        PossivelSucessora::class,
+        MovimentoSocio::class,
+        ReducaoCapital::class,
+        Participacao::class,
     ],
 
 ];

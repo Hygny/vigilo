@@ -77,6 +77,9 @@
             {{-- Bens e recebíveis (recuperação de crédito): lazy --}}
             <livewire:empresas.bens-recebiveis :cnpj="$cnpj" lazy :key="'bens-'.$cnpj" />
 
+            {{-- Indícios de esvaziamento e sucessão (o que mudou depois da dívida): lazy --}}
+            <livewire:empresas.indicios-esvaziamento :cnpj="$cnpj" lazy :key="'esvaziamento-'.$cnpj" />
+
             {{-- Dados cadastrais --}}
             <x-ui.card class="p-[22px]">
                 <div class="mb-4 flex items-center gap-2"><x-ui.icon name="description" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Dados cadastrais (Receita Federal)</h2></div>

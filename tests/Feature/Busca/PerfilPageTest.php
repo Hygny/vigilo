@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Empresas\BensRecebiveis;
 use App\Livewire\Empresas\ContratosPublicos;
+use App\Livewire\Empresas\IndiciosEsvaziamento;
 use App\Livewire\Empresas\Perfil;
 use App\Livewire\Empresas\PerfilEstrutura;
 use App\Livewire\Empresas\RiscoPerfil;
@@ -362,4 +363,11 @@ it('mounts the assets & receivables card lazily on the public profile', function
 
     Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
         ->assertSeeLivewire(BensRecebiveis::class);
+});
+
+it('mounts the asset-stripping signals card lazily on the public profile', function () {
+    seedPerfilBase();
+
+    Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
+        ->assertSeeLivewire(IndiciosEsvaziamento::class);
 });

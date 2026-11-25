@@ -30,4 +30,16 @@ return [
 
     ],
 
+    /*
+    | Indícios de esvaziamento e sucessão: o que mudou em volta da devedora
+    | depois do marco da dívida (1ª inscrição na PGFN ou data informada).
+    */
+    'esvaziamento' => [
+        // statement_timeout das varreduras na base CNPJ (endereço, empresas dos sócios)
+        'timeout_ms' => (int) env('ESVAZIAMENTO_TIMEOUT_MS', 8000),
+
+        // Cache do relatório completo (a base muda por mês; 0 desliga)
+        'cache_minutos' => (int) env('ESVAZIAMENTO_CACHE_MINUTOS', 60),
+    ],
+
 ];

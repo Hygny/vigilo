@@ -91,6 +91,28 @@ final class PgfnLookup
     }
 
     /**
+     * Data (AAAA-MM-DD) da 1ª inscrição em dívida ativa da empresa (pela raiz) —
+     * o "marco" dos indícios de esvaziamento —, ou null sem inscrição datada.
+     *
+     * @throws QueryException base CNPJ indisponível
+     */
+    public function primeiraInscricao(string $cnpj): ?string
+    {
+        $basico = substr(preg_replace('/\D/', '', $cnpj) ?? '', 0, 8);
+
+        if (strlen($basico) !== 8) {
+            return null;
+        }
+
+        $data = DB::connection($this->connection)
+            ->table('pgfn_dividas')
+            ->where('cnpj_basico', $basico)
+            ->min('data_inscricao');
+
+        return is_string($data) && preg_match('/^\d{4}-\d{2}-\d{2}/', $data) === 1 ? substr($data, 0, 10) : null;
+    }
+
+    /**
      * Trimestre da PGFN carregado na base (ex.: "2026_trimestre_03"), ou null se
      * nenhuma carga foi feita.
      *
