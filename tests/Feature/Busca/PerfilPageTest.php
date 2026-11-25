@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Empresas\Perfil;
+use App\Livewire\Empresas\RiscoPerfil;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -312,4 +313,12 @@ it('says "mostrando N de M" when the participations pass the list limit', functi
         ->assertOk()
         ->assertSee('sócia de 2 empresa(s)')
         ->assertSee('Mostrando 1 de 2 (ativas primeiro)');
+});
+
+it('mounts the risk card lazily on the public profile', function () {
+    seedPerfilBase();
+    $user = User::factory()->for(Organization::factory())->create();
+
+    Livewire::actingAs($user)->test(Perfil::class, ['cnpj' => '11222333000181'])
+        ->assertSeeLivewire(RiscoPerfil::class);
 });

@@ -68,6 +68,9 @@
                 </form>
             @endunless
 
+            {{-- Risco (semáforo + sanções da cópia local da CGU + risco ao redor): lazy --}}
+            <livewire:empresas.risco-perfil :cnpj="$cnpj" :situacao="$empresa->situacao" lazy :key="'risco-'.$cnpj" />
+
             {{-- Dados cadastrais --}}
             <x-ui.card class="p-[22px]">
                 <div class="mb-4 flex items-center gap-2"><x-ui.icon name="description" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Dados cadastrais (Receita Federal)</h2></div>

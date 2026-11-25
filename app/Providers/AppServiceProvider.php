@@ -9,9 +9,12 @@ use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Graph\OwnershipGraphService;
+use App\Services\Risco\DirtyListLookup;
 use App\Services\Risco\PgfnLookup;
 use App\Services\Risco\PortalTransparenciaClient;
+use App\Services\Risco\RiscoAoRedor;
 use App\Services\Risco\RiscoService;
+use App\Services\Risco\SancoesLocais;
 use App\Services\Vigilancia\BuscaEmpresas;
 use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
@@ -76,6 +79,14 @@ class AppServiceProvider extends ServiceProvider
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
             candidatos: max(1, (int) config('cnpj.busca.candidatos', 200)),
             timeoutMs: (int) config('cnpj.busca.timeout_ms', 5000),
+        ));
+
+        $this->app->singleton(RiscoAoRedor::class, fn (): RiscoAoRedor => new RiscoAoRedor(
+            grafo: $this->app->make(OwnershipGraphService::class),
+            pgfn: $this->app->make(PgfnLookup::class),
+            sancoes: $this->app->make(SancoesLocais::class),
+            listaSuja: $this->app->make(DirtyListLookup::class),
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
         ));
 
         $this->app->singleton(DetalhesEmpresaLookup::class, fn (): DetalhesEmpresaLookup => new DetalhesEmpresaLookup(

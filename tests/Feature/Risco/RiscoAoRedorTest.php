@@ -1,0 +1,271 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Enums\NivelRisco;
+use App\Livewire\Companies\RiscoPanel;
+use App\Livewire\Empresas\Perfil;
+use App\Livewire\Empresas\RiscoPerfil;
+use App\Models\DirtyListEmployer;
+use App\Models\MonitoredCompany;
+use App\Models\Organization;
+use App\Models\Portfolio;
+use App\Models\User;
+use App\Services\Risco\DirtyListLookup;
+use App\Services\Risco\DirtyListMonitor;
+use App\Services\Risco\RiscoAoRedor;
+use App\Services\Risco\RiscoAssessor;
+use App\Services\Risco\SancoesLocais;
+use App\Support\Cnpj;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use Livewire\Livewire;
+
+/** Cópia local da CGU "carregada" (as três fontes) num dia. */
+function cguCarregada(string $dia = '2026-11-24'): void
+{
+    foreach (['ceis', 'cnep', 'cepim'] as $fonte) {
+        DB::table('cgu_cargas')->insert(['fonte' => $fonte, 'data_arquivo' => $dia, 'registros' => 1, 'carregado_em' => now()]);
+    }
+}
+
+function cguSancao(string $cnpj, string $fonte = 'ceis', ?string $fim = null, string $inicio = '2024-01-01'): void
+{
+    DB::table('cgu_sancoes')->insert([
+        'fonte' => $fonte, 'cnpj' => $cnpj, 'cnpj_basico' => substr($cnpj, 0, 8), 'nome' => 'X',
+        'categoria' => 'Impedimento de contratar', 'orgao' => 'Ministério X', 'data_inicio' => $inicio, 'data_fim' => $fim,
+    ]);
+}
+
+/**
+ * Base CNPJ (sqlite): CENTRO (11222333) com sócio PJ HOLDING (99888777, raiz de
+ * 8 díg — formato da base), GRUPO (44555666, mesma holding), INVESTIDA
+ * (20000001, o centro é sócio) e LIMPA (30000002, outra investida, ativa).
+ */
+function seedRiscoAoRedor(): void
+{
+    useCnpjSqlite();
+    $schema = Schema::connection('cnpj');
+    $schema->create('estabelecimentos', function (Blueprint $t): void {
+        foreach (['cnpj_basico', 'cnpj_ordem', 'cnpj_dv', 'situacao_cadastral', 'nome_fantasia', 'cep', 'numero', 'complemento', 'municipio', 'uf'] as $c) {
+            $t->string($c)->nullable();
+        }
+    });
+    $schema->create('empresas', function (Blueprint $t): void {
+        $t->string('cnpj_basico');
+        $t->string('razao_social')->nullable();
+    });
+    $schema->create('socios', function (Blueprint $t): void {
+        foreach (['cnpj_basico', 'nome_socio', 'cnpj_cpf_do_socio', 'identificador_de_socio', 'qualificacao_do_socio', 'data_entrada_sociedade'] as $c) {
+            $t->string($c)->nullable();
+        }
+    });
+    foreach (['qualificacoes_socios', 'municipios'] as $tabela) {
+        $schema->create($tabela, function (Blueprint $t): void {
+            $t->string('codigo');
+            $t->string('descricao')->nullable();
+        });
+    }
+    createPgfnTables();
+
+    $db = DB::connection('cnpj');
+    $db->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+        ['cnpj_basico' => '44555666', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '08'], // GRUPO baixada
+        ['cnpj_basico' => '20000001', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02'],
+        ['cnpj_basico' => '30000002', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02'],
+        ['cnpj_basico' => '99888777', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '04'], // HOLDING inapta
+    ]);
+    $db->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'CENTRO SA'],
+        ['cnpj_basico' => '44555666', 'razao_social' => 'GRUPO LTDA'],
+        ['cnpj_basico' => '20000001', 'razao_social' => 'INVESTIDA SA'],
+        ['cnpj_basico' => '30000002', 'razao_social' => 'LIMPA SA'],
+        ['cnpj_basico' => '99888777', 'razao_social' => 'HOLDING SA'],
+    ]);
+    $db->table('socios')->insert([
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'HOLDING SA', 'cnpj_cpf_do_socio' => '99888777', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'FULANO', 'cnpj_cpf_do_socio' => '***123456**', 'identificador_de_socio' => '2'],
+        ['cnpj_basico' => '44555666', 'nome_socio' => 'HOLDING SA', 'cnpj_cpf_do_socio' => '99888777', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '20000001', 'nome_socio' => 'CENTRO SA', 'cnpj_cpf_do_socio' => '11222333', 'identificador_de_socio' => '1'],
+        ['cnpj_basico' => '30000002', 'nome_socio' => 'CENTRO SA', 'cnpj_cpf_do_socio' => '11222333', 'identificador_de_socio' => '1'],
+    ]);
+
+    seedPgfnDivida(Cnpj::matrizFromBasico('44555666') ?? '', 5000.0); // GRUPO deve
+}
+
+it('flags the linked companies by certain links with their risk signals', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    cguSancao(Cnpj::matrizFromBasico('20000001') ?? ''); // INVESTIDA: sanção vigente
+    cguSancao(Cnpj::matrizFromBasico('30000002') ?? '', fim: '2020-01-01'); // LIMPA: sanção já encerrada → não conta
+    DirtyListEmployer::query()->create(['documento' => '99888777000250', 'nome' => 'HOLDING', 'imported_at' => now()]); // filial da HOLDING listada
+
+    $r = app(RiscoAoRedor::class)->para('11222333000181');
+
+    expect($r->total())->toBe(4) // HOLDING, GRUPO, INVESTIDA, LIMPA (o PF não entra)
+        ->and($r->pgfnConsultada)->toBeTrue()
+        ->and($r->sancoesConsultadas)->toBeTrue();
+
+    $porNome = collect($r->comAlerta())->keyBy('nome');
+    expect($porNome->keys()->all())->toBe(['HOLDING SA', 'INVESTIDA SA', 'GRUPO LTDA']) // Lista Suja > sanção > dívida
+        ->and($porNome['HOLDING SA']->ligacao)->toBe('Sócio PJ')
+        ->and($porNome['HOLDING SA']->sinais())->toBe(['Lista Suja (trabalho escravo)', 'situação INAPTA'])
+        ->and($porNome['INVESTIDA SA']->ligacao)->toBe('Participação')
+        ->and($porNome['INVESTIDA SA']->sinais())->toBe(['sanção vigente (CGU)'])
+        ->and($porNome['GRUPO LTDA']->ligacao)->toBe('Grupo econômico')
+        ->and($porNome['GRUPO LTDA']->sinais())->toBe(['dívida ativa (PGFN)', 'situação BAIXADA'])
+        ->and($r->selo())->toBe('3 de 4 empresas ligadas com Lista Suja, sanção, dívida ativa ou situação negativa');
+});
+
+it('says which sources were not checked instead of implying the neighbours are clean', function () {
+    seedRiscoAoRedor();
+    Schema::connection('cnpj')->drop('pgfn_dividas'); // PGFN fora; cópia da CGU nunca carregada
+
+    $r = app(RiscoAoRedor::class)->para('11222333000181');
+
+    expect($r->pgfnConsultada)->toBeFalse()
+        ->and($r->sancoesConsultadas)->toBeFalse()
+        ->and($r->naoConsultadas())->toBe(['sanções (CGU)', 'dívida ativa (PGFN)']);
+});
+
+it('answers "no sanction" from the local copy only after the three sources were loaded', function () {
+    $s = app(SancoesLocais::class);
+
+    expect($s->disponivel())->toBeFalse()
+        ->and($s->relatorio('11222333000181')->disponivel)->toBeFalse();
+
+    cguCarregada('2026-11-10');
+    cguSancao('11222333000262', 'cnep'); // filial sancionada → vale para a raiz
+
+    $rel = $s->relatorio('11222333000181');
+    expect($rel->disponivel)->toBeTrue()
+        ->and($rel->temSancaoAtiva())->toBeTrue()
+        ->and($rel->sancoes[0]->fonte->value)->toBe('cnep')
+        ->and($s->referencia())->toBe('2026-11-10');
+
+    Carbon::setTestNow('2026-11-25');
+    expect($s->desatualizada())->toBeTrue();
+    Carbon::setTestNow('2026-11-12');
+    expect($s->desatualizada())->toBeFalse();
+    Carbon::setTestNow();
+});
+
+it('finds the dirty list entry by the CNPJ root, preferring the exact CNPJ', function () {
+    DirtyListEmployer::query()->create(['documento' => '11222333000262', 'nome' => 'FILIAL', 'imported_at' => now()]);
+    DirtyListEmployer::query()->create(['documento' => '11222333000181', 'nome' => 'MATRIZ', 'imported_at' => now()]);
+    DirtyListEmployer::query()->create(['documento' => '11222333000', 'nome' => 'CPF COM MESMO PREFIXO', 'imported_at' => now()]);
+    $lookup = app(DirtyListLookup::class);
+
+    expect($lookup->consta('11222333000181')?->nome)->toBe('MATRIZ')
+        ->and($lookup->consta('11222333000343')?->nome)->toBe('FILIAL') // outra filial: acha pela raiz
+        ->and($lookup->consta('99888777000166'))->toBeNull()
+        ->and(array_map('strval', array_keys($lookup->raizesConstantes(['11222333', '99888777', 'lixo']))))->toBe(['11222333']);
+});
+
+it('rates any CNPJ with the same rule, using the local copy for the sanctions', function () {
+    seedRiscoAoRedor();
+    $assessor = app(RiscoAssessor::class);
+
+    // Cópia não carregada e empresa limpa: não diz "baixo" sem ter checado.
+    expect($assessor->paraPublico('30000002000100', 'ATIVA')->nivel)->toBeNull();
+
+    cguCarregada();
+    expect($assessor->paraPublico('30000002000100', 'ATIVA')->nivel)->toBe(NivelRisco::Baixo);
+
+    cguSancao('30000002000100');
+    expect($assessor->paraPublico('30000002000100', 'ATIVA')->nivel)->toBe(NivelRisco::Alto);
+    expect($assessor->paraPublico('44555666000100', 'BAIXADA')->nivel)->toBe(NivelRisco::Medio); // dívida + baixada
+});
+
+it('shows the risk card of the public profile, with the copy date and the neighbours seal', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    cguSancao(Cnpj::matrizFromBasico('20000001') ?? '');
+    $user = User::factory()->for(Organization::factory())->create();
+
+    Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000181', 'situacao' => 'ATIVA'])
+        ->assertSee('Risco Baixo')
+        ->assertSee('Nenhuma sanção encontrada')
+        ->assertSee('cópia diária do Portal da Transparência (CGU) de 24/11/2026')
+        ->assertSee('Risco ao redor')
+        ->assertSee('3 de 4 empresas ligadas com sanção, dívida ativa ou situação negativa')
+        ->assertSee('INVESTIDA SA')
+        ->assertSee(route('empresas.perfil', Cnpj::matrizFromBasico('20000001')), false)
+        ->assertDontSee('Dívida ativa na União (PGFN).'); // o perfil tem card próprio
+});
+
+it('shows the neighbours seal on the portfolio risk panel too', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(fn () => Http::response([]));
+    $org = Organization::factory()->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    Livewire::actingAs(User::factory()->for($org)->create())->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco ao redor')
+        ->assertSee('2 de 4 empresas ligadas com dívida ativa ou situação negativa');
+});
+
+it('degrades the neighbours section when the CNPJ base is down', function () {
+    useCnpjSqlite(); // sem tabelas
+    config()->set('risco.portal.api_key', 'chave-teste');
+    Http::fake(fn () => Http::response([]));
+    $org = Organization::factory()->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    Livewire::actingAs(User::factory()->for($org)->create())->test(RiscoPanel::class, ['company' => $company])
+        ->assertSee('Risco ao redor')
+        ->assertSee('Indisponível no momento.');
+});
+
+it('never shows the neighbours as clean (green) when a source was not checked or the copy is stale', function () {
+    seedRiscoAoRedor();
+    // Só ligadas limpas: tira a dívida do GRUPO e deixa todas ativas.
+    DB::connection('cnpj')->table('pgfn_dividas')->delete();
+    DB::connection('cnpj')->table('estabelecimentos')->update(['situacao_cadastral' => '02']);
+    $user = User::factory()->for(Organization::factory())->create();
+
+    // Cópia da CGU nunca carregada → sanções não consultadas: tom neutro.
+    Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000181', 'situacao' => 'ATIVA'])
+        ->assertSee('nas fontes que puderam ser consultadas')
+        ->assertSee('Não consultado agora: sanções (CGU).')
+        ->assertDontSee('tem sinal de risco nas fontes consultadas');
+
+    // Carregada mas velha → também neutro, com aviso; e o "baixo" ganha a ressalva.
+    cguCarregada('2026-10-01');
+    Carbon::setTestNow('2026-11-25');
+    Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000181', 'situacao' => 'ATIVA'])
+        ->assertSee('Risco Baixo')
+        ->assertSee('A cópia das sanções da CGU está desatualizada.')
+        ->assertSee('sanção recente pode não aparecer')
+        ->assertDontSee('tem sinal de risco nas fontes consultadas');
+
+    // Em dia → aí sim, verde.
+    DB::table('cgu_cargas')->update(['data_arquivo' => '2026-11-24']);
+    Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000181', 'situacao' => 'ATIVA'])
+        ->assertSee('Nenhuma das 4 empresa(s) ligada(s) tem sinal de risco nas fontes consultadas');
+    Carbon::setTestNow();
+});
+
+it('403s the risk card for a user without organization and 404s an invalid CNPJ', function () {
+    $semOrg = User::factory()->create(['organization_id' => null]);
+    Livewire::actingAs($semOrg)->test(RiscoPerfil::class, ['cnpj' => '11222333000181'])->assertForbidden();
+
+    $user = User::factory()->for(Organization::factory())->create();
+    Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000182'])->assertNotFound();
+});
+
+it('alerts the portfolio when a branch of the company enters the dirty list', function () {
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for(Organization::factory()))->create(['cnpj' => '11222333000181']);
+    DirtyListEmployer::query()->create(['documento' => '11222333000262', 'nome' => 'FAZENDA (FILIAL)', 'imported_at' => now()]);
+
+    $entrada = app(DirtyListMonitor::class)->sync($company);
+
+    expect($entrada?->nome)->toBe('FAZENDA (FILIAL)')
+        ->and($company->fresh()->dirty_list_flagged_at)->not->toBeNull();
+});

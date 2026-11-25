@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Risco;
 
 use App\DTO\Risco\RiscoAssessment;
+use App\DTO\Risco\RiscoReport;
 use App\Enums\NivelRisco;
 use App\Models\MonitoredCompany;
 use App\Support\SituacaoCadastral;
@@ -13,7 +14,9 @@ use Throwable;
 /**
  * Avalia o risco de uma empresa num lugar só (sanções CGU + Lista Suja + dívida
  * ativa PGFN + situação cadastral → semáforo + motivo). Fonte única consumida
- * pelo painel de risco e pelo dossiê PDF — evita que a regra do semáforo divirja.
+ * pelo painel de risco, pelo dossiê PDF e pelo perfil público — evita que a
+ * regra do semáforo divirja. A carteira consulta as sanções na API da CGU; o
+ * perfil público, na cópia local diária ({@see SancoesLocais}) — mesma regra.
  */
 final class RiscoAssessor
 {
@@ -21,16 +24,35 @@ final class RiscoAssessor
         private readonly RiscoService $risco,
         private readonly DirtyListLookup $listaSujaLookup,
         private readonly PgfnLookup $pgfnLookup,
+        private readonly SancoesLocais $sancoesLocais,
     ) {}
 
+    /** Empresa da carteira: sanções pela API da CGU (cache de 12 h). */
     public function para(MonitoredCompany $company): RiscoAssessment
     {
-        $report = $this->risco->para($company->cnpj);
-        $listaSuja = $this->listaSujaLookup->consta($company->cnpj);
+        return $this->avaliar($this->risco->para($company->cnpj), $company->cnpj, $company->latestSnapshot?->situacao_cadastral);
+    }
+
+    /**
+     * Qualquer CNPJ (perfil público): sanções pela cópia local da CGU — sem uma
+     * chamada à API por perfil aberto. `$situacao` = rótulo (ATIVA, BAIXADA…).
+     */
+    public function paraPublico(string $cnpj, ?string $situacao): RiscoAssessment
+    {
+        // Cópia velha (agendador parado): o "baixo" não pode soar como garantia.
+        $ressalva = $this->sancoesLocais->desatualizada() ? ' A cópia das sanções da CGU está desatualizada.' : '';
+
+        return $this->avaliar($this->sancoesLocais->relatorio($cnpj), $cnpj, $situacao, $ressalva);
+    }
+
+    /** @param  string  $ressalvaBaixo  acrescentada ao motivo do nível Baixo */
+    private function avaliar(RiscoReport $report, string $cnpj, ?string $situacao, string $ressalvaBaixo = ''): RiscoAssessment
+    {
+        $listaSuja = $this->listaSujaLookup->consta($cnpj);
         $pgfnDisponivel = true;
 
         try {
-            $pgfn = $this->pgfnLookup->para($company->cnpj);
+            $pgfn = $this->pgfnLookup->para($cnpj);
         } catch (Throwable $e) {
             // Base CNPJ (onde mora a PGFN) fora do ar: sem o sinal, mas nunca
             // "sem dívida" — o motivo do nível Baixo avisa que não deu para checar.
@@ -49,7 +71,6 @@ final class RiscoAssessor
         // um sinal local sempre confiável (Lista Suja / dívida PGFN). Sem nenhum,
         // não dizemos "baixo" — seria enganoso garantir limpo sem ter checado.
         if ($naListaSuja || $temDivida || ($report->configurado && $report->disponivel)) {
-            $situacao = $company->latestSnapshot?->situacao_cadastral;
             $situacaoNegativa = SituacaoCadastral::isNegative($situacao);
 
             $nivel = NivelRisco::avaliar($report->temSancaoAtiva(), $report->temSancoes(), $situacaoNegativa, $naListaSuja, $temDivida);
@@ -58,9 +79,9 @@ final class RiscoAssessor
                 : match ($nivel) {
                     NivelRisco::Alto => 'Consta sanção vigente nos cadastros da CGU.',
                     NivelRisco::Medio => $this->motivoMedio($situacaoNegativa, $situacao, $report->temSancoes(), $temDivida),
-                    NivelRisco::Baixo => $pgfnDisponivel
+                    NivelRisco::Baixo => ($pgfnDisponivel
                         ? 'Empresa ativa, sem sanções nem dívida ativa nas fontes consultadas.'
-                        : 'Empresa ativa, sem sanções nas fontes consultadas (dívida ativa indisponível no momento).',
+                        : 'Empresa ativa, sem sanções nas fontes consultadas (dívida ativa indisponível no momento).').$ressalvaBaixo,
                 };
         }
 

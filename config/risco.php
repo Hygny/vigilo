@@ -50,6 +50,30 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cópia local das sanções da CGU (vigilo:sancoes-cgu)
+    |--------------------------------------------------------------------------
+    |
+    | O "download de dados" do Portal da Transparência publica um zip por fonte
+    | (CEIS, CNEP, CEPIM), em dias próprios de cada uma — só o mais recente fica
+    | no ar (dias sem arquivo respondem 403). Não precisa de chave. A cópia
+    | alimenta o risco de QUALQUER empresa (perfil público, empresas ligadas)
+    | sem uma chamada à API por empresa. `max_idade_dias`: acima disso a tela
+    | avisa que a cópia está desatualizada (agendador parado).
+    |
+    */
+
+    'cgu_download' => [
+        'base_url' => env('CGU_DOWNLOAD_BASE_URL', 'https://portaldatransparencia.gov.br/download-de-dados'),
+
+        'dias' => (int) env('CGU_DOWNLOAD_DIAS', 10),
+
+        'timeout' => (int) env('CGU_DOWNLOAD_TIMEOUT', 180),
+
+        'max_idade_dias' => (int) env('CGU_DOWNLOAD_MAX_IDADE_DIAS', 7),
+    ],
+
     'sweep' => [
         // Fuso da agenda e do "dia" da varredura (a empresa checada hoje é pulada
         // na 2ª passada). A app roda em UTC; a janela folgada da CGU é em Brasília.

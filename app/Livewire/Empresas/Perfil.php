@@ -16,13 +16,13 @@ use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
 use App\Services\Vigilancia\HistoricoLookup;
 use App\Support\Cnpj;
+use App\Support\Tentar;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
-use Throwable;
 
 /**
  * Perfil de QUALQUER CNPJ da base da Receita (destino da busca): dados
@@ -147,36 +147,19 @@ class Perfil extends Component
     {
         $limite = max(1, (int) config('cnpj.perfil.participacoes_limite', 100));
 
-        $participacoes = $this->tentar(fn (): array => $grafo->participations($this->cnpj, $limite));
+        $participacoes = Tentar::ouNull(fn (): array => $grafo->participations($this->cnpj, $limite));
 
         return [
-            'detalhes' => $this->tentar(fn (): mixed => $detalhes->para($this->cnpj)),
-            'beneficiarios' => $this->tentar(fn (): array => $grafo->beneficialOwners($this->cnpj)),
-            'filiais' => $this->tentar(fn (): array => $grafo->branches($this->cnpj)),
-            'estabelecimentos' => (int) $this->tentar(fn (): int => $grafo->establishmentCount($this->cnpj)),
+            'detalhes' => Tentar::ouNull(fn (): mixed => $detalhes->para($this->cnpj)),
+            'beneficiarios' => Tentar::ouNull(fn (): array => $grafo->beneficialOwners($this->cnpj)),
+            'filiais' => Tentar::ouNull(fn (): array => $grafo->branches($this->cnpj)),
+            'estabelecimentos' => (int) Tentar::ouNull(fn (): int => $grafo->establishmentCount($this->cnpj)),
             'participacoes' => $participacoes,
             // Só conta à parte se a lista encheu (senão o total é o tamanho dela).
             // Se só a contagem falhar, fica o tamanho da lista (nunca "sócia de 0").
             'totalParticipacoes' => is_array($participacoes) && count($participacoes) >= $limite
-                ? ($this->tentar(fn (): int => $grafo->participationCount($this->cnpj)) ?? count($participacoes))
+                ? (Tentar::ouNull(fn (): int => $grafo->participationCount($this->cnpj)) ?? count($participacoes))
                 : (is_array($participacoes) ? count($participacoes) : 0),
         ];
-    }
-
-    /**
-     * @template T
-     *
-     * @param  callable(): T  $consulta
-     * @return T|null
-     */
-    private function tentar(callable $consulta): mixed
-    {
-        try {
-            return $consulta();
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
     }
 }

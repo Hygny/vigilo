@@ -39,3 +39,14 @@ Schedule::command('model:prune', ['--model' => [WebhookDelivery::class]])
     ->dailyAt('03:30')
     ->name('vigilo-prune-webhook-deliveries')
     ->withoutOverlapping();
+
+// Cópia local das sanções da CGU (CEIS/CNEP/CEPIM) para o risco de qualquer
+// empresa: todo dia, de manhã e no começo da tarde (cada fonte publica num dia
+// e horário próprios; a 2ª passada pega o que saiu depois da 1ª). Arquivo já
+// carregado = no-op de uma requisição por fonte.
+Schedule::command('vigilo:sancoes-cgu')
+    ->cron('30 8,14 * * *')
+    ->timezone((string) config('risco.sweep.timezone'))
+    ->name('vigilo-sancoes-cgu')
+    ->withoutOverlapping(60)
+    ->runInBackground();
