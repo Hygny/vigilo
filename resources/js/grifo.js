@@ -25,6 +25,7 @@ function themeColors() {
         edge: v('--graph-edge', '#cbd5e1'),
         edgeProbable: v('--graph-edge-probable', '#ea580c'),
         edgeAddress: v('--graph-edge-address', '#0d9488'),
+        edgeParticipation: v('--graph-edge-participation', '#1d4ed8'),
         tipBg: v('--graph-tip-bg', '#171712'),
         tipFg: v('--graph-tip-fg', '#ffffff'),
     };
@@ -125,6 +126,20 @@ function styleSheet(c, negative) {
             style: {
                 'line-style': 'dotted',
                 'line-color': c.edgeAddress,
+                width: 2,
+                opacity: 0.9,
+            },
+        },
+        {
+            // Participação (o centro é sócio PJ da empresa): sólida, azul, com
+            // seta saindo do centro (sócio → investida). A aresta vai investida →
+            // centro, então a seta fica na ORIGEM.
+            selector: 'edge[type = "participacao"]',
+            style: {
+                'line-color': c.edgeParticipation,
+                'source-arrow-shape': 'triangle',
+                'source-arrow-color': c.edgeParticipation,
+                'arrow-scale': 0.9,
                 width: 2,
                 opacity: 0.9,
             },

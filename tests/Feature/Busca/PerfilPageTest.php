@@ -8,6 +8,7 @@ use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
+use App\Support\Cnpj;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 
 /** Base CNPJ (sqlite) com o schema que o EmpresaLookup lê + a PADARIA AURORA (MEI-like). */
-function seedPerfilBase(bool $comPgfn = true, bool $comHistorico = true): void
+function seedPerfilBase(bool $comPgfn = true, bool $comHistorico = true, bool $comSimples = true): void
 {
     useCnpjSqlite();
     $schema = Schema::connection('cnpj');
@@ -30,7 +31,21 @@ function seedPerfilBase(bool $comPgfn = true, bool $comHistorico = true): void
     $schema->create('empresas', function (Blueprint $t): void {
         $t->string('cnpj_basico');
         $t->string('razao_social')->nullable();
+        $t->string('natureza_juridica')->nullable();
+        $t->string('porte')->nullable();
+        $t->float('capital_social')->nullable();
     });
+    $schema->create('naturezas_juridicas', function (Blueprint $t): void {
+        $t->string('codigo');
+        $t->string('descricao')->nullable();
+    });
+    if ($comSimples) {
+        $schema->create('dados_simples', function (Blueprint $t): void {
+            foreach (['cnpj_basico', 'opcao_pelo_simples', 'data_opcao_pelo_simples', 'data_exclusao_do_simples', 'opcao_pelo_mei', 'data_opcao_pelo_mei', 'data_exclusao_do_mei'] as $c) {
+                $t->string($c)->nullable();
+            }
+        });
+    }
     $schema->create('socios', function (Blueprint $t): void {
         foreach (['cnpj_basico', 'nome_socio', 'cnpj_cpf_do_socio', 'identificador_de_socio', 'qualificacao_do_socio', 'data_entrada_sociedade'] as $c) {
             $t->string($c)->nullable();
@@ -50,7 +65,25 @@ function seedPerfilBase(bool $comPgfn = true, bool $comHistorico = true): void
         'cnae_fiscal_principal' => '1091102', 'tipo_logradouro' => 'RUA', 'logradouro' => 'DAS FLORES', 'numero' => '10',
         'bairro' => 'CENTRO', 'cep' => '01001000', 'municipio' => '7107', 'uf' => 'SP',
     ]);
-    $db->table('empresas')->insert(['cnpj_basico' => '11222333', 'razao_social' => 'MARIA SOUZA 12345678901']);
+    $db->table('empresas')->insert(['cnpj_basico' => '11222333', 'razao_social' => 'MARIA SOUZA 12345678901', 'natureza_juridica' => '2135', 'porte' => '01', 'capital_social' => 15000.5]);
+    $db->table('naturezas_juridicas')->insert(['codigo' => '2135', 'descricao' => 'Empresário (Individual)']);
+    if ($comSimples) {
+        $db->table('dados_simples')->insert([
+            'cnpj_basico' => '11222333', 'opcao_pelo_simples' => 'S', 'data_opcao_pelo_simples' => '2020-01-01',
+            'opcao_pelo_mei' => 'N', 'data_opcao_pelo_mei' => '2020-01-01', 'data_exclusao_do_mei' => '2022-12-31',
+        ]);
+    }
+    // Uma filial da PADARIA e uma empresa em que a PADARIA é sócia PJ (participação).
+    $db->table('estabelecimentos')->insert([
+        'cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62', 'situacao_cadastral' => '08',
+        'nome_fantasia' => 'PAO DA AURORA FILIAL', 'municipio' => '7107', 'uf' => 'SP',
+    ]);
+    $db->table('estabelecimentos')->insert(['cnpj_basico' => '55666777', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'uf' => 'SE']);
+    $db->table('empresas')->insert(['cnpj_basico' => '55666777', 'razao_social' => 'CONFEITARIA FILHA LTDA']);
+    $db->table('socios')->insert([
+        'cnpj_basico' => '55666777', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '11222333000181',
+        'identificador_de_socio' => '1', 'qualificacao_do_socio' => '49', 'data_entrada_sociedade' => '2023-03-01',
+    ]);
     $db->table('socios')->insert([
         'cnpj_basico' => '11222333', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '***456789**',
         'identificador_de_socio' => '2', 'qualificacao_do_socio' => '49', 'data_entrada_sociedade' => '2020-01-01',
@@ -201,4 +234,82 @@ it('rate-limits profile views per user', function () {
 it('requires an organization and a login', function () {
     $this->get(route('empresas.perfil', '11222333000181'))->assertRedirect(route('login'));
     $this->actingAs(User::factory()->superAdmin()->create())->get(route('empresas.perfil', '11222333000181'))->assertForbidden();
+});
+
+it('shows legal nature, size, capital and the Simples/MEI regimes', function () {
+    seedPerfilBase();
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertOk()
+        ->assertSee('213-5 — Empresário (Individual)')
+        ->assertSee('Microempresa (ME)')
+        ->assertSee('R$ 15.000,50')
+        ->assertSee('Simples: Optante desde 01/01/2020')
+        ->assertSee('MEI: Não optante — excluída em 31/12/2022 (optou em 01/01/2020)');
+});
+
+it('says the Simples is unavailable (never "não optante") when its table cannot be read', function () {
+    seedPerfilBase(comSimples: false);
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertOk()
+        ->assertSee('213-5 — Empresário (Individual)')
+        ->assertSee('Indisponível no momento')
+        ->assertDontSee('Simples: Não optante');
+});
+
+it('lists the beneficial owners, the participations and the other establishments', function () {
+    seedPerfilBase();
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertOk()
+        ->assertSee('Beneficiários finais (estrutura)')
+        ->assertSee('sócio direto')
+        ->assertSee('sócia de 1 empresa(s)')
+        ->assertSee('CONFEITARIA FILHA LTDA')
+        ->assertSee('desde 01/03/2023')
+        ->assertSee(route('empresas.perfil', Cnpj::matrizFromBasico('55666777')), false)
+        ->assertSee('2 no total (matriz + filiais)')
+        ->assertSee('PAO DA AURORA FILIAL')
+        ->assertSee('BAIXADA');
+});
+
+it('links to the public graph of a company outside the portfolio', function () {
+    seedPerfilBase();
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertSee(route('empresas.grafo', '11222333000181'), false);
+});
+
+it('degrades each extra block on its own when the base breaks under it', function () {
+    seedPerfilBase();
+    Schema::connection('cnpj')->drop('naturezas_juridicas'); // derruba só a consulta de natureza/porte
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertOk()
+        ->assertSee('PAO DA AURORA')
+        ->assertSee('Natureza jurídica, porte, capital e Simples/MEI indisponíveis no momento')
+        ->assertSee('CONFEITARIA FILHA LTDA');
+});
+
+it('says "mostrando N de M" when the participations pass the list limit', function () {
+    seedPerfilBase();
+    config()->set('cnpj.perfil.participacoes_limite', 1);
+    $db = DB::connection('cnpj');
+    $db->table('empresas')->insert(['cnpj_basico' => '66777888', 'razao_social' => 'OUTRA INVESTIDA LTDA']);
+    $db->table('socios')->insert([
+        'cnpj_basico' => '66777888', 'nome_socio' => 'MARIA SOUZA', 'cnpj_cpf_do_socio' => '11222333',
+        'identificador_de_socio' => '1', 'qualificacao_do_socio' => '49', 'data_entrada_sociedade' => '2024-01-01',
+    ]);
+
+    $this->actingAs(perfilUser())
+        ->get(route('empresas.perfil', '11222333000181'))
+        ->assertOk()
+        ->assertSee('sócia de 2 empresa(s)')
+        ->assertSee('Mostrando 1 de 2 (ativas primeiro)');
 });

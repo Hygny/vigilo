@@ -52,6 +52,7 @@ function bootDossieCnpjBase(): void
         $t->string('cnpj_cpf_do_socio')->nullable();
         $t->string('identificador_de_socio')->nullable();
         $t->string('qualificacao_do_socio')->nullable();
+        $t->string('data_entrada_sociedade')->nullable();
     });
     $schema->create('qualificacoes_socios', function (Blueprint $t): void {
         $t->string('codigo');
@@ -230,4 +231,27 @@ it('renders the cadastral history section (with the frequent-move warning)', fun
 
     expect($historico->eventos)->toHaveCount(4)
         ->and($historico->alertaEndereco())->toBeTrue();
+});
+
+it('lists the participations in their own PDF section, not as the economic group', function () {
+    bootDossieCnpjBase();
+    // o CENTRO (11222333) é sócio PJ da INVESTIDA → participação, não grupo
+    DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => '20000001', 'razao_social' => 'INVESTIDA SA']);
+    DB::connection('cnpj')->table('socios')->insert([
+        'cnpj_basico' => '20000001', 'nome_socio' => 'EMPRESA CENTRO', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1',
+    ]);
+
+    $org = Organization::factory()->create();
+    $user = User::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $dados = null;
+    View::composer('dossie.pdf', function ($view) use (&$dados): void {
+        $dados = $view->getData();
+    });
+
+    $this->actingAs($user)->get(route('companies.dossie', $company))->assertOk();
+
+    expect(collect($dados['participacoes'])->pluck('label')->all())->toBe(['INVESTIDA SA'])
+        ->and(collect($dados['grupo'])->pluck('label')->all())->toBe(['EMPRESA GRUPO']);
 });

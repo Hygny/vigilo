@@ -55,6 +55,8 @@
     --graph-edge-probable: #EA580C;
     /* Aresta por endereço (mesma CEP+número): teal, distinto de sócio/provável. */
     --graph-edge-address: #0D9488;
+    /* Aresta de participação (o centro é sócio da empresa): azul da empresa. */
+    --graph-edge-participation: #1D4ED8;
     /* Tooltip do grafo: fundo escuro + texto claro no tema claro. */
     --graph-tip-bg: #171712;
     --graph-tip-fg: #FFFFFF;
@@ -104,6 +106,8 @@
     --graph-edge-probable: #FB923C;
     /* Aresta por endereço: teal mais claro p/ contraste no fundo escuro. */
     --graph-edge-address: #2DD4BF;
+    /* Participação: azul claro p/ contraste no fundo escuro. */
+    --graph-edge-participation: #60A5FA;
     /* Tooltip: fundo escuro elevado + texto ÂMBAR (legível no dark). */
     --graph-tip-bg: #24221A;
     --graph-tip-fg: #F2C744;

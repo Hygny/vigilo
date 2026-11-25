@@ -2,17 +2,20 @@
     <div class="mx-auto max-w-[1100px] space-y-5 px-5 sm:px-8">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
-                <a href="{{ route('companies.show', $company) }}" wire:navigate class="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-ink-muted hover:text-ink-2">
-                    <x-ui.icon name="arrow_back" :size="17" />Voltar à empresa
+                <a href="{{ $backUrl }}" wire:navigate class="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-ink-muted hover:text-ink-2">
+                    <x-ui.icon name="arrow_back" :size="17" />{{ $backLabel }}
                 </a>
                 <h1 class="text-[26px] font-bold tracking-[-0.03em] text-ink">Grafo societário</h1>
                 <p class="mt-1 text-[14px] text-ink-muted">
-                    {{ \App\Support\RazaoSocial::exibir($company->latestSnapshot?->razao_social) ?? $company->label ?? $company->formattedCnpj() }}
+                    {{ $title }}
                     @if ($available)
                         @if ($personMode)
                             <span class="text-ink-2">· {{ $groupCount }} empresa(s) desta pessoa</span>
                         @else
                             <span class="text-ink-2">· {{ $partnerCount }} sócio(s) · {{ $groupCount }} empresa(s) no grupo</span>
+                            @if ($participationCount > 0)
+                                <span class="text-ink-2">· {{ $participationCount }}{{ $participationCapped ? '+' : '' }} participação(ões)</span>
+                            @endif
                             @if ($showAddress)
                                 <span class="text-ink-2">· {{ $addressCount }} no mesmo endereço</span>
                             @endif
@@ -26,12 +29,18 @@
                             <x-ui.icon name="my_location" :size="14" />Focado em {{ $focusLabel ?? 'empresa conectada' }}
                         </span>
                         <button wire:click="resetFocus" class="inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-muted hover:text-ink-2 cursor-pointer">
-                            <x-ui.icon name="restart_alt" :size="15" />Voltar à empresa monitorada
+                            <x-ui.icon name="restart_alt" :size="15" />{{ $resetLabel }}
                         </button>
                     </div>
                 @endif
             </div>
         </div>
+
+        @if ($limitado)
+            <div class="flex items-start gap-2 rounded-btn border border-line bg-surface px-4 py-3 text-sm text-ink-2 shadow-card">
+                <x-ui.icon name="hourglass_top" :size="18" class="mt-0.5 text-ink-muted" />Muitos perfis abertos em pouco tempo. Aguarde um minuto e recarregue a página.
+            </div>
+        @endif
 
         @if ($focusLimited)
             <div class="flex items-center gap-2 rounded-btn border border-line bg-surface-2 px-4 py-3 text-sm text-ink-2 shadow-card">
@@ -39,7 +48,9 @@
             </div>
         @endif
 
-        @if (! $available)
+        @if ($limitado)
+            {{-- aviso do teto acima; nada de grafo --}}
+        @elseif (! $available)
             <div class="flex items-start gap-3 rounded-[14px] border border-line bg-surface-2 p-5 text-[14px] text-ink-2">
                 <x-ui.icon name="warning" :size="20" class="mt-0.5 shrink-0 text-high" />
                 <p>Grafo indisponível no momento — a base CNPJ não respondeu. Tente novamente em instantes.</p>
@@ -106,6 +117,9 @@
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-person);"></span>Sócio (pessoa)</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full" style="background: var(--graph-negative);"></span>Situação negativa</span>
                     <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full ring-2 ring-offset-1" style="background: var(--graph-company); --tw-ring-color: var(--graph-center-ring);"></span>No centro</span>
+                    @if (! $personMode && $participationCount > 0)
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2" style="border-color: var(--graph-edge-participation);"></span>Participação (o centro é sócio)</span>
+                    @endif
                     @if (! $personMode && $showProbable)
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed" style="border-color: var(--graph-edge-probable);"></span>Conexão por sócio PF (CPF mascarado)</span>
                     @endif
@@ -118,7 +132,7 @@
                     @if ($personMode)
                         Empresas em que esta pessoa aparece como sócia. Arraste para mover, use a roda/os botões para dar zoom, passe o mouse para ver o CNPJ, e clique numa empresa para ver o grafo dela.
                     @else
-                        O grupo econômico mostra por padrão só as ligações <span class="font-medium">certas</span> — sócios diretos e empresas ligadas por <span class="font-medium">sócio PJ</span> (CNPJ completo). As <span class="font-medium">filiais</span> (mesma empresa) estão no painel abaixo. Arraste os nós, use a roda/os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique para expandir. Use <span class="font-medium">"Mostrar conexões por sócio PF"</span> para ver também as ligações por pessoa física (CPF mascarado — menor certeza, tracejadas).
+                        O grupo econômico mostra por padrão só as ligações <span class="font-medium">certas</span> — sócios diretos, empresas ligadas por <span class="font-medium">sócio PJ</span> (CNPJ completo) e as <span class="font-medium">participações</span> (empresas de que o centro é sócio). As <span class="font-medium">filiais</span> (mesma empresa) estão no painel abaixo. Arraste os nós, use a roda/os botões de zoom, passe o mouse numa bolha para ver o CNPJ, e clique para expandir. Use <span class="font-medium">"Mostrar conexões por sócio PF"</span> para ver também as ligações por pessoa física (CPF mascarado — menor certeza, tracejadas).
                     @endif
                 </p>
             </x-ui.card>
@@ -267,7 +281,7 @@
                     </div>
 
                     <p class="mt-3 text-[12px] text-ink-muted">
-                        Sócios, empresas do grupo, filiais e vizinhas de endereço ligadas ao centro atual. "Copiar" gera um texto pronto para e-mail; "Exportar Excel" baixa a mesma lista.
+                        Sócios, participações, empresas do grupo, filiais e vizinhas de endereço ligadas ao centro atual. "Copiar" gera um texto pronto para e-mail; "Exportar Excel" baixa a mesma lista.
                         @unless ($pgfnDisponivel)
                             <span class="block mt-1">Dívida ativa (PGFN) indisponível no momento — a coluna não foi consultada.</span>
                         @endunless

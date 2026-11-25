@@ -9,8 +9,10 @@ use App\DTO\Graph\CompanyBranch;
 use App\DTO\Graph\GraphEdge;
 use App\DTO\Graph\GraphNode;
 use App\DTO\Graph\OwnershipGraph;
+use App\DTO\Graph\Participacao;
 use App\Support\AddressNumber;
 use App\Support\Cnpj;
+use App\Support\DataReceita;
 use App\Support\RazaoSocial;
 use App\Support\SituacaoCadastral;
 use Illuminate\Database\ConnectionInterface;
@@ -165,6 +167,15 @@ final class OwnershipGraphService
                 // (tracejada). PJ (CNPJ completo) = certa → sólida.
                 $edges[$otherId.'|'.$socioId] ??= new GraphEdge($otherId, $socioId, 'socio', null, $masked);
             }
+        }
+
+        // Participações: empresas em que o CENTRO é sócio PJ (CNPJ completo —
+        // certo). Aresta investida → centro (a direção de sempre, empresa →
+        // sócio), com tipo próprio para a tela distinguir de "sócio em comum".
+        foreach ($this->participations($digits, $this->reverseLimit) as $p) {
+            $id = 'empresa:'.substr($p->cnpj, 0, 8);
+            $nodes[$id] ??= new GraphNode(id: $id, type: 'empresa', label: $p->nome, document: $p->cnpj, situacao: $p->situacao);
+            $edges[$id.'|participacao|'.$centerId] ??= new GraphEdge($id, $centerId, 'participacao', $p->qualificacao);
         }
 
         if ($includeAddress) {
@@ -372,6 +383,103 @@ final class OwnershipGraphService
         return $branches;
     }
 
+    /** Quantos estabelecimentos a empresa tem ao todo (matriz + filiais), contando o próprio. */
+    public function establishmentCount(string $cnpj): int
+    {
+        return DB::connection($this->connection)
+            ->table('estabelecimentos')
+            ->where('cnpj_basico', substr(Cnpj::normalize($cnpj), 0, 8))
+            ->count();
+    }
+
+    /**
+     * Participações: empresas em que esta empresa aparece como sócia PJ. Na base
+     * carregada o sócio PJ vem pela RAIZ (8 díg — conferido em produção); o layout
+     * da Receita também admite o CNPJ completo (de qualquer estabelecimento), que
+     * cai na faixa `<raiz>000000`..`<raiz>999999` do mesmo índice (só dígitos de
+     * mesmo tamanho: ordem lexicográfica = numérica). Os dois formatos casam.
+     * Uma investida aparece uma vez (agrupada no SQL); ativas primeiro, depois
+     * por nome.
+     *
+     * @return list<Participacao>
+     */
+    public function participations(string $cnpj, int $limit): array
+    {
+        $basico = substr(Cnpj::normalize($cnpj), 0, 8);
+
+        if ($limit <= 0) {
+            return [];
+        }
+
+        // Uma linha por investida já no SQL (a holding pode ser sócia da mesma
+        // empresa por vários estabelecimentos) — o limite vale por empresa.
+        $rows = $this->participationsQuery($basico)
+            ->leftJoin('empresas as emp', 's.cnpj_basico', '=', 'emp.cnpj_basico')
+            ->leftJoin('estabelecimentos as est', function (JoinClause $join): void {
+                $join->on('est.cnpj_basico', '=', 's.cnpj_basico')
+                    ->where('est.cnpj_ordem', '=', self::ORDEM_MATRIZ);
+            })
+            ->leftJoin('qualificacoes_socios as q', 's.qualificacao_do_socio', '=', 'q.codigo')
+            ->groupBy('s.cnpj_basico', 'emp.razao_social', 'est.situacao_cadastral', 'est.uf')
+            ->orderByRaw('case when est.situacao_cadastral = ? then 0 else 1 end', [SituacaoCadastral::code('ATIVA')])
+            ->orderBy('emp.razao_social')
+            ->orderBy('s.cnpj_basico')
+            ->limit($limit)
+            ->get([
+                's.cnpj_basico',
+                'emp.razao_social',
+                'est.situacao_cadastral',
+                'est.uf',
+                DB::raw('min(s.data_entrada_sociedade) as data_entrada'),
+                DB::raw('min(q.descricao) as qualificacao'),
+            ]);
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $investida = $this->str($r['cnpj_basico'] ?? null);
+
+            if ($investida === null) {
+                continue;
+            }
+
+            $out[] = new Participacao(
+                cnpj: Cnpj::matrizFromBasico($investida) ?? $investida,
+                nome: $this->razao($r['razao_social'] ?? null) ?? $investida,
+                situacao: $this->situacao($r['situacao_cadastral'] ?? null),
+                qualificacao: $this->str($r['qualificacao'] ?? null),
+                dataEntrada: DataReceita::ymd($r['data_entrada'] ?? null),
+                uf: $this->str($r['uf'] ?? null),
+            );
+        }
+
+        return $out;
+    }
+
+    /** Total de empresas distintas em que esta empresa é sócia PJ (para o "mostrando N de M"). */
+    public function participationCount(string $cnpj): int
+    {
+        return (int) $this->participationsQuery(substr(Cnpj::normalize($cnpj), 0, 8))
+            ->distinct()
+            ->count('s.cnpj_basico');
+    }
+
+    private function participationsQuery(string $basico): Builder
+    {
+        return DB::connection($this->connection)
+            ->table('socios as s')
+            ->where('s.identificador_de_socio', '1')
+            ->where(function (Builder $q) use ($basico): void {
+                $q->where('s.cnpj_cpf_do_socio', $basico) // raiz (formato da base carregada)
+                    ->orWhere(function (Builder $q14) use ($basico): void {
+                        $q14->whereBetween('s.cnpj_cpf_do_socio', [$basico.'000000', $basico.'999999'])
+                            ->whereRaw('length(s.cnpj_cpf_do_socio) = 14'); // a faixa sozinha aceitaria lixo de outro tamanho
+                    });
+            })
+            ->where('s.cnpj_basico', '!=', $basico);
+    }
+
     /**
      * Grafo centrado numa PESSOA (sócio): a pessoa no centro e todas as empresas
      * em que ela aparece como sócia (consulta reversa por documento). O documento
@@ -514,7 +622,14 @@ final class OwnershipGraphService
 
         $id = $document !== null ? 'socio:'.$document : 'socio:n:'.mb_strtolower($nome);
 
-        return [$id, new GraphNode($id, $type, $nome, $document)];
+        // Sócio PJ gravado pela raiz (8 díg, o formato da base carregada): o nó
+        // exibe o CNPJ da matriz — fica clicável, com dívida e link ao perfil. O
+        // id segue pelo documento cru (é ele que casa a reversa do grupo).
+        $exibido = $type === 'socio_pj' && $document !== null && preg_match('/^\d{8}$/', $document) === 1
+            ? (Cnpj::matrizFromBasico($document) ?? $document)
+            : $document;
+
+        return [$id, new GraphNode($id, $type, $nome, $exibido)];
     }
 
     /**

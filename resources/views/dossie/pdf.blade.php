@@ -92,15 +92,17 @@
         <p class="muted" style="font-size:9px;">Estrutural — sem % de participação (não consta na base aberta da Receita).</p>
     @endif
 
-    @if ($grupo !== [])
-        <h2>Grupo econômico (empresas ligadas por sócio)</h2>
-        <ul>
-            @foreach ($grupo as $g)
-                @php($meta = collect([$g['document'], $g['situacao']])->filter()->implode(' · '))
-                <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span>@if (! $g['pgfn_consultada']) <span class="muted">— dívida ativa não consultada</span>@elseif ($g['divida']) <span style="color:#92400E;">— dívida ativa: {{ $g['divida']->resumo() }}</span>@endif</li>
-            @endforeach
-        </ul>
-    @endif
+    @foreach (['Participações (empresas de que é sócia)' => $participacoes, 'Grupo econômico (empresas ligadas por sócio)' => $grupo] as $tituloLigadas => $ligadas)
+        @if ($ligadas !== [])
+            <h2>{{ $tituloLigadas }}</h2>
+            <ul>
+                @foreach ($ligadas as $g)
+                    @php($meta = collect([$g['document'], $g['situacao']])->filter()->implode(' · '))
+                    <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span>@if (! $g['pgfn_consultada']) <span class="muted">— dívida ativa não consultada</span>@elseif ($g['divida']) <span style="color:#92400E;">— dívida ativa: {{ $g['divida']->resumo() }}</span>@endif</li>
+                @endforeach
+            </ul>
+        @endif
+    @endforeach
 
     @if ($filiais !== [])
         <h2>Filiais</h2>

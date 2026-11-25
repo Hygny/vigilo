@@ -7,24 +7,28 @@ namespace App\Livewire\Empresas;
 use App\Actions\AddCompanyToPortfolio;
 use App\Actions\Exceptions\CompanyNotAdded;
 use App\DTO\Historico\HistoricoCadastral;
+use App\Livewire\Concerns\CountsProfileViews;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\MonitoredCompany;
 use App\Models\Portfolio;
+use App\Services\Graph\OwnershipGraphService;
+use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
 use App\Services\Vigilancia\HistoricoLookup;
 use App\Support\Cnpj;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Throwable;
 
 /**
  * Perfil de QUALQUER CNPJ da base da Receita (destino da busca): dados
- * cadastrais, quadro societário (CPF mascarado), dívida ativa (PGFN) e
- * histórico cadastral. Se a empresa já é monitorada pela organização, leva
+ * cadastrais (com natureza, porte, capital e Simples/MEI), quadro societário
+ * (CPF mascarado), beneficiários finais, filiais, participações, dívida ativa
+ * (PGFN) e histórico cadastral. Cada bloco degrada sozinho se a base falhar. Se a empresa já é monitorada pela organização, leva
  * para a página dela; senão, permite pôr num portfólio.
  *
  * Cada abertura conta no teto por usuário (`cnpj.perfil.per_minute`) — anti-
@@ -33,7 +37,7 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class Perfil extends Component
 {
-    use AuthorizesRequests, InteractsWithCurrentOrganization;
+    use AuthorizesRequests, CountsProfileViews, InteractsWithCurrentOrganization;
 
     #[Locked]
     public string $cnpj = '';
@@ -51,7 +55,7 @@ class Perfil extends Component
         abort_if($valido === null, 404);
 
         $this->cnpj = $valido->value;
-        $this->limitado = $this->estourouLimite();
+        $this->limitado = $this->profileViewLimitExceeded();
     }
 
     public function adicionar(AddCompanyToPortfolio $adder): void
@@ -79,11 +83,12 @@ class Perfil extends Component
         session()->flash('status', "Empresa adicionada ao portfólio {$portfolio->name} — a primeira checagem já está na fila.");
     }
 
-    public function render(EmpresaLookup $empresas, HistoricoLookup $historicos): View
+    public function render(EmpresaLookup $empresas, HistoricoLookup $historicos, DetalhesEmpresaLookup $detalhes, OwnershipGraphService $grafo): View
     {
         $empresa = null;
         $historico = null;
         $indisponivel = false;
+        $extras = [];
 
         if (! $this->limitado) {
             try {
@@ -95,12 +100,19 @@ class Perfil extends Component
 
             if ($empresa !== null) {
                 $historico = $this->historico($historicos);
+                $extras = $this->extras($detalhes, $grafo);
             }
         }
 
         $orgId = $this->currentOrganizationId();
 
-        return view('livewire.empresas.perfil', [
+        return view('livewire.empresas.perfil', $extras + [
+            'detalhes' => null,
+            'beneficiarios' => null,
+            'filiais' => null,
+            'estabelecimentos' => 0,
+            'participacoes' => null,
+            'totalParticipacoes' => 0,
             'empresa' => $empresa,
             'historico' => $historico,
             'indisponivel' => $indisponivel,
@@ -124,23 +136,47 @@ class Perfil extends Component
         }
     }
 
-    /** Conta a abertura no teto do usuário; true = estourou. */
-    private function estourouLimite(): bool
+    /**
+     * Blocos do perfil que vêm de outras consultas (natureza/porte/Simples,
+     * beneficiários, filiais, participações). Cada um falha sozinho: null =
+     * "indisponível agora" na tela, sem derrubar o resto.
+     *
+     * @return array<string, mixed>
+     */
+    private function extras(DetalhesEmpresaLookup $detalhes, OwnershipGraphService $grafo): array
     {
-        $max = (int) config('cnpj.perfil.per_minute', 60);
+        $limite = max(1, (int) config('cnpj.perfil.participacoes_limite', 100));
 
-        if ($max <= 0) {
-            return false;
+        $participacoes = $this->tentar(fn (): array => $grafo->participations($this->cnpj, $limite));
+
+        return [
+            'detalhes' => $this->tentar(fn (): mixed => $detalhes->para($this->cnpj)),
+            'beneficiarios' => $this->tentar(fn (): array => $grafo->beneficialOwners($this->cnpj)),
+            'filiais' => $this->tentar(fn (): array => $grafo->branches($this->cnpj)),
+            'estabelecimentos' => (int) $this->tentar(fn (): int => $grafo->establishmentCount($this->cnpj)),
+            'participacoes' => $participacoes,
+            // Só conta à parte se a lista encheu (senão o total é o tamanho dela).
+            // Se só a contagem falhar, fica o tamanho da lista (nunca "sócia de 0").
+            'totalParticipacoes' => is_array($participacoes) && count($participacoes) >= $limite
+                ? ($this->tentar(fn (): int => $grafo->participationCount($this->cnpj)) ?? count($participacoes))
+                : (is_array($participacoes) ? count($participacoes) : 0),
+        ];
+    }
+
+    /**
+     * @template T
+     *
+     * @param  callable(): T  $consulta
+     * @return T|null
+     */
+    private function tentar(callable $consulta): mixed
+    {
+        try {
+            return $consulta();
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
         }
-
-        $key = 'perfil-empresa:'.(string) $this->currentUser()->getKey();
-
-        if (RateLimiter::tooManyAttempts($key, $max)) {
-            return true;
-        }
-
-        RateLimiter::hit($key, 60);
-
-        return false;
     }
 }

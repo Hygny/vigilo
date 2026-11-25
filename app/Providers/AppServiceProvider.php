@@ -13,6 +13,7 @@ use App\Services\Risco\PgfnLookup;
 use App\Services\Risco\PortalTransparenciaClient;
 use App\Services\Risco\RiscoService;
 use App\Services\Vigilancia\BuscaEmpresas;
+use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
 use App\Services\Vigilancia\HistoricoLookup;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -75,6 +76,10 @@ class AppServiceProvider extends ServiceProvider
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
             candidatos: max(1, (int) config('cnpj.busca.candidatos', 200)),
             timeoutMs: (int) config('cnpj.busca.timeout_ms', 5000),
+        ));
+
+        $this->app->singleton(DetalhesEmpresaLookup::class, fn (): DetalhesEmpresaLookup => new DetalhesEmpresaLookup(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
         ));
 
         $this->app->singleton(HistoricoLookup::class, fn (): HistoricoLookup => new HistoricoLookup(

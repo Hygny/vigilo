@@ -51,11 +51,12 @@ final class DossieGenerator
         $beneficiarios = [];
         $filiais = [];
         $grupo = [];
+        $participacoes = [];
 
         try {
             $beneficiarios = $this->graph->beneficialOwners($company->cnpj);
             $filiais = $this->graph->branches($company->cnpj);
-            $grupo = $this->grupoEconomico($this->graph->for($company->cnpj));
+            ['grupo' => $grupo, 'participacoes' => $participacoes] = $this->empresasLigadas($this->graph->for($company->cnpj));
         } catch (Throwable) {
             // base CNPJ indisponível → seções do grafo omitidas
         }
@@ -73,22 +74,31 @@ final class DossieGenerator
             'beneficiarios' => $beneficiarios,
             'filiais' => $filiais,
             'grupo' => $grupo,
+            'participacoes' => $participacoes,
             'historico' => $historico,
             'geradoEm' => Carbon::now(),
         ])->setPaper('a4');
     }
 
     /**
-     * Empresas do grupo econômico = nós empresa do grafo que não são o centro
-     * (ligadas por sócio em comum na consulta reversa), cada uma com a dívida
+     * Empresas ligadas = nós empresa do grafo que não são o centro, separadas em
+     * PARTICIPAÇÕES (o centro é sócio PJ delas — aresta `participacao`) e GRUPO
+     * ECONÔMICO (ligadas por sócio em comum na consulta reversa), cada uma com a dívida
      * ativa (PGFN) pela raiz do CNPJ — consultada numa vez só. Se a PGFN não
      * responder, `pgfn_consultada` = false e o PDF imprime "não consultada"
      * (nunca "sem dívida" por falha).
      *
-     * @return list<array{label: string, document: ?string, situacao: ?string, divida: ?PgfnDebtSummary, pgfn_consultada: bool}>
+     * @return array{grupo: list<array{label: string, document: ?string, situacao: ?string, divida: ?PgfnDebtSummary, pgfn_consultada: bool}>, participacoes: list<array{label: string, document: ?string, situacao: ?string, divida: ?PgfnDebtSummary, pgfn_consultada: bool}>}
      */
-    private function grupoEconomico(OwnershipGraph $graph): array
+    private function empresasLigadas(OwnershipGraph $graph): array
     {
+        $participacao = [];
+        foreach ($graph->edges as $edge) {
+            if ($edge->relation === 'participacao') {
+                $participacao[$edge->from] = true;
+            }
+        }
+
         $nodes = array_values(array_filter(
             $graph->nodes,
             fn ($node): bool => $node->type === 'empresa' && $node->id !== $graph->center,
@@ -107,12 +117,17 @@ final class DossieGenerator
             $dividas = null;
         }
 
-        return array_map(fn ($node): array => [
+        $linha = fn ($node): array => [
             'label' => $node->label,
             'document' => $node->document,
             'situacao' => $node->situacao,
             'divida' => $node->document !== null ? ($dividas[substr($node->document, 0, 8)] ?? null) : null,
             'pgfn_consultada' => $dividas !== null,
-        ], $nodes);
+        ];
+
+        return [
+            'grupo' => array_values(array_map($linha, array_filter($nodes, fn ($node): bool => ! isset($participacao[$node->id])))),
+            'participacoes' => array_values(array_map($linha, array_filter($nodes, fn ($node): bool => isset($participacao[$node->id])))),
+        ];
     }
 }

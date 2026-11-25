@@ -14,6 +14,7 @@ use App\Livewire\Companies\Graph as CompanyGraph;
 use App\Livewire\Companies\Show as CompanyShow;
 use App\Livewire\Dashboard;
 use App\Livewire\Empresas\Busca as EmpresasBusca;
+use App\Livewire\Empresas\Grafo as EmpresasGrafo;
 use App\Livewire\Empresas\Perfil as EmpresasPerfil;
 use App\Livewire\Integrations\Index as Integrations;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
@@ -37,6 +38,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Busca por nome e perfil de QUALQUER empresa da base CNPJ (não só da carteira).
     Route::get('empresas', EmpresasBusca::class)->name('empresas.busca');
     Route::get('empresas/{cnpj}', EmpresasPerfil::class)->where('cnpj', '[0-9]{14}')->name('empresas.perfil');
+    Route::get('empresas/{cnpj}/grafo', EmpresasGrafo::class)->where('cnpj', '[0-9]{14}')->name('empresas.grafo');
 
     Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Services\Graph\OwnershipGraphService;
+use App\Support\Cnpj;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,6 +42,7 @@ function bootGraphBase(): void
         $t->string('cnpj_cpf_do_socio')->nullable();
         $t->string('identificador_de_socio')->nullable();
         $t->string('qualificacao_do_socio')->nullable();
+        $t->string('data_entrada_sociedade')->nullable();
     });
     $schema->create('qualificacoes_socios', function (Blueprint $t): void {
         $t->string('codigo');
@@ -538,4 +540,124 @@ it('dedups a person reached by multiple paths, keeping the nearest level', funct
 
     expect(collect($owners)->where('document', '***111**'))->toHaveCount(1)
         ->and(collect($owners)->firstWhere('document', '***111**')->depth)->toBe(1);
+});
+
+it('lists the participations (companies where the center is a PJ partner), active first, deduped', function () {
+    bootGraphBase();
+    $db = DB::connection('cnpj');
+    $db->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02', 'uf' => 'SP'],
+        ['cnpj_basico' => '20000001', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '08', 'uf' => 'SP'],
+        ['cnpj_basico' => '30000002', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02', 'uf' => 'SE'],
+    ]);
+    $db->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'HOLDING A'],
+        ['cnpj_basico' => '20000001', 'razao_social' => 'AAA BAIXADA'],
+        ['cnpj_basico' => '30000002', 'razao_social' => 'ZZZ ATIVA'],
+        ['cnpj_basico' => '40000003', 'razao_social' => 'OUTRA RAIZ'],
+    ]);
+    $db->table('qualificacoes_socios')->insert([['codigo' => '22', 'descricao' => 'Sócio']]);
+    $db->table('socios')->insert([
+        // a HOLDING A (raiz 11222333) é sócia de duas empresas — uma delas por 2 estabelecimentos dela
+        ['cnpj_basico' => '20000001', 'nome_socio' => 'HOLDING A', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '22', 'data_entrada_sociedade' => '2019-05-01'],
+        ['cnpj_basico' => '30000002', 'nome_socio' => 'HOLDING A', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '22', 'data_entrada_sociedade' => null],
+        ['cnpj_basico' => '30000002', 'nome_socio' => 'HOLDING A FILIAL', 'cnpj_cpf_do_socio' => '11222333000262', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '22', 'data_entrada_sociedade' => null],
+        // fora: outra raiz e um CPF mascarado parecido
+        ['cnpj_basico' => '40000003', 'nome_socio' => 'OUTRA', 'cnpj_cpf_do_socio' => '11222334000100', 'identificador_de_socio' => '1', 'qualificacao_do_socio' => '22', 'data_entrada_sociedade' => null],
+        ['cnpj_basico' => '40000003', 'nome_socio' => 'FULANO', 'cnpj_cpf_do_socio' => '***222333**', 'identificador_de_socio' => '2', 'qualificacao_do_socio' => '22', 'data_entrada_sociedade' => null],
+    ]);
+
+    $service = new OwnershipGraphService('cnpj', 25);
+    $lista = $service->participations('11222333000181', 10);
+
+    expect(array_map(fn ($p) => $p->nome, $lista))->toBe(['ZZZ ATIVA', 'AAA BAIXADA']) // ativa primeiro
+        ->and($lista[0]->cnpj)->toBe(Cnpj::matrizFromBasico('30000002'))
+        ->and($lista[0]->uf)->toBe('SE')
+        ->and($lista[1]->situacao)->toBe('BAIXADA')
+        ->and($lista[1]->qualificacao)->toBe('Sócio')
+        ->and($lista[1]->dataEntrada)->toBe('2019-05-01')
+        ->and($service->participationCount('11222333000181'))->toBe(2)
+        ->and($service->participations('11222333000181', 1))->toHaveCount(1)
+        ->and($service->participations('11222333000181', 0))->toBe([]);
+});
+
+it('adds the participations to the graph as certain "participacao" edges', function () {
+    bootGraphBase();
+    $db = DB::connection('cnpj');
+    $db->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+        ['cnpj_basico' => '20000001', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00', 'situacao_cadastral' => '02'],
+    ]);
+    $db->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'HOLDING A'],
+        ['cnpj_basico' => '20000001', 'razao_social' => 'INVESTIDA'],
+    ]);
+    $db->table('socios')->insert([
+        ['cnpj_basico' => '20000001', 'nome_socio' => 'HOLDING A', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1'],
+    ]);
+
+    $graph = (new OwnershipGraphService('cnpj', 25))->for('11222333000181')->toArray();
+
+    expect(collect($graph['nos'])->pluck('id')->all())->toContain('empresa:20000001')
+        ->and(collect($graph['arestas'])->first(fn (array $e): bool => $e['de'] === 'empresa:20000001'))
+        ->toMatchArray(['para' => 'empresa:11222333', 'tipo' => 'participacao', 'provavel' => false]);
+});
+
+it('counts all establishments of the company (matriz + filiais)', function () {
+    bootGraphBase();
+    DB::connection('cnpj')->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81'],
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0002', 'cnpj_dv' => '62'],
+        ['cnpj_basico' => '99999999', 'cnpj_ordem' => '0001', 'cnpj_dv' => '00'],
+    ]);
+
+    expect((new OwnershipGraphService('cnpj', 25))->establishmentCount('11222333000181'))->toBe(2);
+});
+
+it('applies the participations limit per investee even when the holding repeats on many establishments', function () {
+    bootGraphBase();
+    $db = DB::connection('cnpj');
+    $db->table('empresas')->insert([
+        ['cnpj_basico' => '20000001', 'razao_social' => 'AAA REPETIDA'],
+        ['cnpj_basico' => '30000002', 'razao_social' => 'BBB UNICA'],
+    ]);
+    // a holding é sócia da AAA por 4 estabelecimentos dela e da BBB por 1
+    foreach (['0001', '0002', '0003', '0004'] as $ordem) {
+        $db->table('socios')->insert(['cnpj_basico' => '20000001', 'nome_socio' => 'HOLDING', 'cnpj_cpf_do_socio' => '11222333'.$ordem.'00', 'identificador_de_socio' => '1']);
+    }
+    $db->table('socios')->insert(['cnpj_basico' => '30000002', 'nome_socio' => 'HOLDING', 'cnpj_cpf_do_socio' => '11222333000181', 'identificador_de_socio' => '1']);
+
+    $service = new OwnershipGraphService('cnpj', 25);
+
+    expect(array_map(fn ($p) => $p->nome, $service->participations('11222333000181', 2)))->toBe(['AAA REPETIDA', 'BBB UNICA'])
+        ->and($service->participationCount('11222333000181'))->toBe(2);
+});
+
+it('matches participations and PJ partners stored by the 8-digit root (the format of the loaded base)', function () {
+    bootGraphBase();
+    $db = DB::connection('cnpj');
+    $db->table('estabelecimentos')->insert([
+        ['cnpj_basico' => '11222333', 'cnpj_ordem' => '0001', 'cnpj_dv' => '81', 'situacao_cadastral' => '02'],
+    ]);
+    $db->table('empresas')->insert([
+        ['cnpj_basico' => '11222333', 'razao_social' => 'HOLDING A'],
+        ['cnpj_basico' => '20000001', 'razao_social' => 'INVESTIDA'],
+        ['cnpj_basico' => '99888777', 'razao_social' => 'CONTROLADORA'],
+    ]);
+    $db->table('socios')->insert([
+        // a HOLDING A é sócia da INVESTIDA (documento = raiz, 8 díg)
+        ['cnpj_basico' => '20000001', 'nome_socio' => 'HOLDING A', 'cnpj_cpf_do_socio' => '11222333', 'identificador_de_socio' => '1'],
+        // e a CONTROLADORA é sócia PJ da HOLDING A (idem)
+        ['cnpj_basico' => '11222333', 'nome_socio' => 'CONTROLADORA', 'cnpj_cpf_do_socio' => '99888777', 'identificador_de_socio' => '1'],
+    ]);
+
+    $service = new OwnershipGraphService('cnpj', 25);
+
+    expect(array_map(fn ($p) => $p->nome, $service->participations('11222333000181', 10)))->toBe(['INVESTIDA'])
+        ->and($service->participationCount('11222333000181'))->toBe(1);
+
+    $nos = collect($service->for('11222333000181')->toArray()['nos'])->keyBy('id');
+    // o nó do sócio PJ mostra o CNPJ da matriz (clicável/PGFN), id segue pela raiz
+    expect($nos->get('socio:99888777')['documento'])->toBe(Cnpj::matrizFromBasico('99888777'))
+        ->and($nos->has('empresa:20000001'))->toBeTrue();
 });

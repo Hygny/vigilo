@@ -121,6 +121,8 @@ return [
 
     'perfil' => [
         'per_minute' => (int) env('CNPJ_PERFIL_PER_MINUTE', 60),
+        // Quantas participações (empresas em que ela é sócia PJ) o perfil lista.
+        'participacoes_limite' => (int) env('CNPJ_PERFIL_PARTICIPACOES_LIMITE', 100),
     ],
 
 ];

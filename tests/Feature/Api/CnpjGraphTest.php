@@ -48,6 +48,7 @@ function seedGraphCenterBase(): void
         $t->string('cnpj_cpf_do_socio')->nullable();
         $t->string('identificador_de_socio')->nullable();
         $t->string('qualificacao_do_socio')->nullable();
+        $t->string('data_entrada_sociedade')->nullable();
     });
     $schema->create('qualificacoes_socios', function (Blueprint $t): void {
         $t->string('codigo');
