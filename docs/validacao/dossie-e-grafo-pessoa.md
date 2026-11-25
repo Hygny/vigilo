@@ -28,7 +28,7 @@
 | A1 | alta | "Risco ao redor" no PDF dizia "nenhuma" com a PGFN fora e omitia o aviso de CGU velha | ✅ Mesma regra da tela (`semSinalConfiavel()`), "nas fontes que puderam ser consultadas" e aviso de cópia desatualizada; teste |
 | A2 | média | O teste da lista completa não distinguia o comportamento novo do antigo | ✅ `reverse_limit` = 5 no teste e 301 participações → "Listando 300 de 301" |
 | A3 | média | Seções sem teste do caminho feliz | ✅ Testes de capital/Simples/MEI, risco ao redor (limpo, com sinal e com fonte fora), contratos e indícios com `recuperacao_marco` |
-| A4 | média (suspeita) | O PDF roda em sequência os blocos que a tela carrega lazy | ⏳ Medido em produção com cache frio (ver abaixo) |
+| A4 | média (suspeita) | O PDF roda em sequência os blocos que a tela carrega lazy | ⏳ Medido em produção (caches frios, 3 empresas reais): 1,0–2,1 s contra 30 s de limite → **DT-34** em `docs/debito-tecnico.md` |
 | A5 | baixa | Regra de estrangeiro do grafo ≠ regra do link | ✅ `$pessoa->estrangeiro` no `abort_if`, constante morta removida; teste |
 | A6 | baixa | Contratos no PDF listavam só os vigentes | ✅ `ContratosReport::destaques(10)`: vigentes primeiro, depois os encerrados mais recentes, marcados |
 | A7 | baixa | Comentário divergente | ✅ Alinhado ao comportamento |
