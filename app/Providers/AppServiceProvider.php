@@ -10,6 +10,7 @@ use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Admin\StatusRotinas;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Bens\IndiciosEsvaziamento;
+use App\Services\Bens\MarcasLookup;
 use App\Services\Contratos\ContratosPublicos;
 use App\Services\Graph\OwnershipGraphService;
 use App\Services\Risco\DirtyListLookup;
@@ -73,6 +74,10 @@ class AppServiceProvider extends ServiceProvider
             maxBranches: (int) config('cnpj.graph.branch_limit', 60),
             addressLimit: (int) config('cnpj.graph.address_limit', 25),
             addressCrowdedMax: (int) config('cnpj.graph.address_crowded_max', 6),
+        ));
+
+        $this->app->singleton(MarcasLookup::class, fn (): MarcasLookup => new MarcasLookup(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
         ));
 
         $this->app->singleton(PgfnLookup::class, fn (): PgfnLookup => new PgfnLookup(

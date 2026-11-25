@@ -12,6 +12,9 @@
             @if ($bens->aeronaves !== null)
                 <span class="rounded-full bg-surface-2 px-3 py-1 text-ink-2 ring-1 ring-inset ring-line">{{ $bens->totalAeronavesAtivas }} aeronave(s) · {{ $bens->aeronavesTruncadas() ? 'ao menos ' : '' }}{{ count($bens->aeronavesLivres()) }} sem ônus</span>
             @endif
+            @if ($bens->marcas !== null)
+                <span class="rounded-full bg-surface-2 px-3 py-1 text-ink-2 ring-1 ring-inset ring-line">{{ $bens->marcasCompletas ? '' : 'ao menos ' }}{{ $bens->marcasEmVigor() }} marca(s) registrada(s) em vigor</span>
+            @endif
             @if ($bens->participacoes !== null)
                 <span class="rounded-full bg-surface-2 px-3 py-1 text-ink-2 ring-1 ring-inset ring-line">sócia de {{ $bens->totalParticipacoes }} empresa(s) · quotas/ações</span>
             @endif
@@ -70,6 +73,41 @@
             @if ($bens->totalParticipacoes > count($bens->participacoes))
                 <p class="mt-2 text-[12px] text-ink-muted">Mostrando {{ count($bens->participacoes) }} de {{ $bens->totalParticipacoes }} (ativas primeiro) — a lista completa está na estrutura societária.</p>
             @endif
+        @endif
+
+        {{-- Marcas (INPI): registro em vigor é bem móvel penhorável; pedido é expectativa de direito --}}
+        <h3 class="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Marcas registradas (INPI)</h3>
+        @if ($bens->marcas === null)
+            <p class="text-sm text-ink-muted">Cópia das marcas do INPI indisponível no momento — não consultado.</p>
+        @elseif ($bens->totalMarcasAtivas() === 0)
+            <p class="text-sm text-ink-muted">Nenhuma marca em vigor ou pedido em andamento em nome desta empresa{{ $bens->totalMarcasInativas() > 0 ? ' ('.$bens->totalMarcasInativas().' extinta(s) ou arquivada(s))' : '' }}.</p>
+        @else
+            <ul class="divide-y divide-line">
+                @foreach ($bens->marcasExibidas() as $m)
+                    <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                        <span class="flex min-w-0 items-center gap-2">
+                            <span class="truncate font-medium text-ink">{{ $m->nome ?? 'Marca sem elemento nominativo' }}</span>
+                            <span class="font-mono text-[12px] text-ink-muted">nº {{ $m->numero }}</span>
+                        </span>
+                        <span class="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-muted">
+                            @if ($m->emVigor())
+                                <span class="rounded-md bg-ok-soft px-1.5 py-0.5 text-[11px] font-semibold text-ok">registro em vigor</span>
+                                @if ($m->dataVigencia)até {{ \Illuminate\Support\Carbon::parse($m->dataVigencia)->format('d/m/Y') }}@endif
+                            @else
+                                <span class="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-2 ring-1 ring-inset ring-line">pedido</span>
+                                {{ $m->situacao }}
+                            @endif
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
+            @if ($bens->totalMarcasAtivas() > count($bens->marcasExibidas()) || ! $bens->marcasCompletas)
+                <p class="mt-2 text-[12px] text-ink-muted">Mostrando {{ count($bens->marcasExibidas()) }} de {{ $bens->marcasCompletas ? '' : 'ao menos ' }}{{ $bens->totalMarcasAtivas() }} (em vigor primeiro).</p>
+            @endif
+            @if ($bens->totalMarcasInativas() > 0)
+                <p class="mt-1 text-[12px] text-ink-muted">+ {{ $bens->totalMarcasInativas() }} extinta(s), arquivada(s) ou indeferida(s), não listadas.</p>
+            @endif
+            <p class="mt-2 text-[12px] text-ink-muted">Fonte: INPI (dados abertos){{ $bens->marcasDe ? ' — cópia de '.\Illuminate\Support\Carbon::parse($bens->marcasDe)->format('d/m/Y') : '' }}. Marca registrada é bem móvel e pode ser penhorada; confirme titularidade e situação na consulta do INPI.</p>
         @endif
 
         {{-- Recebíveis: contratos públicos vigentes --}}

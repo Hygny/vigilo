@@ -25,6 +25,9 @@ final class StatusRotinas
     /** Backup e varredura rodam todo dia: passou disso sem rodada nova = atrasada. */
     private const DIARIA_HORAS = 26;
 
+    /** Rotinas semanais (manutenção de segunda): mais de 8 dias = atrasada. */
+    private const SEMANAL_HORAS = 8 * 24;
+
     public function __construct(
         private readonly SancoesLocais $sancoes,
         private readonly string $connection,
@@ -41,6 +44,7 @@ final class StatusRotinas
             $this->simples(MaintenanceRun::KIND_RISCO_AO_REDOR, 'Risco das empresas ligadas (alertas)', 'hub', 'todo dia às 09:30 e 12:30'),
             $this->simples(MaintenanceRun::KIND_DEVEDORES, 'Monitoramento de devedoras (alertas)', 'move_down', SweepDevedores::HORARIOS),
             $this->buscaPessoas(),
+            $this->marcasInpi(),
         ];
     }
 
@@ -126,12 +130,41 @@ final class StatusRotinas
         );
     }
 
-    private function situacao(?MaintenanceRun $run): string
+    /**
+     * Marcas do INPI (cópia na VM, carga semanal com a manutenção de segunda).
+     * A rodada vem do reimport-mensal.sh (`vigilo:rotina marcas_inpi`); o
+     * tamanho/data da cópia, da própria base.
+     */
+    private function marcasInpi(): RotinaStatus
+    {
+        $run = MaintenanceRun::ultima(MaintenanceRun::KIND_MARCAS_INPI);
+        $carga = Tentar::ouNull(fn (): ?object => DB::connection($this->connection)->table('inpi_cargas')->orderByDesc('carregado_em')->first(['marcas', 'carregado_em']));
+        $copia = $carga !== null
+            ? number_format((int) $carga->marcas, 0, ',', '.').' marcas de empresas, cópia de '.Carbon::parse((string) $carga->carregado_em)->format('d/m/Y').'. '
+            : '';
+
+        return new RotinaStatus(
+            nome: 'Marcas do INPI (cópia)',
+            icone: 'verified',
+            situacao: $run === null && $carga !== null ? $this->idadeDaCopia(Carbon::parse((string) $carga->carregado_em)) : $this->situacao($run, self::SEMANAL_HORAS),
+            ultimaEm: $run?->finished_at,
+            detalhe: trim($copia.($run->message ?? '')) ?: null,
+            periodicidade: 'toda semana, na manutenção da base CNPJ (segunda)',
+        );
+    }
+
+    /** Cópia carregada à mão antes da 1ª rodada registrada: vale pela idade dela. */
+    private function idadeDaCopia(Carbon $carregadoEm): string
+    {
+        return $carregadoEm->lt(now()->subHours(self::SEMANAL_HORAS)) ? 'atrasada' : 'ok';
+    }
+
+    private function situacao(?MaintenanceRun $run, int $horas = self::DIARIA_HORAS): string
     {
         return match (true) {
             $run === null => 'nunca',
             ! $run->isSuccess() => 'falhou',
-            $run->finished_at === null || $run->finished_at->lt(now()->subHours(self::DIARIA_HORAS)) => 'atrasada',
+            $run->finished_at === null || $run->finished_at->lt(now()->subHours($horas)) => 'atrasada',
             default => 'ok',
         };
     }

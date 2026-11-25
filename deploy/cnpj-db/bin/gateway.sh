@@ -13,6 +13,7 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     reimport) exec "$BIN/reimport.sh" ;;
     pf-count) exec "$BIN/pf-count.sh" ;;
     pgfn) exec "$BIN/pgfn.sh" ;;
+    inpi) exec "$BIN/inpi-marcas.sh" ;;
     # Backup do MySQL do Vigilo pelo stdin; o nome é validado no script.
     "guardar-backup "*) exec "$BIN/guardar-backup.sh" "${SSH_ORIGINAL_COMMAND#guardar-backup }" ;;
     # (O verbo `receive-dump` da cópia inicial saiu após a migração — se um dia

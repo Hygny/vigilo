@@ -392,6 +392,27 @@ Receita.
 - Testes dos objetos SQL num Postgres real: `bash tests/deploy/cnpj-db-sql.test.sh`
   (na VM; cria e apaga o banco `vigilo_sql_teste`).
 
+### Marcas do INPI (bens: marca registrada é penhorável) — 2026-11-25
+
+- **Tabela** `inpi_marcas`: uma linha por (marca, titular) **só de titular
+  pessoa jurídica** (CNPJ de 14 dígitos; o INPI publica o CPF de PF mascarado e
+  ele nem entra), com número INPI, elemento nominativo, apresentação, natureza,
+  situação (código + descrição) e as datas de depósito/concessão/vigência.
+  PK `(numero_inpi, cnpj)`, índice `idx_inpi_marcas_basico` (raiz). `inpi_cargas`
+  guarda a versão carregada (Last-Modified dos dois CSVs). 1ª carga
+  (2026-11-25): **4.760.638 marcas**, 1,2 GB, 2 min 21 s; consulta por raiz ~3 ms.
+- **Carga**: `~/cnpj/bin/inpi-marcas.sh` (verbo `inpi` do `gateway.sh`) — lê
+  `MARCAS_DEPOSITANTES.csv` (~860 MB) e `MARCAS_DADOS_BIBLIOGRAFICOS.csv`
+  (~950 MB) de dadosabertos.inpi.gov.br direto para staging UNLOGGED (sem
+  gravar em disco), monta a tabela de carga, confere a sanidade (≥ 500 mil e ≥ 80%
+  da anterior) e troca num átomo (dono `vigilo_app`). No-op enquanto a versão
+  publicada for a já carregada. Saída 3 = só falta de espaço em /data.
+- **Agenda**: passo 4 do `deploy/reimport-mensal.sh` do VPS (toda segunda), que
+  registra a rodada no card "Rotinas" (`vigilo:rotina marcas_inpi`).
+- **Recarregar à mão**: `ssh ubuntu@159.112.186.240 '~/cnpj/bin/inpi-marcas.sh --force'`.
+- Fora da cópia (grandes demais e sem uso hoje): `MARCAS_DESPACHOS.csv` (~6 GB)
+  e `MARCAS_CLASSIFICACOES_NICE.csv` (~4,3 GB).
+
 ## Riscos e mitigação
 
 | Risco | Mitigação |

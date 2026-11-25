@@ -47,6 +47,7 @@ final class SweepDevedores extends Command
         DevedorMonitor::PARTICIPACAO => 'Participação societária',
         DevedorMonitor::CONTRATO => 'Contrato federal vigente',
         DevedorMonitor::SUCESSORA => 'Possível sucessora',
+        DevedorMonitor::MARCA => 'Marca (INPI)',
     ];
 
     public function handle(DevedorMonitor $monitor, CompanyAlertNotifier $notifier): int

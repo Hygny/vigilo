@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\DTO\Bens\Marca;
 use App\Livewire\Companies\Show;
 use App\Livewire\Empresas\BensRecebiveis;
 use App\Models\MaintenanceRun;
@@ -389,4 +390,98 @@ it('says "not checked" on the person page before the registry copy is loaded', f
         ->assertOk()
         ->assertSee('Registro de aeronaves indisponível no momento')
         ->assertDontSee('Nenhuma aeronave em nome de pessoa física');
+});
+
+it('lists the INPI trademarks of the company: registered first, pending, extinct only counted', function () {
+    useCnpjSqlite();
+    createInpiTables();
+    seedMarca('11222333000181', '900000001', 'AURORA');
+    seedMarca('11222333000262', '900000001', 'AURORA'); // co-titular (filial): uma vez só
+    seedMarca('11222333000181', '900000002', 'AURORA GOURMET', 'Aguardando prazo de apresentação de oposição', null);
+    seedMarca('11222333000181', '900000003', 'AURORA VELHA', 'Pedido definitivamente arquivado', null);
+
+    Http::fake();
+    Livewire::actingAs(User::factory()->for(Organization::factory())->create())->test(BensRecebiveis::class, ['cnpj' => '11222333000181'])
+        ->assertSee('1 marca(s) registrada(s) em vigor')
+        ->assertSeeInOrder(['Marcas registradas (INPI)', 'AURORA', 'registro em vigor', 'até 01/01/2034', 'AURORA GOURMET', 'pedido'])
+        ->assertDontSee('AURORA VELHA')
+        ->assertSee('+ 1 extinta(s), arquivada(s) ou indeferida(s), não listadas')
+        ->assertSee('cópia de 25/11/2026');
+});
+
+it('says "not checked" when the INPI copy is missing (never "no trademarks")', function () {
+    Http::fake(); // base CNPJ dos testes fora (porta 1)
+    Livewire::actingAs(User::factory()->for(Organization::factory())->create())->test(BensRecebiveis::class, ['cnpj' => '11222333000181'])
+        ->assertSee('Cópia das marcas do INPI indisponível no momento')
+        ->assertDontSee('Nenhuma marca em vigor');
+});
+
+it('classifies the INPI status into registered, pending or inactive', function (string $situacao, string $estado) {
+    expect(Marca::estadoDe($situacao))->toBe($estado);
+})->with([
+    ['Registro de marca em vigor', 'em_vigor'],
+    ['Registro', 'em_vigor'],
+    ['Aguardando exame de petição de prorrogação (registro de marca em vigor)', 'em_vigor'],
+    ['Registro sub júdice', 'em_vigor'],
+    ['Aguardando prazo de apresentação de oposição', 'pedido'],
+    ['Pedido de registro de marca indeferido (mantido em grau de recurso)', 'inativa'],
+    ['Aguardando apresentação ou exame de recurso contra o indeferimento', 'pedido'],
+    ['Registro de marca em vigor por decisão judicial (em sede de liminar)', 'em_vigor'],
+    ['Aguardando prazo extraordinario de prorrogação', 'em_vigor'],
+    ['Registro "Sub-Júdice"', 'em_vigor'],
+    ['Registro com Processo Administrativo de Nulidade', 'em_vigor'],
+    ['Registro com Caducidade', 'inativa'],
+    ['Para extinguir registro de marca pela expiração do prazo de vigência', 'inativa'],
+    ['Pedido arquivado de ofício', 'inativa'],
+    ['Inviavel', 'inativa'],
+    ['Pedido Deferido', 'pedido'],
+    ['Pedido definitivamente arquivado', 'inativa'],
+    ['Registro de marca extinto', 'inativa'],
+    ['Pedido de registro de marca indeferido (sem interposição de recurso)', 'inativa'],
+    ['Pedido considerado inexistente', 'inativa'],
+    ['Registro de marca nulo', 'inativa'],
+    ['Registro de marca cancelado de ofício', 'inativa'],
+    ['Não Publicado', 'inativa'],
+]);
+
+it('the INPI copy is a weekly routine on the admin card (registered by the maintenance script)', function () {
+    test()->artisan('vigilo:rotina', ['tipo' => 'marcas_inpi', 'resultado' => 'ok', '--message' => 'marcas do INPI carregadas: 4760638 de pessoa jurídica'])->assertSuccessful();
+    $linha = collect(app(StatusRotinas::class)->todas())->firstWhere('nome', 'Marcas do INPI (cópia)');
+    expect($linha?->situacao)->toBe('ok');
+
+    $this->travelTo(now()->addDays(9));
+    $linha = collect(app(StatusRotinas::class)->todas())->firstWhere('nome', 'Marcas do INPI (cópia)');
+    expect($linha?->situacao)->toBe('atrasada');
+});
+
+it('lists at most 10 active trademarks and says "mostrando N de M"', function () {
+    useCnpjSqlite();
+    createInpiTables();
+    for ($i = 1; $i <= 12; $i++) {
+        seedMarca('11222333000181', sprintf('9100000%02d', $i), sprintf('AURORA %02d', $i));
+    }
+
+    Http::fake();
+    Livewire::actingAs(User::factory()->for(Organization::factory())->create())->test(BensRecebiveis::class, ['cnpj' => '11222333000181'])
+        ->assertSee('12 marca(s) registrada(s) em vigor')
+        ->assertSee('Mostrando 10 de 12 (em vigor primeiro)');
+});
+
+it('says "not checked" when the INPI copy was never loaded (control table empty)', function () {
+    useCnpjSqlite();
+    createInpiTables(); // tabelas criadas, nenhuma carga ainda
+
+    Http::fake();
+    Livewire::actingAs(User::factory()->for(Organization::factory())->create())->test(BensRecebiveis::class, ['cnpj' => '11222333000181'])
+        ->assertSee('Cópia das marcas do INPI indisponível no momento')
+        ->assertDontSee('Nenhuma marca em vigor');
+});
+
+it('a manual INPI load without a registered run is judged by the copy age', function () {
+    useCnpjSqlite();
+    createInpiTables();
+    DB::connection('cnpj')->table('inpi_cargas')->insert(['versao' => 'v1', 'marcas' => 10, 'carregado_em' => now()->subDays(10)->toDateTimeString()]);
+
+    $linha = collect(app(StatusRotinas::class)->todas())->firstWhere('nome', 'Marcas do INPI (cópia)');
+    expect($linha?->situacao)->toBe('atrasada');
 });

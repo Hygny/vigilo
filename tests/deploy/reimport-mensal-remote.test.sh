@@ -31,6 +31,12 @@ echo "ssh $verb" >>"$T/calls"
 case "$verb" in
     pf-count) cat "$T/pf" ;;
     pgfn) exit "$(cat "$T/pgfn_rc")" ;;
+    inpi)
+        echo "==> [2026-11-25T00:00:00+00:00] marcas do INPI (x) já carregadas — nada a fazer"
+        rc="$(cat "$T/inpi_rc" 2>/dev/null || echo 0)"
+        [ "$rc" != 0 ] && echo "!! [2026-11-25T00:00:01+00:00] montagem da tabela de carga falhou" >&2
+        exit "$rc"
+        ;;
     reimport)
         rc="$(cat "$T/reimport_rc")"
         [ "$rc" = 0 ] && cp "$T/pf_after" "$T/pf"
@@ -162,6 +168,39 @@ printf 'CNPJ_DB_PASSWORD=x\nREIMPORT_RETRY_WAIT=0\n' >"$T/home/apps/vigilo/.env"
 run
 if [ "$(cat "$T/rc")" = 0 ] && has "cnpj-data-pipeline" && has "recoletar-carteira" \
     && ! has "ssh " && has -- "--pgfn=skip"; then ok "$t"; else ko "$t"; fi
+
+t="INPI: roda toda semana (com e sem dump novo) e registra a rotina com a última linha do log"
+setup 74 74 0
+run
+ok1=0
+has "ssh inpi" && has "vigilo:rotina marcas_inpi ok" && has "já carregadas" && ok1=1
+setup 74 111 0
+run
+if [ "$ok1" = 1 ] && has "ssh inpi" && has "vigilo:rotina marcas_inpi ok" && [ "$(cat "$T/rc")" = 0 ]; then
+    ok "$t"
+else ko "$t"; fi
+
+t="INPI falhou: registra fail e não desfaz o resto da rodada"
+setup 74 111 0
+echo 1 >"$T/inpi_rc"
+run
+if has "vigilo:rotina marcas_inpi fail" && has "montagem da tabela de carga falhou" && has -- "--recoleta=ok" && [ "$(cat "$T/rc")" = 0 ]; then ok "$t"; else ko "$t"; fi
+
+t="INPI sem espaço na VM (saída 3): mensagem própria"
+setup 74 74 0
+echo 3 >"$T/inpi_rc"
+run
+if has "vigilo:rotina marcas_inpi fail" && has "VM sem espaço livre em /data — carga do INPI"; then ok "$t"; else ko "$t"; fi
+
+t="reimport abortado ou modo local: o INPI não roda"
+setup 74 74 1
+run
+ok1=0
+! has "ssh inpi" && ! has "marcas_inpi" && ok1=1
+setup 74 111 0
+printf 'CNPJ_DB_PASSWORD=x\nREIMPORT_RETRY_WAIT=0\n' >"$T/home/apps/vigilo/.env"
+run
+if [ "$ok1" = 1 ] && ! has "ssh inpi" && ! has "marcas_inpi"; then ok "$t"; else ko "$t"; fi
 
 t="modo local (sem CNPJ_REMOTE_SSH) continua exigindo a senha do Postgres"
 setup 74 74 0

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Bens;
 
 use App\DTO\Bens\ConsultaDevedor;
+use App\DTO\Bens\Marca;
 use App\DTO\Contratos\ContratoPublico;
 use App\Models\MonitoredCompany;
 use App\Models\RecuperacaoItem;
@@ -25,6 +26,7 @@ use Throwable;
  * - aeronave ativa em nome dela (RAB/ANAC) — bem a penhorar;
  * - participação societária (quotas/ações);
  * - contrato federal vigente (crédito a receber do governo);
+ * - marca do INPI (registro em vigor ou pedido em andamento — bem móvel);
  * - possível sucessora (empresa surgida depois da dívida, 2+ sinais).
  *
  * Cada tipo só é comparado quando a fonte respondeu COMPLETA (lista inteira,
@@ -43,6 +45,8 @@ final class DevedorMonitor
 
     public const SUCESSORA = 'sucessora';
 
+    public const MARCA = 'marca';
+
     /** Rodadas seguidas sem o item até esquecê-lo. */
     private const AUSENCIAS_PARA_ESQUECER = 3;
 
@@ -57,6 +61,7 @@ final class DevedorMonitor
         private readonly OwnershipGraphService $grafo,
         private readonly ContratosPublicos $contratos,
         private readonly IndiciosEsvaziamento $indicios,
+        private readonly MarcasLookup $marcas,
     ) {}
 
     /**
@@ -106,6 +111,7 @@ final class DevedorMonitor
             self::AERONAVE => $this->tentar(fn (): ?array => $this->aeronaves($company->cnpj), $falhou),
             self::PARTICIPACAO => $this->tentar(fn (): ?array => $this->participacoes($company->cnpj), $falhou),
             self::CONTRATO => $this->tentar(fn (): ?array => $this->contratos($company->cnpj), $falhou),
+            self::MARCA => $this->tentar(fn (): ?array => $this->marcas($company->cnpj), $falhou),
             // closure (não arrow fn): o erro da base dentro dos indícios precisa chegar ao $falhou de fora
             self::SUCESSORA => $this->tentar(function () use ($company, $marco, &$falhou): ?array {
                 return $this->sucessoras($company->cnpj, $marco, $falhou);
@@ -249,6 +255,36 @@ final class DevedorMonitor
             $out[$a->marca] = [
                 'descricao' => sprintf('%s — %s (%s)', $a->marca, $a->descricao(), implode(', ', $detalhes)),
                 'grave' => $a->livre(), // dela, ativa e sem ônus: penhorável à primeira vista
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return array<array-key, array{descricao: string, grave: bool}>|null */
+    private function marcas(string $cnpj): ?array
+    {
+        if ($this->marcas->referencia() === null) {
+            return null; // cópia do INPI nunca carregada: não se aplica
+        }
+
+        $r = $this->marcas->daEmpresa($cnpj);
+
+        if (! $r['completa']) {
+            return null; // leitura no teto: pode estar cortada
+        }
+
+        $out = [];
+
+        foreach ($r['marcas'] as $m) {
+            if ($m->estado() === Marca::INATIVA) {
+                continue;
+            }
+
+            // Estado na chave: o pedido que vira registro (passa a ser penhorável) também alerta.
+            $out[$m->numero.':'.($m->emVigor() ? 'registro' : 'pedido')] = [
+                'descricao' => sprintf('%s (%s)', $m->descricao(), $m->emVigor() ? 'registro em vigor' : 'pedido: '.($m->situacao ?? 'em andamento')),
+                'grave' => false,
             ];
         }
 

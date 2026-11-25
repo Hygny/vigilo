@@ -16,11 +16,16 @@ use App\DTO\Graph\Participacao;
  */
 final readonly class BensReport
 {
+    /** Marcas em vigor/pedidos listadas no card (o total vem da lista). */
+    public const MARCAS_EXIBIDAS = 10;
+
     /**
      * @param  list<Aeronave>|null  $aeronaves  as primeiras (ativas primeiro)
      * @param  int  $totalAeronaves  todas, inclusive as canceladas e as fora da lista
      * @param  int  $totalAeronavesAtivas  matrícula não cancelada, inclusive as fora da lista
      * @param  list<Participacao>|null  $participacoes  as primeiras (ativas primeiro)
+     * @param  list<Marca>|null  $marcas  marcas do INPI (em vigor, pedidos, inativas — nessa ordem); null = não consultado
+     * @param  bool  $marcasCompletas  a leitura não bateu no teto
      */
     public function __construct(
         public ?array $aeronaves,
@@ -30,7 +35,38 @@ final readonly class BensReport
         public ?array $participacoes,
         public int $totalParticipacoes,
         public ContratosReport $contratos,
+        public ?array $marcas = null,
+        public bool $marcasCompletas = true,
+        public ?string $marcasDe = null,
     ) {}
+
+    /** @return list<Marca> registros em vigor (penhoráveis) e pedidos em andamento */
+    public function marcasAtivas(): array
+    {
+        return array_values(array_filter($this->marcas ?? [], fn (Marca $m): bool => $m->estado() !== Marca::INATIVA));
+    }
+
+    /** @return list<Marca> as que o card lista (em vigor primeiro, até MARCAS_EXIBIDAS) */
+    public function marcasExibidas(): array
+    {
+        return array_slice($this->marcasAtivas(), 0, self::MARCAS_EXIBIDAS);
+    }
+
+    public function totalMarcasAtivas(): int
+    {
+        return count($this->marcasAtivas());
+    }
+
+    /** Extintas/arquivadas/indeferidas: só contadas (não são bem). */
+    public function totalMarcasInativas(): int
+    {
+        return count($this->marcas ?? []) - $this->totalMarcasAtivas();
+    }
+
+    public function marcasEmVigor(): int
+    {
+        return count(array_filter($this->marcas ?? [], fn (Marca $m): bool => $m->emVigor()));
+    }
 
     /** A lista de aeronaves bateu no teto (há mais do que as mostradas). */
     public function aeronavesTruncadas(): bool

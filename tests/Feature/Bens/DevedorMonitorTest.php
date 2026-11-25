@@ -21,6 +21,7 @@ use App\Services\Admin\StatusRotinas;
 use App\Services\Bens\AeronavesLookup;
 use App\Services\Bens\DevedorMonitor;
 use App\Services\Bens\IndiciosEsvaziamento as IndiciosService;
+use App\Services\Bens\MarcasLookup;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
@@ -56,6 +57,7 @@ function devBase(): void
     });
     createPgfnTables();
     createHistoricoTables();
+    createInpiTables();
 
     devEmpresa('11222333', 'PADARIA AURORA LTDA', '2012-01-01');
     devSocio('11222333', 'MARIA SOUZA', '***456789**', '2012-01-01');
@@ -477,4 +479,60 @@ it('a strong new successor (address + CNAE + partner) is a HIGH alert', function
     $evento = ChangeEvent::query()->where('field', 'recuperacao_sucessora')->first();
     expect($evento?->severity)->toBe(Severity::High)
         ->and($evento?->new_value)->toContain('mesmo endereço');
+});
+
+it('alerts a new INPI trademark of the debtor (registered or pending), never an extinct one', function () {
+    devBase();
+    seedMarca('11222333000181', '900000001', 'AURORA');
+    [$company] = devedora();
+    varrer(); // linha de base: AURORA
+
+    seedMarca('11222333000181', '900000002', 'AURORA GOURMET', 'Aguardando prazo de apresentação de oposição', null);
+    seedMarca('11222333000181', '900000003', 'AURORA VELHA', 'Registro de marca extinto');
+    varrer();
+
+    expect(alertas($company))->toBe(['Marca (INPI): AURORA GOURMET · nº 900000002 (pedido: Aguardando prazo de apresentação de oposição)'])
+        ->and(RecuperacaoItem::query()->where('tipo', 'marca')->pluck('chave')->all())->toEqualCanonicalizing(['900000001:registro', '900000002:pedido']);
+});
+
+it('alerts when a known pending trademark is granted (it becomes seizable)', function () {
+    devBase();
+    seedMarca('11222333000181', '900000002', 'AURORA GOURMET', 'Aguardando prazo de apresentação de oposição', null);
+    [$company] = devedora();
+    varrer();
+
+    DB::connection('cnpj')->table('inpi_marcas')->where('numero_inpi', '900000002')->update(['situacao' => 'Registro de marca em vigor', 'data_vigencia' => '2036-01-01']);
+    varrer();
+
+    expect(alertas($company))->toBe(['Marca (INPI): AURORA GOURMET · nº 900000002 (registro em vigor)']);
+});
+
+it('the trademark type is "not applicable" until the INPI copy is loaded, and is not compared at the read ceiling', function () {
+    devBase(); // tabelas do INPI vazias: nunca carregada
+    [$company] = devedora();
+    varrer();
+    expect($company->fresh()->tiposSincronizados())->not->toContain('marca')
+        ->and($company->fresh()->recuperacao_synced_at)->not->toBeNull(); // não é falha
+
+    $linhas = array_map(fn (int $i): array => [
+        'numero_inpi' => (string) (800000000 + $i), 'cnpj' => '11222333000181', 'cnpj_basico' => '11222333', 'marca' => "M{$i}", 'situacao' => 'Registro de marca em vigor',
+    ], range(1, MarcasLookup::LIMITE));
+    foreach (array_chunk($linhas, 500) as $lote) {
+        DB::connection('cnpj')->table('inpi_marcas')->insert($lote);
+    }
+    DB::connection('cnpj')->table('inpi_cargas')->insert(['versao' => 'v1', 'marcas' => 1, 'carregado_em' => now()->toDateTimeString()]);
+    varrer();
+
+    expect($company->fresh()->tiposSincronizados())->not->toContain('marca')
+        ->and(RecuperacaoItem::query()->where('tipo', 'marca')->exists())->toBeFalse();
+});
+
+it('shows the known trademarks on the debtor card', function () {
+    devBase();
+    seedMarca('11222333000181', '900000001', 'AURORA');
+    [$company, $user] = devedora();
+    varrer();
+
+    Livewire::actingAs($user)->test(Recuperacao::class, ['company' => $company->fresh()])
+        ->assertSee('1 marca(s)');
 });

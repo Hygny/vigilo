@@ -47,6 +47,9 @@ final class MaintenanceRun extends Model
     /** Varredura diária das devedoras monitoradas (vigilo:varrer-devedores). */
     public const KIND_DEVEDORES = 'devedores';
 
+    /** Cópia semanal das marcas do INPI na VM (registrada pelo reimport-mensal.sh via vigilo:rotina). */
+    public const KIND_MARCAS_INPI = 'marcas_inpi';
+
     /** @var list<string> */
     protected $fillable = [
         'kind',

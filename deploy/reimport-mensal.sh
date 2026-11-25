@@ -13,6 +13,9 @@
 #   3) PGFN (dívida ativa), base remota: confere/carrega o trimestre mais novo
 #      da PGFN INTEIRA na VM (verbo `pgfn`). Roda toda semana, independente do
 #      dump da Receita; é no-op enquanto o trimestre já estiver carregado.
+#   4) Marcas do INPI (titulares PJ), base remota: confere/carrega a versão mais
+#      nova na VM (verbo `inpi`); no-op enquanto a versão publicada for a mesma.
+#      Registra a rodada no card Rotinas (`vigilo:rotina marcas_inpi`).
 #
 # Ao final (e também quando o reimport aborta) grava uma linha em
 # `maintenance_runs` via `vigilo:maintenance-record`, que o super-admin vê em
@@ -33,7 +36,7 @@
 # CNPJ_REMOTE_SSH (ex.: ubuntu@159.112.186.240) no ~/apps/vigilo/.env, o
 # pipeline e a contagem de processed_files rodam NA VM, via SSH com a chave
 # dedicada ~/.ssh/cnpj_db (comando forçado gateway.sh: verbos `reimport`,
-# `pf-count` e `pgfn`). Re-coleta, normalização e o registro continuam aqui. Sem a
+# `pf-count`, `pgfn` e `inpi`). Re-coleta, normalização e o registro continuam aqui. Sem a
 # variável, tudo roda neste host como antes.
 #
 # Cron sugerido (toda segunda, 03:00):
@@ -142,6 +145,30 @@ run_pgfn() {
     echo "!! [$(date -Is)] carga da PGFN falhou (código ${rc})"
 }
 
+# Passo (4): marcas do INPI na VM. Falha não desfaz o resto — só fica registrada
+# no card Rotinas do /admin; a cópia anterior segue em uso na VM.
+run_inpi() {
+    [ -n "$REMOTE_SSH" ] || return 0 # a cópia do INPI só existe na base remota
+    echo "==> [$(date -Is)] marcas do INPI: confere/carrega a versão mais nova na VM"
+    local out rc res msg
+    out="$(remote inpi 2>&1)"
+    rc=$?
+    [ -n "$out" ] && printf '%s\n' "$out"
+    # Mensagem do card: em sucesso, a última linha de progresso; em falha, o erro
+    # (linha "!!" do script, ERROR do psql ou do curl) — sem o prefixo "[data]".
+    if [ "$rc" = 0 ]; then
+        res=ok
+        msg="$(printf '%s\n' "$out" | grep -E '^==>' | tail -1)"
+    else
+        res=fail
+        msg="$(printf '%s\n' "$out" | grep -E '^(!!|ERROR|psql|curl)' | tail -1)"
+    fi
+    msg="$(printf '%s' "$msg" | sed -E 's/^(==>|!!) \[[^]]*\] //' | cut -c1-240)"
+    [ "$rc" = 3 ] && msg="VM sem espaço livre em /data — carga do INPI não executada"
+    $COMPOSE exec -T app php artisan vigilo:rotina marcas_inpi "$res" --message="${msg:-código $rc}" \
+        || echo "!! [$(date -Is)] não consegui registrar a rotina do INPI"
+}
+
 # Base local: sem a senha do Postgres não dá para consultar a base nem
 # reimportar — registra a falha (o card do super-admin precisa saber) e sai, em
 # vez de morrer calado. (Na base remota a senha mora na VM.)
@@ -235,6 +262,7 @@ if [ "$NEW_DATA" = 0 ]; then
     MSG="${MSG:+$MSG; }sem dump novo (base já atualizada)"
     rm -f "$BASELINE_FILE"
     run_pgfn
+    run_inpi
     record_run
     echo "==> [$(date -Is)] manutenção concluída (sem dump novo da Receita)"
     exit 0
@@ -267,5 +295,6 @@ else
 fi
 
 run_pgfn
+run_inpi
 record_run
 echo "==> [$(date -Is)] manutenção concluída"

@@ -8,22 +8,23 @@ use App\Models\MaintenanceRun;
 use Illuminate\Console\Command;
 
 /**
- * Registra o resultado de uma rotina simples que roda FORA do app — hoje o
- * backup diário do MySQL (`deploy/backup-db.sh`, no host). É o que o card
+ * Registra o resultado de uma rotina simples que roda FORA do app — o backup
+ * diário do MySQL (`deploy/backup-db.sh`, no host) e a cópia semanal das marcas
+ * do INPI na VM (passo `run_inpi` do `deploy/reimport-mensal.sh`). É o que o card
  * "Rotinas" do /admin lê. As rotinas que rodam dentro do app (cópia da CGU,
  * varredura de sanções) registram sozinhas.
  */
 final class RegistrarRotina extends Command
 {
     protected $signature = 'vigilo:rotina
-        {tipo : backup}
+        {tipo : backup | marcas_inpi}
         {resultado : ok|fail}
         {--message= : Mensagem curta (o que aconteceu)}';
 
     protected $description = 'Registra o resultado de uma rotina externa ao app (ex.: backup) para o card de Rotinas do /admin.';
 
     /** Só as rotinas externas: as internas registram pelo próprio comando. */
-    private const TIPOS = [MaintenanceRun::KIND_BACKUP];
+    private const TIPOS = [MaintenanceRun::KIND_BACKUP, MaintenanceRun::KIND_MARCAS_INPI];
 
     public function handle(): int
     {

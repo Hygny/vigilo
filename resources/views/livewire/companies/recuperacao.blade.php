@@ -17,19 +17,19 @@
         @if ($company->emRecuperacao())
             <p class="text-sm text-ink-2">
                 Monitorada desde {{ $company->recuperacao_desde->format('d/m/Y') }}.
-                Avisamos (Inbox, e-mail e webhook) quando aparecer <span class="font-medium">aeronave, participação societária, contrato federal vigente</span> ou <span class="font-medium">possível sucessora</span> que ela ainda não tinha.
+                Avisamos (Inbox, e-mail e webhook) quando aparecer <span class="font-medium">aeronave, participação societária, contrato federal vigente, marca no INPI</span> ou <span class="font-medium">possível sucessora</span> que ela ainda não tinha.
             </p>
             <p class="mt-1 text-[12.5px] text-ink-muted">
                 @if ($company->recuperacao_synced_at)
                     Última checagem em {{ $company->recuperacao_synced_at->timezone(config('risco.sweep.timezone'))->format('d/m/Y H:i') }} —
-                    conhecidos: {{ $contagem[$M::AERONAVE] ?? 0 }} aeronave(s), {{ $contagem[$M::PARTICIPACAO] ?? 0 }} participação(ões), {{ $contagem[$M::CONTRATO] ?? 0 }} contrato(s) vigente(s), {{ $contagem[$M::SUCESSORA] ?? 0 }} possível(is) sucessora(s).
+                    conhecidos: {{ $contagem[$M::AERONAVE] ?? 0 }} aeronave(s), {{ $contagem[$M::PARTICIPACAO] ?? 0 }} participação(ões), {{ $contagem[$M::CONTRATO] ?? 0 }} contrato(s) vigente(s), {{ $contagem[$M::MARCA] ?? 0 }} marca(s), {{ $contagem[$M::SUCESSORA] ?? 0 }} possível(is) sucessora(s).
                 @else
                     Registrando o que ela já tem (sem alertas): os avisos começam com o que surgir a partir de agora.
                 @endif
                 Checagem {{ \App\Console\Commands\SweepDevedores::HORARIOS }}.
             </p>
         @else
-            <p class="text-sm text-ink-2">Marque como devedora para ser avisado quando ela ganhar <span class="font-medium">bens</span> (aeronaves, participações), <span class="font-medium">créditos a receber</span> (contratos federais) ou abrir uma <span class="font-medium">possível sucessora</span> — o que dá para penhorar ou redirecionar.</p>
+            <p class="text-sm text-ink-2">Marque como devedora para ser avisado quando ela ganhar <span class="font-medium">bens</span> (aeronaves, participações, marcas), <span class="font-medium">créditos a receber</span> (contratos federais) ou abrir uma <span class="font-medium">possível sucessora</span> — o que dá para penhorar ou redirecionar.</p>
         @endif
 
         <form wire:submit="ativar" class="mt-3 flex flex-wrap items-center gap-2">

@@ -107,6 +107,43 @@ function seedPgfnDivida(string $cnpj, float $valor, bool $ajuizado = false, stri
     ]);
 }
 
+/** Tabelas da cópia das marcas do INPI na base CNPJ (deploy/cnpj-db/bin/inpi-marcas.sh). */
+function createInpiTables(): void
+{
+    $schema = Schema::connection('cnpj');
+
+    $schema->create('inpi_marcas', function (Blueprint $t): void {
+        $t->string('numero_inpi');
+        $t->string('cnpj');
+        $t->string('cnpj_basico')->index();
+        foreach (['titular', 'marca', 'apresentacao', 'natureza', 'codigo_situacao', 'situacao', 'data_deposito', 'data_concessao', 'data_vigencia'] as $c) {
+            $t->string($c)->nullable();
+        }
+    });
+
+    $schema->create('inpi_cargas', function (Blueprint $t): void {
+        $t->string('versao')->primary();
+        $t->bigInteger('marcas');
+        $t->timestamp('carregado_em')->nullable();
+    });
+}
+
+/** Uma marca do INPI de titular PJ (e a carga, se ainda não houver). */
+function seedMarca(string $cnpj, string $numero, string $marca, string $situacao = 'Registro de marca em vigor', ?string $vigencia = '2034-01-01'): void
+{
+    $db = DB::connection('cnpj');
+
+    if (! $db->table('inpi_cargas')->exists()) {
+        $db->table('inpi_cargas')->insert(['versao' => 'v1', 'marcas' => 1, 'carregado_em' => '2026-11-25 12:00:00']);
+    }
+
+    $db->table('inpi_marcas')->insert([
+        'numero_inpi' => $numero, 'cnpj' => $cnpj, 'cnpj_basico' => substr($cnpj, 0, 8), 'titular' => 'TITULAR', 'marca' => $marca,
+        'apresentacao' => 'Nominativa', 'natureza' => 'De Produto', 'situacao' => $situacao,
+        'data_deposito' => '2020-01-01', 'data_vigencia' => $vigencia,
+    ]);
+}
+
 /** Tabelas do histórico cadastral na base CNPJ (deploy/cnpj-db/sql/historico.sql). */
 function createHistoricoTables(): void
 {

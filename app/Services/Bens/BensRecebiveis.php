@@ -25,6 +25,7 @@ final class BensRecebiveis
         private readonly AeronavesLookup $aeronaves,
         private readonly OwnershipGraphService $grafo,
         private readonly ContratosPublicos $contratos,
+        private readonly MarcasLookup $marcas,
     ) {}
 
     public function daEmpresa(string $cnpj): BensReport
@@ -43,6 +44,10 @@ final class BensRecebiveis
             default => Tentar::ouNull(fn (): array => $this->aeronaves->contagemDaEmpresa($cnpj)) ?? $daLista($aeronaves),
         };
 
+        // Cópia das marcas do INPI na base CNPJ: nunca carregada ou base fora = "não consultado".
+        $marcasDe = Tentar::ouNull(fn (): ?string => $this->marcas->referencia());
+        $marcas = $marcasDe !== null ? Tentar::ouNull(fn (): array => $this->marcas->daEmpresa($cnpj)) : null;
+
         $totalParticipacoes = match (true) {
             $participacoes === null => 0,
             count($participacoes) < self::PARTICIPACOES => count($participacoes),
@@ -57,6 +62,9 @@ final class BensRecebiveis
             participacoes: $participacoes,
             totalParticipacoes: $totalParticipacoes,
             contratos: $this->contratos->para($cnpj),
+            marcas: $marcas['marcas'] ?? null,
+            marcasCompletas: $marcas['completa'] ?? true,
+            marcasDe: $marcasDe,
         );
     }
 }
