@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_refresh_error
  * @property Carbon|null $sanctions_synced_at
  * @property Carbon|null $dirty_list_flagged_at
+ * @property Carbon|null $neighbor_risk_synced_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Portfolio $portfolio
@@ -32,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property-read CompanySnapshot|null $latestSnapshot
  * @property-read Collection<int, ChangeEvent> $changeEvents
  * @property-read Collection<int, CompanySanction> $sanctions
+ * @property-read Collection<int, CompanyNeighborFlag> $neighborFlags
  */
 class MonitoredCompany extends Model
 {
@@ -51,6 +53,7 @@ class MonitoredCompany extends Model
             'last_refresh_status' => RefreshStatus::class,
             'sanctions_synced_at' => 'datetime',
             'dirty_list_flagged_at' => 'datetime',
+            'neighbor_risk_synced_at' => 'datetime',
         ];
     }
 
@@ -102,5 +105,15 @@ class MonitoredCompany extends Model
     public function sanctions(): HasMany
     {
         return $this->hasMany(CompanySanction::class);
+    }
+
+    /**
+     * Sinais de risco conhecidos das empresas ligadas ("risco ao redor" monitorado).
+     *
+     * @return HasMany<CompanyNeighborFlag, $this>
+     */
+    public function neighborFlags(): HasMany
+    {
+        return $this->hasMany(CompanyNeighborFlag::class);
     }
 }

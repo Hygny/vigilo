@@ -2,26 +2,35 @@
 
 declare(strict_types=1);
 
+use App\Enums\ChangeType;
 use App\Enums\NivelRisco;
+use App\Enums\Severity;
 use App\Livewire\Companies\RiscoPanel;
 use App\Livewire\Empresas\Perfil;
 use App\Livewire\Empresas\RiscoPerfil;
+use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
+use App\Models\MaintenanceRun;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
+use App\Notifications\CompanyChangeDetected;
+use App\Services\Admin\StatusRotinas;
 use App\Services\Risco\DirtyListLookup;
 use App\Services\Risco\DirtyListMonitor;
 use App\Services\Risco\RiscoAoRedor;
+use App\Services\Risco\RiscoAoRedorMonitor;
 use App\Services\Risco\RiscoAssessor;
 use App\Services\Risco\SancoesLocais;
 use App\Support\Cnpj;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 
@@ -296,4 +305,191 @@ it('does not cache a partial result (a source was down)', function () {
 
     cguCarregada();
     expect($servico->para('11222333000181')->sancoesConsultadas)->toBeTrue(); // não ficou preso ao parcial
+});
+
+/** Empresa da carteira (com snapshot) apontando para o CENTRO da base de teste. */
+function carteiraComCentro(): MonitoredCompany
+{
+    $org = Organization::factory()->create();
+    User::factory()->for($org)->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+    CompanySnapshot::factory()->create(['monitored_company_id' => $company->id]);
+
+    return $company;
+}
+
+it('takes a silent baseline, then flags only NEW signals of the linked companies', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    $monitor = app(RiscoAoRedorMonitor::class);
+
+    // 1ª rodada: baseline (HOLDING inapta + GRUPO dívida/baixada já existiam) — sem alerta.
+    expect($monitor->aplicar($company, $monitor->consultar($company)))->toBe([])
+        ->and($company->neighborFlags()->pluck('sinais', 'cnpj_basico')->all())->toEqualCanonicalizing(['99888777' => 'situacao', '44555666' => 'divida,situacao'])
+        ->and($company->fresh()->neighbor_risk_synced_at)->not->toBeNull();
+
+    // A INVESTIDA ganha uma sanção e o GRUPO entra na Lista Suja.
+    cguSancao(Cnpj::matrizFromBasico('20000001') ?? '');
+    DirtyListEmployer::query()->create(['documento' => Cnpj::matrizFromBasico('44555666'), 'imported_at' => now()]);
+    Cache::flush(); // o "ao redor" tem cache curto
+
+    $novidades = collect($monitor->aplicar($company, $monitor->consultar($company)))
+        ->mapWithKeys(fn (array $n) => [$n['empresa']->nome => $n['novos']]);
+
+    expect($novidades->all())->toEqualCanonicalizing(['INVESTIDA SA' => ['sancao'], 'GRUPO LTDA' => ['lista_suja']]);
+
+    // Mesma situação de novo: nada novo.
+    Cache::flush();
+    expect($monitor->aplicar($company, $monitor->consultar($company)))->toBe([]);
+});
+
+it('forgets a signal that went away and alerts again if it comes back', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    $monitor = app(RiscoAoRedorMonitor::class);
+    $monitor->aplicar($company, $monitor->consultar($company)); // baseline
+
+    DB::connection('cnpj')->table('pgfn_dividas')->delete(); // GRUPO quitou
+    Cache::flush();
+    expect($monitor->aplicar($company, $monitor->consultar($company)))->toBe([])
+        ->and($company->neighborFlags()->where('cnpj_basico', '44555666')->value('sinais'))->toBe('situacao');
+
+    seedPgfnDivida(Cnpj::matrizFromBasico('44555666') ?? '', 100.0); // voltou a dever
+    Cache::flush();
+    expect(collect($monitor->aplicar($company, $monitor->consultar($company)))->pluck('novos')->all())->toBe([['divida']]);
+});
+
+it('never compares with an incomplete report (a source was down)', function () {
+    seedRiscoAoRedor(); // cópia da CGU nunca carregada → sanções não consultadas
+    $company = carteiraComCentro();
+
+    expect(app(RiscoAoRedorMonitor::class)->consultar($company))->toBeNull()
+        ->and($company->neighborFlags()->count())->toBe(0)
+        ->and($company->fresh()->neighbor_risk_synced_at)->toBeNull();
+});
+
+it('turns new neighbour signals into inbox alerts (and notifies), recording the run', function () {
+    Notification::fake();
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+
+    $this->artisan('vigilo:varrer-risco-ao-redor')->assertSuccessful(); // baseline
+    expect($company->changeEvents()->count())->toBe(0);
+
+    cguSancao(Cnpj::matrizFromBasico('20000001') ?? '');
+    Cache::flush();
+    $this->artisan('vigilo:varrer-risco-ao-redor')->assertSuccessful(); // já checada hoje: pula
+    expect($company->changeEvents()->count())->toBe(0);
+
+    $this->artisan('vigilo:varrer-risco-ao-redor', ['--all' => true])->assertSuccessful();
+
+    $evento = $company->changeEvents()->sole();
+    expect($evento->type)->toBe(ChangeType::RiscoAoRedor)
+        ->and($evento->severity)->toBe(Severity::High)
+        ->and($evento->new_value)->toContain('INVESTIDA SA')
+        ->and($evento->new_value)->toContain('Participação')
+        ->and($evento->new_value)->toContain('sanção vigente (CGU)')
+        ->and(MaintenanceRun::ultima('risco_ao_redor')?->message)->toContain('1 alerta(s)');
+
+    Notification::assertSentTimes(CompanyChangeDetected::class, 1);
+});
+
+it('aborts the sweep when the CNPJ base is down (breaker) and records the failure', function () {
+    useCnpjSqlite(); // sem tabelas
+    config()->set('risco.sweep.max_consecutive_failures', 1);
+    carteiraComCentro();
+
+    $this->artisan('vigilo:varrer-risco-ao-redor')->assertFailed();
+
+    expect(MaintenanceRun::ultima('risco_ao_redor')?->isSuccess())->toBeFalse();
+});
+
+it('is scheduled twice a day in Brasília time, after the CGU copy', function () {
+    $evento = collect(app(Schedule::class)->events())
+        ->first(fn ($e) => str_contains((string) $e->command, 'vigilo:varrer-risco-ao-redor'));
+
+    expect($evento?->expression)->toBe('30 9,12 * * *')
+        ->and($evento?->timezone)->toBe('America/Sao_Paulo')
+        ->and($evento?->withoutOverlapping)->toBeTrue();
+});
+
+it('forgets a linked company only after it is missing for 3 rounds in a row (no alert storm)', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    $monitor = app(RiscoAoRedorMonitor::class);
+    $rodada = function () use ($monitor, $company): array {
+        Cache::flush();
+
+        return $monitor->aplicar($company, $monitor->consultar($company));
+    };
+    $rodada(); // baseline: HOLDING (situação) conhecida
+
+    $sociosHolding = DB::connection('cnpj')->table('socios')->where('cnpj_cpf_do_socio', '99888777')->get()->map(fn ($r) => (array) $r)->all();
+    DB::connection('cnpj')->table('socios')->where('cnpj_cpf_do_socio', '99888777')->delete(); // some do grafo de passagem
+
+    expect($rodada())->toBe([])
+        ->and($company->neighborFlags()->where('cnpj_basico', '99888777')->value('ausencias'))->toBe(1);
+
+    DB::connection('cnpj')->table('socios')->insert($sociosHolding); // volta: não é "novo"
+    expect($rodada())->toBe([])
+        ->and($company->neighborFlags()->where('cnpj_basico', '99888777')->value('ausencias'))->toBe(0);
+
+    DB::connection('cnpj')->table('socios')->where('cnpj_cpf_do_socio', '99888777')->delete(); // saiu de vez
+    $rodada();
+    $rodada();
+    $rodada();
+    expect($company->neighborFlags()->where('cnpj_basico', '99888777')->exists())->toBeFalse();
+});
+
+it('drops the flag of a linked company that became clean', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    $monitor = app(RiscoAoRedorMonitor::class);
+    $monitor->aplicar($company, $monitor->consultar($company)); // GRUPO: dívida + baixada
+
+    DB::connection('cnpj')->table('pgfn_dividas')->delete();
+    DB::connection('cnpj')->table('estabelecimentos')->where('cnpj_basico', '44555666')->update(['situacao_cadastral' => '02']);
+    Cache::flush();
+
+    expect($monitor->aplicar($company, $monitor->consultar($company)))->toBe([])
+        ->and($company->neighborFlags()->where('cnpj_basico', '44555666')->exists())->toBeFalse();
+});
+
+it('rates a new debt/situation signal as medium severity and lists the routine on the card', function () {
+    Notification::fake();
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    $this->artisan('vigilo:varrer-risco-ao-redor')->assertSuccessful(); // baseline
+
+    seedPgfnDivida(Cnpj::matrizFromBasico('20000001') ?? '', 50.0); // INVESTIDA passa a dever
+    Cache::flush();
+    $this->artisan('vigilo:varrer-risco-ao-redor', ['--all' => true])->assertSuccessful();
+
+    expect($company->changeEvents()->sole()->severity)->toBe(Severity::Medium);
+
+    $linha = collect(app(StatusRotinas::class)->todas())->firstWhere('nome', 'Risco das empresas ligadas (alertas)');
+    expect($linha?->situacao)->toBe('ok');
+});
+
+it('does not compare when the PJ partners situation could not be read', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $company = carteiraComCentro();
+    DB::connection('cnpj')->beforeExecuting(function (string $sql): void {
+        if (str_starts_with($sql, 'select "situacao_cadastral", "cnpj_basico" from "estabelecimentos"')) {
+            throw new RuntimeException('base caiu no meio');
+        }
+    });
+
+    $report = app(RiscoAoRedor::class)->para('11222333000181');
+
+    expect($report->situacaoConsultada)->toBeFalse()
+        ->and($report->naoConsultadas())->toContain('situação dos sócios PJ')
+        ->and(app(RiscoAoRedorMonitor::class)->consultar($company))->toBeNull();
 });

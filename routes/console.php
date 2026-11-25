@@ -52,3 +52,13 @@ Schedule::command('vigilo:sancoes-cgu')
     ->name('vigilo-sancoes-cgu')
     ->withoutOverlapping(60)
     ->runInBackground();
+
+// Risco das empresas LIGADAS à carteira (grafo + PGFN + cópia da CGU + Lista
+// Suja, tudo local): todo dia depois da cópia da CGU (08:30). A 2ª passada só
+// retoma quem a 1ª não checou (disjuntor/base fora).
+Schedule::command('vigilo:varrer-risco-ao-redor')
+    ->cron('30 9,12 * * *')
+    ->timezone((string) config('risco.sweep.timezone'))
+    ->name('vigilo-risco-ao-redor')
+    ->withoutOverlapping(120)
+    ->runInBackground();

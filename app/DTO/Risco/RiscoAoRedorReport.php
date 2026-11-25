@@ -21,7 +21,15 @@ final readonly class RiscoAoRedorReport
         public bool $sancoesConsultadas,
         // Cópia local da CGU velha demais (agendador parado): sanção nova pode faltar.
         public bool $sancoesDesatualizadas = false,
+        // A situação dos sócios PJ (que vem numa consulta à parte) foi lida?
+        public bool $situacaoConsultada = true,
     ) {}
+
+    /** Todas as fontes responderam — só assim o monitor compara com o conhecido. */
+    public function completo(): bool
+    {
+        return $this->pgfnConsultada && $this->sancoesConsultadas && $this->situacaoConsultada;
+    }
 
     /**
      * "Nenhuma ligada com sinal" só vale como garantia (verde) quando todas as
@@ -83,6 +91,7 @@ final readonly class RiscoAoRedorReport
         return array_values(array_filter([
             $this->sancoesConsultadas ? null : 'sanções (CGU)',
             $this->pgfnConsultada ? null : 'dívida ativa (PGFN)',
+            $this->situacaoConsultada ? null : 'situação dos sócios PJ',
         ]));
     }
 

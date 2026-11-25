@@ -36,6 +36,7 @@ final class StatusRotinas
             $this->simples(MaintenanceRun::KIND_BACKUP, 'Backup do banco', 'backup', 'todo dia às 03:00, com cópia na VM'),
             $this->sancoesCgu(),
             $this->simples(MaintenanceRun::KIND_VARREDURA, 'Varredura de sanções da carteira', 'policy', 'todo dia às 01:00 e 04:00'),
+            $this->simples(MaintenanceRun::KIND_RISCO_AO_REDOR, 'Risco das empresas ligadas (alertas)', 'hub', 'todo dia às 09:30 e 12:30'),
             $this->buscaPessoas(),
         ];
     }

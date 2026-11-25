@@ -48,7 +48,7 @@ final class RiscoAoRedor
 
         $report = $this->calcular($cnpj);
 
-        if ($this->cacheMinutos > 0 && $report->pgfnConsultada && $report->sancoesConsultadas) {
+        if ($this->cacheMinutos > 0 && $report->completo()) {
             Cache::put($chave, $report, now()->addMinutes($this->cacheMinutos));
         }
 
@@ -95,7 +95,8 @@ final class RiscoAoRedor
 
         // O nó de sócio PJ não traz situação: a da matriz, numa consulta.
         $semSituacao = array_map('strval', array_keys(array_filter($ligadas, fn (array $l): bool => $l['situacao'] === null)));
-        foreach ($this->situacoesMatriz($semSituacao) as $basico => $situacao) {
+        $situacoes = $this->situacoesMatriz($semSituacao); // null = a consulta falhou
+        foreach ($situacoes ?? [] as $basico => $situacao) {
             if (isset($ligadas[$basico])) {
                 $ligadas[$basico]['situacao'] = $situacao;
             }
@@ -131,6 +132,7 @@ final class RiscoAoRedor
             $empresas,
             pgfnConsultada: $dividas !== null,
             sancoesConsultadas: $sancoes !== null,
+            situacaoConsultada: $situacoes !== null,
             sancoesDesatualizadas: $sancoes !== null && (bool) Tentar::ouNull(fn (): bool => $this->sancoes->desatualizada()),
         );
     }
@@ -146,9 +148,9 @@ final class RiscoAoRedor
      * vazio (fica sem situação; não inventa "ativa").
      *
      * @param  list<string>  $basicos
-     * @return array<string, ?string>
+     * @return array<string, ?string>|null null = a consulta falhou
      */
-    private function situacoesMatriz(array $basicos): array
+    private function situacoesMatriz(array $basicos): ?array
     {
         if ($basicos === []) {
             return [];
@@ -159,7 +161,11 @@ final class RiscoAoRedor
             ->whereIn('cnpj_basico', $basicos)
             ->where('cnpj_ordem', '0001')
             ->pluck('situacao_cadastral', 'cnpj_basico')
-            ->all()) ?? [];
+            ->all());
+
+        if ($codigos === null) {
+            return null;
+        }
 
         $out = [];
 

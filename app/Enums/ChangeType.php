@@ -15,6 +15,7 @@ enum ChangeType: string
     case NameChanged = 'name_changed';
     case SancaoAdicionada = 'sancao_adicionada';
     case ListaSuja = 'lista_suja';
+    case RiscoAoRedor = 'risco_ao_redor';
 
     public function label(): string
     {
@@ -28,6 +29,7 @@ enum ChangeType: string
             self::NameChanged => 'Razão social / nome fantasia alterado',
             self::SancaoAdicionada => 'Nova sanção (CGU)',
             self::ListaSuja => 'Entrou na Lista Suja (trabalho escravo)',
+            self::RiscoAoRedor => 'Risco em empresa ligada',
         };
     }
 
@@ -46,6 +48,7 @@ enum ChangeType: string
             self::NameChanged => 'badge',
             self::SancaoAdicionada => 'gavel',
             self::ListaSuja => 'gavel',
+            self::RiscoAoRedor => 'hub',
         };
     }
 }

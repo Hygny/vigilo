@@ -38,6 +38,9 @@ final class MaintenanceRun extends Model
     /** Varredura diária de sanções da carteira (vigilo:varrer-sancoes). */
     public const KIND_VARREDURA = 'varredura_sancoes';
 
+    /** Varredura diária do risco das empresas ligadas (vigilo:varrer-risco-ao-redor). */
+    public const KIND_RISCO_AO_REDOR = 'risco_ao_redor';
+
     /** @var list<string> */
     protected $fillable = [
         'kind',
