@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Jobs\RefreshMonitoredCompanyJob;
+use App\Livewire\Empresas\ContratosPublicos;
 use App\Livewire\Empresas\Perfil;
 use App\Livewire\Empresas\RiscoPerfil;
 use App\Models\MonitoredCompany;
@@ -329,4 +330,11 @@ it('links a natural-person partner of a company profile to the person page', fun
 
     $this->actingAs(perfilUser())->get(route('empresas.perfil', '11222333000181'))
         ->assertSee(route('pessoas.perfil', PessoaChave::para('***456789**', 'MARIA SOUZA')), false);
+});
+
+it('mounts the public contracts card lazily on the public profile', function () {
+    seedPerfilBase();
+
+    Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
+        ->assertSeeLivewire(ContratosPublicos::class);
 });

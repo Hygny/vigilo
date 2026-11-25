@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use App\DTO\Contratos\ContratoPublico;
+use App\DTO\Contratos\ContratosReport;
+use App\DTO\Risco\RiscoReport;
+use App\DTO\Risco\Sancao;
+use App\Enums\FonteSancao;
 use Illuminate\Support\Str;
 
 return [
@@ -133,6 +138,15 @@ return [
     |
     */
 
-    'serializable_classes' => false,
+    // Só os DTOs que o app guarda no cache (resultado das APIs da CGU). Qualquer
+    // outra classe continua bloqueada; com `false`, o get() devolvia
+    // __PHP_Incomplete_Class no Redis e o cache nunca acertava.
+    'serializable_classes' => [
+        RiscoReport::class,
+        Sancao::class,
+        FonteSancao::class,
+        ContratosReport::class,
+        ContratoPublico::class,
+    ],
 
 ];

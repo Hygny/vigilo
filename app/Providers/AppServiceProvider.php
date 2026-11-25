@@ -8,6 +8,7 @@ use App\Contracts\CnpjDataProvider;
 use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
 use App\Services\Asaas\AsaasClient;
+use App\Services\Contratos\ContratosPublicos;
 use App\Services\Graph\OwnershipGraphService;
 use App\Services\Risco\DirtyListLookup;
 use App\Services\Risco\PgfnLookup;
@@ -80,6 +81,14 @@ class AppServiceProvider extends ServiceProvider
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
             candidatos: max(1, (int) config('cnpj.busca.candidatos', 200)),
             timeoutMs: (int) config('cnpj.busca.timeout_ms', 5000),
+        ));
+
+        $this->app->singleton(ContratosPublicos::class, fn (): ContratosPublicos => new ContratosPublicos(
+            portal: $this->app->make(PortalTransparenciaClient::class),
+            maxPaginas: max(1, (int) config('risco.contratos.max_paginas', 40)),
+            cacheMinutos: (int) config('risco.contratos.cache_minutos', 1440),
+            falhaMinutos: (int) config('risco.contratos.falha_minutos', 5),
+            prazoSegundos: (int) config('risco.contratos.prazo_segundos', 20),
         ));
 
         $this->app->singleton(RiscoAoRedor::class, fn (): RiscoAoRedor => new RiscoAoRedor(

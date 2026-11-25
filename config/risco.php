@@ -74,6 +74,31 @@ return [
         'max_idade_dias' => (int) env('CGU_DOWNLOAD_MAX_IDADE_DIAS', 7),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Contratos públicos (empresa como fornecedora do governo federal)
+    |--------------------------------------------------------------------------
+    |
+    | Consultados na hora pela mesma chave da API do Portal da Transparência
+    | (`contratos/cpf-cnpj`, 15 por página, SEM ordem por data e sem total): lê
+    | em lotes paralelos de 5 até a última página ou `max_paginas` (40 = 600
+    | contratos; empresa comum = 1–2 páginas). Cacheado por `cache_minutos` (só
+    | resultado bom) — o teto da API é 400 req/min, dividido com a varredura.
+    |
+    */
+
+    'contratos' => [
+        'max_paginas' => (int) env('CONTRATOS_MAX_PAGINAS', 40),
+
+        'cache_minutos' => (int) env('CONTRATOS_CACHE_MINUTOS', 1440),
+
+        // Depois de uma falha, quanto esperar antes de reler (não martelar a API).
+        'falha_minutos' => (int) env('CONTRATOS_FALHA_MINUTOS', 5),
+
+        // Prazo total da leitura das páginas (o card é lazy: não pode travar).
+        'prazo_segundos' => (int) env('CONTRATOS_PRAZO_SEGUNDOS', 20),
+    ],
+
     'sweep' => [
         // Fuso da agenda e do "dia" da varredura (a empresa checada hoje é pulada
         // na 2ª passada). A app roda em UTC; a janela folgada da CGU é em Brasília.
