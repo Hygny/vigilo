@@ -64,8 +64,10 @@
 
         <livewire:empresas.contratos-publicos :cnpj="$company->cnpj" lazy />
 
+        {{-- Recuperação de crédito: monitorar como devedora + bens, créditos e indícios de sucessão --}}
+        <livewire:companies.recuperacao :company="$company" />
         <livewire:empresas.bens-recebiveis :cnpj="$company->cnpj" lazy />
-        <livewire:empresas.indicios-esvaziamento :cnpj="$company->cnpj" lazy />
+        <livewire:empresas.indicios-esvaziamento :cnpj="$company->cnpj" :marco="$company->recuperacao_marco?->toDateString()" lazy :key="'esvaziamento-'.$company->id.'-'.($company->recuperacao_marco?->toDateString() ?? 'pgfn')" />
 
         {{-- Timeline de mudanças --}}
         <x-ui.card>

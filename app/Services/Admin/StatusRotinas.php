@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Admin;
 
+use App\Console\Commands\SweepDevedores;
 use App\DTO\Admin\RotinaStatus;
 use App\Models\MaintenanceRun;
 use App\Services\Risco\SancoesLocais;
@@ -38,6 +39,7 @@ final class StatusRotinas
             $this->simples(MaintenanceRun::KIND_VARREDURA, 'Varredura de sanções da carteira', 'policy', 'todo dia às 01:00 e 04:00'),
             $this->simples(MaintenanceRun::KIND_AERONAVES, 'Registro de aeronaves (ANAC)', 'flight', 'todo dia às 07:15'),
             $this->simples(MaintenanceRun::KIND_RISCO_AO_REDOR, 'Risco das empresas ligadas (alertas)', 'hub', 'todo dia às 09:30 e 12:30'),
+            $this->simples(MaintenanceRun::KIND_DEVEDORES, 'Monitoramento de devedoras (alertas)', 'move_down', SweepDevedores::HORARIOS),
             $this->buscaPessoas(),
         ];
     }

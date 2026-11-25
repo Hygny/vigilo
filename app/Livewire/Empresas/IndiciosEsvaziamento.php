@@ -7,8 +7,10 @@ namespace App\Livewire\Empresas;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Services\Bens\IndiciosEsvaziamento as IndiciosService;
 use App\Support\Cnpj;
+use App\Support\DataDivida;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -35,7 +37,8 @@ class IndiciosEsvaziamento extends Component
     /** Campo do formulário (AAAA-MM-DD). */
     public string $data = '';
 
-    public function mount(string $cnpj): void
+    /** @param  ?string  $marco  data da dívida já registrada (ex.: no monitoramento da devedora) */
+    public function mount(string $cnpj, ?string $marco = null): void
     {
         $this->currentOrganizationId();
 
@@ -43,12 +46,17 @@ class IndiciosEsvaziamento extends Component
         abort_if($valido === null, 404);
 
         $this->cnpj = $valido->value;
+
+        if ($marco !== null && Validator::make(['data' => $marco], ['data' => DataDivida::REGRAS])->passes()) {
+            $this->marcoInformado = $marco;
+            $this->data = $marco;
+        }
     }
 
     public function aplicarData(): void
     {
         $this->validate(
-            ['data' => ['required', 'date_format:Y-m-d', 'after_or_equal:1990-01-01', 'before_or_equal:today']],
+            ['data' => ['required', ...DataDivida::REGRAS]],
             attributes: ['data' => 'data da dívida'],
         );
 

@@ -59,7 +59,9 @@
 
             {{-- Possíveis sucessoras --}}
             <h3 class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Possíveis sucessoras e empresas do mesmo grupo (depois da dívida)</h3>
-            @if ($r->sucessoras === null)
+            @if ($r->foraDaBase)
+                <p class="text-sm text-ink-muted">Empresa ainda não está na base da Receita (aberta depois da última atualização) — sem como procurar sucessoras agora.</p>
+            @elseif ($r->sucessoras === null)
                 <p class="text-sm text-ink-muted">Varredura indisponível no momento — não consultado.</p>
             @elseif ($r->sucessoras === [])
                 <p class="text-sm text-ink-muted">Nenhuma empresa surgiu depois da dívida com dois ou mais sinais em comum (endereço, ramo, sócio, contato).</p>

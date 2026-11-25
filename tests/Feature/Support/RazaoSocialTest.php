@@ -22,3 +22,14 @@ it('translates the Receita porte code', function () {
         ->and(PorteEmpresa::label('00'))->toBeNull()
         ->and(PorteEmpresa::label(null))->toBeNull();
 });
+
+it('drops the trailing CPF (full or masked) for what leaves the platform', function (?string $razao, ?string $esperado) {
+    expect(RazaoSocial::semDocumento($razao))->toBe($esperado);
+})->with([
+    'MEI com CPF íntegro' => ['MARIA SOUZA 12345678901', 'MARIA SOUZA'],
+    'já mascarado' => ['MARIA SOUZA ***456789**', 'MARIA SOUZA'],
+    'empresa comum' => ['PADARIA AURORA LTDA', 'PADARIA AURORA LTDA'],
+    'número no meio fica' => ['LOJA 12345678901 CENTRO', 'LOJA 12345678901 CENTRO'],
+    'só o documento' => ['12345678901', null],
+    'nulo' => [null, null],
+]);

@@ -43,6 +43,7 @@ final readonly class EsvaziamentoReport
      * @param  list<ReducaoCapital>|null  $reducoesCapital  (histórico)
      * @param  ?string  $historicoDesde  AAAA-MM do início do histórico cadastral
      * @param  list<Participacao>|null  $participacoes  empresas em que a devedora entrou como sócia depois do marco
+     * @param  bool  $foraDaBase  a base CNPJ respondeu mas não tem a matriz (aberta depois da última atualização)
      */
     public function __construct(
         public ?string $marco,
@@ -62,6 +63,7 @@ final readonly class EsvaziamentoReport
         public ?array $reducoesCapital = null,
         public ?string $historicoDesde = null,
         public ?array $participacoes = null,
+        public bool $foraDaBase = false,
     ) {}
 
     public function semMarco(): bool

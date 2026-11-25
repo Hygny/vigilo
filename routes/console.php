@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Console\Commands\SweepDevedores;
 use App\Models\PessoaConsulta;
 use App\Models\WebhookDelivery;
 use Illuminate\Foundation\Inspiring;
@@ -60,6 +61,16 @@ Schedule::command('vigilo:varrer-risco-ao-redor')
     ->cron('30 9,12 * * *')
     ->timezone((string) config('risco.sweep.timezone'))
     ->name('vigilo-risco-ao-redor')
+    ->withoutOverlapping(120)
+    ->runInBackground();
+
+// Devedoras monitoradas (recuperação de crédito): bem, crédito ou possível
+// sucessora NOVOS viram alerta. Depois da cópia do RAB (07:15); a 2ª passada
+// retoma quem a 1ª não checou.
+Schedule::command('vigilo:varrer-devedores')
+    ->cron(SweepDevedores::CRON)
+    ->timezone((string) config('risco.sweep.timezone'))
+    ->name('vigilo-devedores')
     ->withoutOverlapping(120)
     ->runInBackground();
 

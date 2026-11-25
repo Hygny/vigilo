@@ -16,6 +16,8 @@ enum ChangeType: string
     case SancaoAdicionada = 'sancao_adicionada';
     case ListaSuja = 'lista_suja';
     case RiscoAoRedor = 'risco_ao_redor';
+    case BemNovo = 'bem_novo';
+    case SucessoraNova = 'sucessora_nova';
 
     public function label(): string
     {
@@ -30,6 +32,8 @@ enum ChangeType: string
             self::SancaoAdicionada => 'Nova sanção (CGU)',
             self::ListaSuja => 'Entrou na Lista Suja (trabalho escravo)',
             self::RiscoAoRedor => 'Risco em empresa ligada',
+            self::BemNovo => 'Bem ou crédito novo da devedora',
+            self::SucessoraNova => 'Possível sucessora nova da devedora',
         };
     }
 
@@ -49,6 +53,8 @@ enum ChangeType: string
             self::SancaoAdicionada => 'gavel',
             self::ListaSuja => 'gavel',
             self::RiscoAoRedor => 'hub',
+            self::BemNovo => 'account_balance_wallet',
+            self::SucessoraNova => 'move_down',
         };
     }
 }

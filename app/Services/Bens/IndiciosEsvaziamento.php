@@ -140,7 +140,9 @@ final class IndiciosEsvaziamento
         }
 
         $db = DB::connection($this->connection);
-        $matriz = Tentar::ouNull(fn (): ?object => $this->matriz($db, $basico));
+        // Consulta ok sem matriz = empresa fora da base (aberta depois do último dump): não se aplica, não é falha.
+        $consultaMatriz = Tentar::ouNull(fn (): array => ['linha' => $this->matriz($db, $basico)]);
+        $matriz = $consultaMatriz['linha'] ?? null;
         $quadro = Tentar::ouNull(fn (): array => $this->qsa($db, $basico));
         $qsa = $quadro['lista'] ?? null;
         $historico = Tentar::ouNull(fn (): array => $this->historico($db, $basico, $marco));
@@ -178,6 +180,7 @@ final class IndiciosEsvaziamento
             reducoesCapital: $historico['reducoes'] ?? null,
             historicoDesde: $historico['desde'] ?? null,
             participacoes: $participacoes['lista'] ?? null,
+            foraDaBase: $consultaMatriz !== null && $matriz === null,
         );
     }
 
@@ -330,7 +333,8 @@ final class IndiciosEsvaziamento
 
             $sucessoras[] = new PossivelSucessora(
                 cnpj: Cnpj::matrizFromBasico($b) ?? $b,
-                nome: RazaoSocial::exibir(is_string($c->razao_social ?? null) ? $c->razao_social : null) ?? $b,
+                // MEI/EI traz o CPF no fim da razão social: nem mascarado ele aparece nos indícios.
+                nome: RazaoSocial::semDocumento(is_string($c->razao_social ?? null) ? $c->razao_social : null) ?? $b,
                 situacao: SituacaoCadastral::label($c->situacao_cadastral ?? null) ?: null,
                 inicio: $inicio,
                 sinais: $sinais,

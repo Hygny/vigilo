@@ -24,4 +24,20 @@ final class RazaoSocial
             trim($razao),
         ) ?? $razao;
     }
+
+    /**
+     * Razão social SEM o CPF do fim (íntegro ou já mascarado) — para o que sai
+     * da plataforma (alerta por e-mail/webhook) e para listas de indícios, onde
+     * nem o mascarado deve aparecer: "MARIA SOUZA 12345678901" → "MARIA SOUZA".
+     */
+    public static function semDocumento(?string $razao): ?string
+    {
+        if ($razao === null) {
+            return null;
+        }
+
+        $limpa = trim(preg_replace('/\s*(?:(?<!\d)\d{11}|\*{3}\d{6}\*{2})\s*$/', '', trim($razao)) ?? $razao);
+
+        return $limpa === '' ? null : $limpa;
+    }
 }

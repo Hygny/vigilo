@@ -26,6 +26,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $sanctions_synced_at
  * @property Carbon|null $dirty_list_flagged_at
  * @property Carbon|null $neighbor_risk_synced_at
+ * @property Carbon|null $recuperacao_desde monitorada como devedora desde (null = não)
+ * @property Carbon|null $recuperacao_marco data da dívida informada (null = 1ª inscrição na PGFN)
+ * @property Carbon|null $recuperacao_synced_at última varredura de devedora
+ * @property string|null $recuperacao_tipos tipos de item já sincronizados (linha de base por tipo), separados por vírgula
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Portfolio $portfolio
@@ -34,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, ChangeEvent> $changeEvents
  * @property-read Collection<int, CompanySanction> $sanctions
  * @property-read Collection<int, CompanyNeighborFlag> $neighborFlags
+ * @property-read Collection<int, RecuperacaoItem> $recuperacaoItens
  */
 class MonitoredCompany extends Model
 {
@@ -54,6 +59,9 @@ class MonitoredCompany extends Model
             'sanctions_synced_at' => 'datetime',
             'dirty_list_flagged_at' => 'datetime',
             'neighbor_risk_synced_at' => 'datetime',
+            'recuperacao_desde' => 'datetime',
+            'recuperacao_marco' => 'date',
+            'recuperacao_synced_at' => 'datetime',
         ];
     }
 
@@ -115,5 +123,26 @@ class MonitoredCompany extends Model
     public function neighborFlags(): HasMany
     {
         return $this->hasMany(CompanyNeighborFlag::class);
+    }
+
+    /**
+     * Bens, créditos e possíveis sucessoras conhecidos da devedora monitorada.
+     *
+     * @return HasMany<RecuperacaoItem, $this>
+     */
+    public function recuperacaoItens(): HasMany
+    {
+        return $this->hasMany(RecuperacaoItem::class);
+    }
+
+    public function emRecuperacao(): bool
+    {
+        return $this->recuperacao_desde !== null;
+    }
+
+    /** @return list<string> tipos de item da devedora que já têm linha de base */
+    public function tiposSincronizados(): array
+    {
+        return $this->recuperacao_tipos === null || $this->recuperacao_tipos === '' ? [] : explode(',', $this->recuperacao_tipos);
     }
 }

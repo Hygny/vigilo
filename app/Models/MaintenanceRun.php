@@ -44,6 +44,9 @@ final class MaintenanceRun extends Model
     /** Cópia local do Registro Aeronáutico Brasileiro (vigilo:aeronaves-anac). */
     public const KIND_AERONAVES = 'aeronaves';
 
+    /** Varredura diária das devedoras monitoradas (vigilo:varrer-devedores). */
+    public const KIND_DEVEDORES = 'devedores';
+
     /** @var list<string> */
     protected $fillable = [
         'kind',
