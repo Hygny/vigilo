@@ -290,3 +290,15 @@ it('treats a 200 answer that is not a list as unavailable (not "no contracts")',
 
     expect(app(ContratosPublicos::class)->para('11222333000181')->disponivel)->toBeFalse();
 });
+
+it('hides the API placeholders ("Sem Informação", "Não se aplica") from the detail line', function () {
+    $c = array_merge(contratoApi(1, '2024-01-01', '2099-01-01', 1.0), ['modalidadeCompra' => 'Sem Informação', 'situacaoContrato' => 'Não se aplica']);
+    fakePortalContratos([1 => [$c]]);
+
+    $contrato = app(ContratosPublicos::class)->para('11222333000181')->contratos[0];
+
+    expect($contrato->modalidade)->toBeNull()
+        ->and($contrato->situacao)->toBeNull()
+        ->and($contrato->detalhe())->not->toContain('Sem Informação')->not->toContain('Não se aplica')
+        ->and($contrato->vigente())->toBeTrue();
+});

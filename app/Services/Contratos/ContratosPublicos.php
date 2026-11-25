@@ -151,8 +151,8 @@ final class ContratosPublicos
             objeto: $objeto,
             orgao: $this->str(data_get($r, 'unidadeGestora.orgaoVinculado.nome')) ?? $this->str(data_get($r, 'unidadeGestora.nome')),
             orgaoSigla: $this->str(data_get($r, 'unidadeGestora.orgaoVinculado.sigla')),
-            modalidade: $this->str($r['modalidadeCompra'] ?? null),
-            situacao: $this->str($r['situacaoContrato'] ?? null),
+            modalidade: $this->informado($r['modalidadeCompra'] ?? null),
+            situacao: $this->informado($r['situacaoContrato'] ?? null),
             dataAssinatura: $this->data($r['dataAssinatura'] ?? null),
             vigenciaInicio: $this->data($r['dataInicioVigencia'] ?? null),
             vigenciaFim: $this->data($r['dataFimVigencia'] ?? null),
@@ -182,5 +182,17 @@ final class ContratosPublicos
         $value = is_scalar($value) ? trim((string) $value) : '';
 
         return $value === '' ? null : $value;
+    }
+
+    /**
+     * Campo descritivo da API sem conteúdo real: ela preenche o vazio com
+     * "Sem Informação" / "Não se aplica" / "Não informado" — vira null (não
+     * polui a linha de detalhe do card).
+     */
+    private function informado(mixed $value): ?string
+    {
+        $v = $this->str($value);
+
+        return $v !== null && preg_match('/^(sem informa[cç][aã]o|n[aã]o se aplica|n[aã]o informad[oa])$/iu', $v) === 1 ? null : $v;
     }
 }
