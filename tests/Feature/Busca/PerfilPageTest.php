@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Jobs\RefreshMonitoredCompanyJob;
+use App\Livewire\Empresas\BensRecebiveis;
 use App\Livewire\Empresas\ContratosPublicos;
 use App\Livewire\Empresas\Perfil;
 use App\Livewire\Empresas\PerfilEstrutura;
@@ -354,4 +355,11 @@ it('mounts the company structure lazily and keeps it out of the profile re-rende
     $semOrg = User::factory()->create(['organization_id' => null]);
     Livewire::actingAs($semOrg)->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])->assertForbidden();
     Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000182'])->assertNotFound();
+});
+
+it('mounts the assets & receivables card lazily on the public profile', function () {
+    seedPerfilBase();
+
+    Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
+        ->assertSeeLivewire(BensRecebiveis::class);
 });

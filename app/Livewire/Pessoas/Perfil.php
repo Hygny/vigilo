@@ -7,9 +7,11 @@ namespace App\Livewire\Pessoas;
 use App\Livewire\Concerns\CountsProfileViews;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\PessoaConsulta;
+use App\Services\Bens\AeronavesLookup;
 use App\Services\Vigilancia\BuscaPessoas;
 use App\Support\ConsultaComTimeout;
 use App\Support\PessoaChave;
+use App\Support\Tentar;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Livewire\Attributes\Layout;
@@ -47,7 +49,7 @@ class Perfil extends Component
         }
     }
 
-    public function render(BuscaPessoas $busca): View
+    public function render(BuscaPessoas $busca, AeronavesLookup $aeronaves): View
     {
         $pessoa = null;
         $aviso = null;
@@ -65,8 +67,15 @@ class Perfil extends Component
             }
         }
 
+        // Possíveis aeronaves pelo NOME (a ANAC não publica o CPF inteiro): null =
+        // cópia do RAB indisponível (não consultado).
+        $possiveisAeronaves = $pessoa !== null
+            ? Tentar::ouNull(fn (): ?array => $aeronaves->disponivel() ? $aeronaves->daPessoa($pessoa->nome) : null)
+            : null;
+
         return view('livewire.pessoas.perfil', [
             'pessoa' => $pessoa,
+            'possiveisAeronaves' => $possiveisAeronaves,
             'aviso' => $aviso,
             'maxHomonimos' => BuscaPessoas::MAX_HOMONIMOS,
         ]);

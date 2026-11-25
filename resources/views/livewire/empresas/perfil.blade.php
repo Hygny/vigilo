@@ -74,6 +74,9 @@
             {{-- Contratos públicos (fornecedora do governo federal), consultados na hora: lazy --}}
             <livewire:empresas.contratos-publicos :cnpj="$cnpj" lazy :key="'contratos-'.$cnpj" />
 
+            {{-- Bens e recebíveis (recuperação de crédito): lazy --}}
+            <livewire:empresas.bens-recebiveis :cnpj="$cnpj" lazy :key="'bens-'.$cnpj" />
+
             {{-- Dados cadastrais --}}
             <x-ui.card class="p-[22px]">
                 <div class="mb-4 flex items-center gap-2"><x-ui.icon name="description" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Dados cadastrais (Receita Federal)</h2></div>

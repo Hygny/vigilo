@@ -41,6 +41,9 @@ final class MaintenanceRun extends Model
     /** Varredura diária do risco das empresas ligadas (vigilo:varrer-risco-ao-redor). */
     public const KIND_RISCO_AO_REDOR = 'risco_ao_redor';
 
+    /** Cópia local do Registro Aeronáutico Brasileiro (vigilo:aeronaves-anac). */
+    public const KIND_AERONAVES = 'aeronaves';
+
     /** @var list<string> */
     protected $fillable = [
         'kind',

@@ -62,3 +62,12 @@ Schedule::command('vigilo:varrer-risco-ao-redor')
     ->name('vigilo-risco-ao-redor')
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Cópia local do Registro Aeronáutico Brasileiro (ANAC, publicado todo dia):
+// bens para recuperação de crédito. Arquivo já carregado = no-op de 1 download.
+Schedule::command('vigilo:aeronaves-anac')
+    ->dailyAt('07:15')
+    ->timezone((string) config('risco.sweep.timezone'))
+    ->name('vigilo-aeronaves-anac')
+    ->withoutOverlapping(60)
+    ->runInBackground();

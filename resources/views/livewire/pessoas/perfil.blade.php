@@ -53,6 +53,33 @@
                 @endif
             </x-ui.card>
 
+            {{-- Possíveis bens: aeronaves no RAB pelo NOME (vínculo possível; o documento da ANAC não é exibido) --}}
+            <x-ui.card class="p-[22px]">
+                <div class="mb-3 flex items-center gap-2"><x-ui.icon name="flight" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Possíveis aeronaves</h2><span class="text-[12.5px] text-ink-muted">· pelo nome, no Registro Aeronáutico Brasileiro</span></div>
+                @if ($possiveisAeronaves === null)
+                    <p class="text-sm text-ink-muted">Registro de aeronaves indisponível no momento — não consultado.</p>
+                @elseif ($possiveisAeronaves === [])
+                    <p class="text-sm text-ink-muted">Nenhuma aeronave em nome de pessoa física com este nome.</p>
+                @else
+                    <ul class="divide-y divide-line">
+                        @foreach ($possiveisAeronaves as $a)
+                            <li class="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                                <span class="flex min-w-0 items-center gap-2">
+                                    <span class="font-mono font-semibold text-ink">{{ $a->marca }}</span>
+                                    <span class="truncate text-ink-2">{{ $a->descricao() }}</span>
+                                    @if ($a->cancelada())<span class="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-muted ring-1 ring-inset ring-line">matrícula cancelada</span>@elseif ($a->reservada())<span class="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-muted ring-1 ring-inset ring-line">marca reservada · não matriculada</span>@endif
+                                </span>
+                                <span class="flex items-center gap-2 text-[12.5px] text-ink-muted">
+                                    {{ $a->rotuloPapeis(empresa: false) }}@if ($a->uf) · {{ $a->uf }}@endif
+                                    @if ($a->onus())<span class="rounded-md bg-med-soft px-1.5 py-0.5 text-[11px] font-semibold text-med">{{ $a->onus() }}</span>@endif
+                                </span>
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="mt-3 text-[12px] text-ink-muted">Vínculo <span class="font-medium">possível</span>, só pelo nome: a ANAC não publica o CPF inteiro (e mascara dígitos diferentes dos da Receita, por isso o documento não aparece aqui). Confirme na certidão da ANAC antes de agir.</p>
+                @endif
+            </x-ui.card>
+
             <x-ui.card class="p-[22px]">
                 <div class="mb-3 flex items-center gap-2"><x-ui.icon name="diversity_3" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Homônimos</h2><span class="text-[12.5px] text-ink-muted">· mesmo nome, outro CPF mascarado</span></div>
                 @if ($pessoa->homonimos === [])

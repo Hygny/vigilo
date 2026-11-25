@@ -64,6 +64,8 @@
 
         <livewire:empresas.contratos-publicos :cnpj="$company->cnpj" lazy />
 
+        <livewire:empresas.bens-recebiveis :cnpj="$company->cnpj" lazy />
+
         {{-- Timeline de mudanças --}}
         <x-ui.card>
             <div class="flex items-center gap-2 border-b border-line px-[22px] py-4"><x-ui.icon name="history" :size="20" class="text-accent" /><h2 class="text-[15px] font-semibold text-ink">Histórico de mudanças</h2></div>
