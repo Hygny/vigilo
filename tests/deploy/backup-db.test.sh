@@ -292,6 +292,20 @@ run_backup --enviar-existentes
 if [ "$(cat "$T/rc")" = 0 ] && [ "$(conta "$T/vm")" = 10 ] && ! grep -q "docker " "$T/calls" \
     && cmp -s "$T/home/backups/db-2026-11-05.sql.gz" "$T/vm/db-2026-11-05.sql.gz"; then ok "$t"; else ko "$t"; fi
 
+t="registra o resultado no app (card Rotinas): ok, cópia falha e dump falho"
+setup
+run_backup
+ok1=$(grep -c "docker compose -f .*docker-compose.yml exec -T app php artisan vigilo:rotina backup ok" "$T/calls")
+setup
+echo 1 >"$T/ssh_fail"
+run_backup
+fail1=$(grep -c "vigilo:rotina backup fail" "$T/calls")
+setup
+echo falha >"$T/docker_mode"
+run_backup
+fail2=$(grep -c "vigilo:rotina backup fail" "$T/calls")
+if [ "$ok1" = 1 ] && [ "$fail1" = 1 ] && [ "$fail2" = 1 ]; then ok "$t"; else ko "$t (ok=$ok1 fail=$fail1/$fail2)"; fi
+
 if [ "$FAILS" -gt 0 ]; then
     echo "$FAILS teste(s) falharam"
     exit 1

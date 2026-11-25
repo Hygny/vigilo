@@ -44,6 +44,12 @@ ESPERA="${BACKUP_ENVIO_ESPERA:-60}" # segundos entre tentativas de envio
 log() { echo "==> [$(date -Is)] $*"; }
 erro() { echo "!! [$(date -Is)] $*" >&2; }
 
+# Resultado da rodada diária no app (card "Rotinas" do /admin). Melhor esforço:
+# o backup não depende do app estar de pé.
+registrar() {
+    docker compose -f "$APP_DIR/docker-compose.yml" exec -T app php artisan vigilo:rotina backup "$1" --message="$2" >/dev/null 2>&1 || erro "registro da rodada no app falhou (card Rotinas do /admin) — o backup em si seguiu"
+}
+
 # Só a variável necessária do .env (não carrega os segredos do arquivo).
 env_var() {
     [ -f "$APP_DIR/.env" ] || return 0
@@ -122,10 +128,12 @@ if ! docker exec "$CONTAINER" sh -c \
     'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --all-databases --single-transaction --routines --events' \
     | gzip >"$tmp"; then
     erro "mysqldump falhou — nenhum backup trocado nem apagado"
+    registrar fail "mysqldump falhou"
     exit 1
 fi
 if ! gzip -t "$tmp" 2>/dev/null || ! zcat "$tmp" | tail -n 1 | grep -q '^-- Dump completed'; then
     erro "dump inválido ou incompleto — descartado (nenhum backup trocado nem apagado)"
+    registrar fail "dump inválido ou incompleto"
     exit 1
 fi
 mv -f "$tmp" "$DIR/$nome"
@@ -140,5 +148,14 @@ else
 fi
 
 "$ROTACIONAR" "$DIR" "$DIARIOS" "$MENSAIS"
+
+tamanho="$(du -h "$DIR/$nome" | cut -f1)"
+if [ "$rc" != 0 ]; then
+    registrar fail "${nome} (${tamanho}) local ok, mas a cópia na VM falhou"
+elif [ -z "$REMOTE_SSH" ]; then
+    registrar ok "${nome} (${tamanho}) — só local (sem CNPJ_REMOTE_SSH)"
+else
+    registrar ok "${nome} (${tamanho}) + cópia na VM"
+fi
 
 exit "$rc"

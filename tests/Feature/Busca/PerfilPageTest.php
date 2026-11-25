@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Livewire\Empresas\ContratosPublicos;
 use App\Livewire\Empresas\Perfil;
+use App\Livewire\Empresas\PerfilEstrutura;
 use App\Livewire\Empresas\RiscoPerfil;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
@@ -266,9 +267,8 @@ it('says the Simples is unavailable (never "não optante") when its table cannot
 it('lists the beneficial owners, the participations and the other establishments', function () {
     seedPerfilBase();
 
-    $this->actingAs(perfilUser())
-        ->get(route('empresas.perfil', '11222333000181'))
-        ->assertOk()
+    // A estrutura é o componente lazy do perfil.
+    Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])
         ->assertSee('Beneficiários finais (estrutura)')
         ->assertSee('sócio direto')
         ->assertSee('sócia de 1 empresa(s)')
@@ -296,8 +296,15 @@ it('degrades each extra block on its own when the base breaks under it', functio
         ->get(route('empresas.perfil', '11222333000181'))
         ->assertOk()
         ->assertSee('PAO DA AURORA')
-        ->assertSee('Natureza jurídica, porte, capital e Simples/MEI indisponíveis no momento')
+        ->assertSee('Natureza jurídica, porte, capital e Simples/MEI indisponíveis no momento');
+
+    Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])
         ->assertSee('CONFEITARIA FILHA LTDA');
+
+    Schema::connection('cnpj')->drop('estabelecimentos'); // derruba filiais/participações; o resto da estrutura segue
+    Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])
+        ->assertSee('sócio direto')
+        ->assertSee('Indisponível no momento.');
 });
 
 it('says "mostrando N de M" when the participations pass the list limit', function () {
@@ -310,9 +317,7 @@ it('says "mostrando N de M" when the participations pass the list limit', functi
         'identificador_de_socio' => '1', 'qualificacao_do_socio' => '49', 'data_entrada_sociedade' => '2024-01-01',
     ]);
 
-    $this->actingAs(perfilUser())
-        ->get(route('empresas.perfil', '11222333000181'))
-        ->assertOk()
+    Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])
         ->assertSee('sócia de 2 empresa(s)')
         ->assertSee('Mostrando 1 de 2 (ativas primeiro)');
 });
@@ -337,4 +342,16 @@ it('mounts the public contracts card lazily on the public profile', function () 
 
     Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
         ->assertSeeLivewire(ContratosPublicos::class);
+});
+
+it('mounts the company structure lazily and keeps it out of the profile re-render', function () {
+    seedPerfilBase();
+
+    Livewire::actingAs(perfilUser())->test(Perfil::class, ['cnpj' => '11222333000181'])
+        ->assertSeeLivewire(PerfilEstrutura::class)
+        ->assertDontSee('CONFEITARIA FILHA LTDA'); // só no componente lazy
+
+    $semOrg = User::factory()->create(['organization_id' => null]);
+    Livewire::actingAs($semOrg)->test(PerfilEstrutura::class, ['cnpj' => '11222333000181'])->assertForbidden();
+    Livewire::actingAs(perfilUser())->test(PerfilEstrutura::class, ['cnpj' => '11222333000182'])->assertNotFound();
 });

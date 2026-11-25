@@ -9,6 +9,7 @@ use App\Jobs\RefreshMonitoredCompanyJob;
 use App\Jobs\SendWebhookNotification;
 use App\Models\ChangeEvent;
 use App\Models\CompanySnapshot;
+use App\Models\MaintenanceRun;
 use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
@@ -306,6 +307,10 @@ it('trips the circuit breaker and aborts when the CGU is down', function () {
     expect(MonitoredCompany::query()->whereNotNull('sanctions_synced_at')->count())->toBe(0)
         ->and(MonitoredCompany::query()->where('cnpj', '77888999000155')->first()->sanctions()->count())->toBe(0);
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '77888999000155'));
+
+    // O card "Rotinas" do /admin vê a rodada como falha.
+    expect(MaintenanceRun::ultima('varredura_sancoes')?->isSuccess())->toBeFalse()
+        ->and(MaintenanceRun::ultima('varredura_sancoes')?->message)->toContain('Abortada');
 });
 
 it('resets the breaker after a success (only CONSECUTIVE failures abort)', function () {

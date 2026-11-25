@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Contracts\CnpjDataProvider;
 use App\Providers\Cnpj\BrasilApiProvider;
 use App\Providers\Cnpj\LocalCnpjProvider;
+use App\Services\Admin\StatusRotinas;
 use App\Services\Asaas\AsaasClient;
 use App\Services\Contratos\ContratosPublicos;
 use App\Services\Graph\OwnershipGraphService;
@@ -83,6 +84,11 @@ class AppServiceProvider extends ServiceProvider
             timeoutMs: (int) config('cnpj.busca.timeout_ms', 5000),
         ));
 
+        $this->app->singleton(StatusRotinas::class, fn (): StatusRotinas => new StatusRotinas(
+            sancoes: $this->app->make(SancoesLocais::class),
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
+
         $this->app->singleton(ContratosPublicos::class, fn (): ContratosPublicos => new ContratosPublicos(
             portal: $this->app->make(PortalTransparenciaClient::class),
             maxPaginas: max(1, (int) config('risco.contratos.max_paginas', 40)),
@@ -97,6 +103,7 @@ class AppServiceProvider extends ServiceProvider
             sancoes: $this->app->make(SancoesLocais::class),
             listaSuja: $this->app->make(DirtyListLookup::class),
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            cacheMinutos: (int) config('risco.ao_redor.cache_minutos', 10),
         ));
 
         $this->app->singleton(DetalhesEmpresaLookup::class, fn (): DetalhesEmpresaLookup => new DetalhesEmpresaLookup(

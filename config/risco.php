@@ -99,6 +99,12 @@ return [
         'prazo_segundos' => (int) env('CONTRATOS_PRAZO_SEGUNDOS', 20),
     ],
 
+    // "Risco ao redor" (empresas ligadas × PGFN/sanção/Lista Suja): cache curto
+    // por CNPJ do resultado completo (0 desliga).
+    'ao_redor' => [
+        'cache_minutos' => (int) env('RISCO_AO_REDOR_CACHE_MINUTOS', 10),
+    ],
+
     'sweep' => [
         // Fuso da agenda e do "dia" da varredura (a empresa checada hoje é pulada
         // na 2ª passada). A app roda em UTC; a janela folgada da CGU é em Brasília.

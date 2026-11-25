@@ -10,6 +10,7 @@ use App\Enums\Severity;
 use App\Models\ChangeEvent;
 use App\Models\CompanySanction;
 use App\Models\CompanySnapshot;
+use App\Models\MaintenanceRun;
 use App\Models\MonitoredCompany;
 use App\Services\Alerts\CompanyAlertNotifier;
 use App\Services\Risco\PortalTransparenciaClient;
@@ -177,11 +178,15 @@ final class SweepSanctions extends Command
         if ($abortou) {
             $this->error("{$maxFalhas} falha(s) seguida(s) (CGU indisponível ou erro) — varredura abortada; a próxima passada retoma de onde parou. {$resumo}.");
             Log::warning('Varredura de sanções abortada pelo disjuntor.', $stats + ['max_falhas' => $maxFalhas]);
+            MaintenanceRun::registrar(MaintenanceRun::KIND_VARREDURA, false, "Abortada após {$maxFalhas} falhas seguidas (a próxima passada retoma). {$resumo}.");
 
             return self::FAILURE;
         }
 
         $this->info("Varredura de sanções: {$resumo}.");
+        // Falhas pontuais (CGU indisponível p/ algumas empresas) não derrubam a
+        // rodada: ficam na mensagem; só o disjuntor marca "falhou".
+        MaintenanceRun::registrar(MaintenanceRun::KIND_VARREDURA, true, ucfirst($resumo).'.');
 
         $stats['indisponiveis'] + $stats['erros'] > 0
             ? Log::warning('Varredura de sanções concluída com falhas.', $stats)

@@ -33,7 +33,7 @@
 
             <div class="mt-3 text-sm">
                 <span class="text-ink-muted">Último reimport:</span>
-                <span class="font-medium text-ink">{{ $lastMaintenance->finished_at?->format('d/m/Y H:i') }}</span>
+                <span class="font-medium text-ink">{{ $lastMaintenance->finished_at?->copy()->timezone(config('risco.sweep.timezone'))->format('d/m/Y H:i') }}</span>
                 <span class="text-ink-muted">({{ $lastMaintenance->finished_at?->diffForHumans() }})</span>
             </div>
 
@@ -69,7 +69,7 @@
                     <ul class="mt-2 space-y-1.5">
                         @foreach ($maintenanceHistory->slice(1) as $run)
                             <li class="flex flex-wrap items-center gap-2 text-[13px]">
-                                <span class="font-mono text-ink-muted">{{ $run->finished_at?->format('d/m/Y H:i') }}</span>
+                                <span class="font-mono text-ink-muted">{{ $run->finished_at?->copy()->timezone(config('risco.sweep.timezone'))->format('d/m/Y H:i') }}</span>
                                 <x-ui.badge :tone="$run->isSuccess() ? 'ok' : 'crit'">{{ $run->isSuccess() ? 'ok' : 'falhou' }}</x-ui.badge>
                                 @if ($run->message)<span class="text-ink-muted">· {{ $run->message }}</span>@endif
                             </li>
@@ -78,6 +78,39 @@
                 </details>
             @endif
         @endif
+    </div>
+
+    {{-- Rotinas automáticas: última rodada, resultado e "atrasada" (agendamento parado em silêncio) --}}
+    <div class="mb-6 rounded-card border border-line bg-surface p-5 shadow-card">
+        <div class="mb-3 flex items-center gap-2">
+            <span class="text-ink-muted"><x-ui.icon name="schedule" :size="18" /></span>
+            <h2 class="text-[15px] font-semibold text-ink">Rotinas</h2>
+            @php($problemas = collect($rotinas)->filter(fn ($r) => $r->precisaAtencao())->count())
+            @if ($problemas > 0)
+                <x-ui.badge tone="high" dot>{{ $problemas }} com atenção</x-ui.badge>
+            @endif
+        </div>
+        <ul class="divide-y divide-line">
+            @foreach ($rotinas as $rotina)
+                <li class="flex flex-wrap items-start justify-between gap-3 py-3">
+                    <div class="flex min-w-0 items-start gap-2.5">
+                        <span class="mt-0.5 text-ink-muted"><x-ui.icon :name="$rotina->icone" :size="18" /></span>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-ink">{{ $rotina->nome }} <span class="font-normal text-ink-muted">· {{ $rotina->periodicidade }}</span></p>
+                            @if ($rotina->detalhe)
+                                <p class="mt-0.5 text-[12.5px] text-ink-muted">{{ $rotina->detalhe }}</p>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2 text-[12.5px] text-ink-muted">
+                        @if ($rotina->ultimaEm)
+                            <span title="{{ $rotina->ultimaEm->copy()->timezone(config('risco.sweep.timezone'))->format('d/m/Y H:i') }} (Brasília)">{{ $rotina->ultimaEm->diffForHumans() }}</span>
+                        @endif
+                        <x-ui.badge :tone="$rotina->tom()" dot>{{ $rotina->rotulo() }}</x-ui.badge>
+                    </div>
+                </li>
+            @endforeach
+        </ul>
     </div>
 
     <div class="grid gap-6 lg:grid-cols-[1fr_360px]">

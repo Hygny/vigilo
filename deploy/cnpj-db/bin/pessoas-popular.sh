@@ -37,6 +37,16 @@ if [ "${1:-}" = --se-mudou ]; then
     fi
 fi
 
+# A montagem cria ~4–5 GB novos (tabela + índices + temporário da ordenação)
+# ANTES de soltar a tabela velha. Sem folga, não monta: a busca segue com a
+# montagem anterior e o card "Rotinas" do /admin mostra "atrasada" (dump novo
+# não refletido). Saída 3 = pulado por disco.
+livre_gb="$(df -Pk "${PESSOAS_DISCO_DIR:-/data}" | awk 'NR == 2 { print int($4 / 1048576) }')"
+if [ "${livre_gb:-0}" -lt "${PESSOAS_MIN_LIVRE_GB:-10}" ]; then
+    echo "!! [$(date -Is)] só ${livre_gb:-?} GB livres em ${PESSOAS_DISCO_DIR:-/data} (mínimo ${PESSOAS_MIN_LIVRE_GB:-10}) — busca de pessoas NÃO remontada; segue a anterior" >&2
+    exit 3
+fi
+
 echo "==> [$(date -Is)] montando busca_pessoa_nova"
 {
     echo '\timing on'

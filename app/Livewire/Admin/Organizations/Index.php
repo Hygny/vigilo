@@ -10,6 +10,7 @@ use App\Models\MonitoredCompany;
 use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
+use App\Services\Admin\StatusRotinas;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -119,6 +120,7 @@ class Index extends Component
             'maintenanceTone' => $maintenanceTone,
             'maintenanceLabel' => $maintenanceLabel,
             'maintenanceHistory' => MaintenanceRun::cnpjMensal()->limit(6)->get(),
+            'rotinas' => app(StatusRotinas::class)->todas(),
         ]);
     }
 

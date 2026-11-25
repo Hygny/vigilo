@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Enums\FonteSancao;
+use App\Models\MaintenanceRun;
 use App\Support\CsvColumns;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -53,15 +54,25 @@ final class ImportCguSancoes extends Command
         }
 
         $falhas = 0;
+        $inicio = now();
+        $resumo = [];
 
         foreach ($fontes as $fonte) {
             try {
-                $this->carregar($fonte, is_string($arquivo) && $arquivo !== '' ? $arquivo : null);
+                $resumo[] = $fonte->sigla().': '.$this->carregar($fonte, is_string($arquivo) && $arquivo !== '' ? $arquivo : null);
             } catch (Throwable $e) {
                 $falhas++;
+                $resumo[] = $fonte->sigla().': FALHOU — '.$e->getMessage();
                 $this->error("{$fonte->sigla()}: {$e->getMessage()}");
                 Log::warning('vigilo:sancoes-cgu falhou', ['fonte' => $fonte->value, 'erro' => $e->getMessage()]);
             }
+        }
+
+        // Card "Rotinas" do /admin: só a rodada COMPLETA (as três fontes, baixadas)
+        // — uma carga manual de uma fonte ou de um arquivo local não pode
+        // mascarar a falha de outra fonte na rodada agendada.
+        if ((! is_string($arquivo) || $arquivo === '') && array_filter((array) $this->option('fonte')) === []) {
+            MaintenanceRun::registrar(MaintenanceRun::KIND_SANCOES_CGU, $falhas === 0, implode(' · ', $resumo), $inicio);
         }
 
         return $falhas === 0 ? self::SUCCESS : self::FAILURE;
@@ -96,19 +107,21 @@ final class ImportCguSancoes extends Command
         return array_values($fontes);
     }
 
-    private function carregar(FonteSancao $fonte, ?string $arquivoLocal): void
+    /** Carrega uma fonte; devolve o resumo curto da rodada (para o card de Rotinas). */
+    private function carregar(FonteSancao $fonte, ?string $arquivoLocal): string
     {
         if ($arquivoLocal !== null) {
             if (! is_file($arquivoLocal)) {
                 throw new RuntimeException("arquivo não encontrado: {$arquivoLocal}");
             }
 
-            $this->gravar($fonte, $arquivoLocal, $this->dataDoArquivoLocal($arquivoLocal));
+            $data = $this->dataDoArquivoLocal($arquivoLocal);
 
-            return;
+            return $this->gravar($fonte, $arquivoLocal, $data).' (arquivo de '.Carbon::parse($data)->format('d/m').')';
         }
 
         [$caminho, $data] = $this->baixarMaisRecente($fonte);
+        $dia = Carbon::parse($data)->format('d/m');
 
         try {
             $atual = DB::table('cgu_cargas')->where('fonte', $fonte->value)->value('data_arquivo');
@@ -116,10 +129,10 @@ final class ImportCguSancoes extends Command
             if (! $this->option('forcar') && is_string($atual) && substr($atual, 0, 10) === $data) {
                 $this->line("{$fonte->sigla()}: arquivo de ".Carbon::parse($data)->format('d/m/Y').' já carregado.');
 
-                return;
+                return "arquivo de {$dia} já carregado";
             }
 
-            $this->gravar($fonte, $caminho, $data);
+            return $this->gravar($fonte, $caminho, $data)." (arquivo de {$dia})";
         } finally {
             @unlink($caminho);
         }
@@ -159,8 +172,8 @@ final class ImportCguSancoes extends Command
         throw new RuntimeException("nenhum arquivo publicado nos últimos {$dias} dias");
     }
 
-    /** Lê, valida e recarrega a fonte num átomo. */
-    private function gravar(FonteSancao $fonte, string $caminho, string $data): void
+    /** Lê, valida e recarrega a fonte num átomo; devolve "N sanções". */
+    private function gravar(FonteSancao $fonte, string $caminho, string $data): string
     {
         $linhas = $this->ler($fonte, $caminho);
 
@@ -182,6 +195,8 @@ final class ImportCguSancoes extends Command
         });
 
         $this->info("{$fonte->sigla()}: ".count($linhas).' sanções de empresas carregadas (arquivo de '.Carbon::parse($data)->format('d/m/Y').').');
+
+        return count($linhas).' sanções';
     }
 
     /**

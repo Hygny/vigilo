@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\DTO\Contratos\ContratoPublico;
 use App\DTO\Contratos\ContratosReport;
+use App\DTO\Risco\EmpresaLigadaRisco;
+use App\DTO\Risco\RiscoAoRedorReport;
 use App\DTO\Risco\RiscoReport;
 use App\DTO\Risco\Sancao;
 use App\Enums\FonteSancao;
@@ -147,6 +149,8 @@ return [
         FonteSancao::class,
         ContratosReport::class,
         ContratoPublico::class,
+        RiscoAoRedorReport::class,
+        EmpresaLigadaRisco::class,
     ],
 
 ];

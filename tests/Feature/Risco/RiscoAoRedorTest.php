@@ -19,6 +19,7 @@ use App\Services\Risco\SancoesLocais;
 use App\Support\Cnpj;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -245,7 +246,8 @@ it('never shows the neighbours as clean (green) when a source was not checked or
         ->assertSee('sanção recente pode não aparecer')
         ->assertDontSee('tem sinal de risco nas fontes consultadas');
 
-    // Em dia → aí sim, verde.
+    // Em dia → aí sim, verde (o resultado anterior, completo, ficou no cache curto).
+    Cache::flush();
     DB::table('cgu_cargas')->update(['data_arquivo' => '2026-11-24']);
     Livewire::actingAs($user)->test(RiscoPerfil::class, ['cnpj' => '11222333000181', 'situacao' => 'ATIVA'])
         ->assertSee('Nenhuma das 4 empresa(s) ligada(s) tem sinal de risco nas fontes consultadas');
@@ -268,4 +270,30 @@ it('alerts the portfolio when a branch of the company enters the dirty list', fu
 
     expect($entrada?->nome)->toBe('FAZENDA (FILIAL)')
         ->and($company->fresh()->dirty_list_flagged_at)->not->toBeNull();
+});
+
+it('caches only the complete "risco ao redor" result, for a short window', function () {
+    seedRiscoAoRedor();
+    cguCarregada();
+    $servico = app(RiscoAoRedor::class);
+
+    expect($servico->para('11222333000181')->comAlerta())->toHaveCount(2); // HOLDING inapta + GRUPO dívida/baixada
+
+    // Muda a base: dentro da janela, vem do cache.
+    DB::connection('cnpj')->table('estabelecimentos')->update(['situacao_cadastral' => '02']);
+    DB::connection('cnpj')->table('pgfn_dividas')->delete();
+    expect($servico->para('11222333000181')->comAlerta())->toHaveCount(2);
+
+    $this->travel(11)->minutes();
+    expect($servico->para('11222333000181')->comAlerta())->toBe([]);
+});
+
+it('does not cache a partial result (a source was down)', function () {
+    seedRiscoAoRedor(); // cópia da CGU nunca carregada → sanções não consultadas
+    $servico = app(RiscoAoRedor::class);
+
+    expect($servico->para('11222333000181')->sancoesConsultadas)->toBeFalse();
+
+    cguCarregada();
+    expect($servico->para('11222333000181')->sancoesConsultadas)->toBeTrue(); // não ficou preso ao parcial
 });

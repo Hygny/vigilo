@@ -29,6 +29,15 @@ final class MaintenanceRun extends Model
     /** Rotina de manutenção mensal da base CNPJ (reimport + recoleta + normalizar). */
     public const KIND_CNPJ = 'cnpj_mensal';
 
+    /** Backup diário do MySQL do app (deploy/backup-db.sh). */
+    public const KIND_BACKUP = 'backup';
+
+    /** Cópia local das sanções da CGU (vigilo:sancoes-cgu). */
+    public const KIND_SANCOES_CGU = 'sancoes_cgu';
+
+    /** Varredura diária de sanções da carteira (vigilo:varrer-sancoes). */
+    public const KIND_VARREDURA = 'varredura_sancoes';
+
     /** @var list<string> */
     protected $fillable = [
         'kind',
@@ -54,6 +63,31 @@ final class MaintenanceRun extends Model
     public function isSuccess(): bool
     {
         return $this->status === 'success';
+    }
+
+    /**
+     * Registra uma rodada de rotina simples (sem passos): ok/falhou + mensagem.
+     */
+    public static function registrar(string $kind, bool $ok, ?string $message = null, ?Carbon $startedAt = null): self
+    {
+        $message = $message !== null ? mb_substr(trim($message), 0, 500) : null;
+
+        return self::query()->create([
+            'kind' => $kind,
+            'status' => $ok ? 'success' : 'failed',
+            'reimport_status' => 'skip',
+            'recoleta_status' => 'skip',
+            'normalizar_status' => 'skip',
+            'message' => $message === '' ? null : $message,
+            'started_at' => $startedAt ?? now(),
+            'finished_at' => now(),
+        ]);
+    }
+
+    /** A rodada mais recente de uma rotina (ou null se nunca rodou). */
+    public static function ultima(string $kind): ?self
+    {
+        return self::query()->where('kind', $kind)->orderByDesc('finished_at')->orderByDesc('id')->first();
     }
 
     /**

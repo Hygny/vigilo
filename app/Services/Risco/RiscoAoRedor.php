@@ -11,6 +11,7 @@ use App\Services\Graph\OwnershipGraphService;
 use App\Support\Cnpj;
 use App\Support\SituacaoCadastral;
 use App\Support\Tentar;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,9 +29,33 @@ final class RiscoAoRedor
         private readonly SancoesLocais $sancoes,
         private readonly DirtyListLookup $listaSuja,
         private readonly string $connection,
+        private readonly int $cacheMinutos = 10,
     ) {}
 
+    /**
+     * Cache curto por CNPJ (o grafo + 3 consultas em lote a cada abertura de
+     * perfil/painel). Só guarda resultado COMPLETO — com PGFN ou sanções fora, a
+     * próxima abertura tenta de novo.
+     */
     public function para(string $cnpj): RiscoAoRedorReport
+    {
+        $chave = 'risco-ao-redor:'.Cnpj::normalize($cnpj);
+        $cache = $this->cacheMinutos > 0 ? Cache::get($chave) : null;
+
+        if ($cache instanceof RiscoAoRedorReport) {
+            return $cache;
+        }
+
+        $report = $this->calcular($cnpj);
+
+        if ($this->cacheMinutos > 0 && $report->pgfnConsultada && $report->sancoesConsultadas) {
+            Cache::put($chave, $report, now()->addMinutes($this->cacheMinutos));
+        }
+
+        return $report;
+    }
+
+    private function calcular(string $cnpj): RiscoAoRedorReport
     {
         $graph = $this->grafo->for($cnpj);
         $centro = substr(Cnpj::normalize($cnpj), 0, 8);

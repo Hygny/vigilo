@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\MaintenanceRun;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -168,6 +169,7 @@ it('loads a local file with --arquivo, taking the date from its name', function 
 
     expect(substr((string) DB::table('cgu_cargas')->where('fonte', 'ceis')->value('data_arquivo'), 0, 10))->toBe('2026-11-20');
     Http::assertNothingSent();
+    expect(MaintenanceRun::query()->count())->toBe(0); // carga manual não conta como a rodada da rotina
 
     $this->artisan('vigilo:sancoes-cgu', ['--arquivo' => $path])->expectsOutputToContain('exige exatamente uma --fonte')->assertFailed();
     $this->artisan('vigilo:sancoes-cgu', ['--fonte' => ['xyz']])->expectsOutputToContain('Fonte desconhecida')->assertFailed();
@@ -181,4 +183,18 @@ it('is scheduled twice a day in Brasília time', function () {
         ->and($evento->expression)->toBe('30 8,14 * * *')
         ->and($evento->timezone)->toBe('America/Sao_Paulo')
         ->and($evento->withoutOverlapping)->toBeTrue();
+});
+
+it('records the scheduled run for the /admin routines card (not the manual local file)', function () {
+    fakeCguDownload([
+        'ceis' => cguZip('20261124_CEIS.csv', CEIS_HEADER, [ceisLinha('11222333000181')]),
+        'cnep' => cguZip('20261124_CNEP.csv', CNEP_HEADER, ['"CNEP";"1";"J";"14286903000195";"S";"S";"S";"S";"P";"Multa";"10,00";"09/03/2022";"";"";"";"";"";"";"CGU";"";"FEDERAL";"";"";"";""']),
+    ]);
+
+    $this->artisan('vigilo:sancoes-cgu')->assertFailed(); // CEPIM sem arquivo
+
+    $run = MaintenanceRun::ultima('sancoes_cgu');
+    expect($run?->isSuccess())->toBeFalse()
+        ->and($run?->message)->toContain('CEIS: 1 sanções (arquivo de 24/11)')
+        ->and($run?->message)->toContain('CEPIM: FALHOU');
 });

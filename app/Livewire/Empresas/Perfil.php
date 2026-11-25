@@ -11,7 +11,6 @@ use App\Livewire\Concerns\CountsProfileViews;
 use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Models\MonitoredCompany;
 use App\Models\Portfolio;
-use App\Services\Graph\OwnershipGraphService;
 use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
 use App\Services\Vigilancia\HistoricoLookup;
@@ -83,7 +82,7 @@ class Perfil extends Component
         session()->flash('status', "Empresa adicionada ao portfólio {$portfolio->name} — a primeira checagem já está na fila.");
     }
 
-    public function render(EmpresaLookup $empresas, HistoricoLookup $historicos, DetalhesEmpresaLookup $detalhes, OwnershipGraphService $grafo): View
+    public function render(EmpresaLookup $empresas, HistoricoLookup $historicos, DetalhesEmpresaLookup $detalhes): View
     {
         $empresa = null;
         $historico = null;
@@ -100,7 +99,7 @@ class Perfil extends Component
 
             if ($empresa !== null) {
                 $historico = $this->historico($historicos);
-                $extras = $this->extras($detalhes, $grafo);
+                $extras = $this->extras($detalhes);
             }
         }
 
@@ -108,11 +107,6 @@ class Perfil extends Component
 
         return view('livewire.empresas.perfil', $extras + [
             'detalhes' => null,
-            'beneficiarios' => null,
-            'filiais' => null,
-            'estabelecimentos' => 0,
-            'participacoes' => null,
-            'totalParticipacoes' => 0,
             'empresa' => $empresa,
             'historico' => $historico,
             'indisponivel' => $indisponivel,
@@ -137,29 +131,14 @@ class Perfil extends Component
     }
 
     /**
-     * Blocos do perfil que vêm de outras consultas (natureza/porte/Simples,
-     * beneficiários, filiais, participações). Cada um falha sozinho: null =
-     * "indisponível agora" na tela, sem derrubar o resto.
+     * Natureza/porte/capital/Simples (2 consultas por chave primária). A parte
+     * pesada — beneficiários, participações, estabelecimentos — é o componente
+     * lazy {@see PerfilEstrutura}. Falha → null = "indisponível" no bloco.
      *
      * @return array<string, mixed>
      */
-    private function extras(DetalhesEmpresaLookup $detalhes, OwnershipGraphService $grafo): array
+    private function extras(DetalhesEmpresaLookup $detalhes): array
     {
-        $limite = max(1, (int) config('cnpj.perfil.participacoes_limite', 100));
-
-        $participacoes = Tentar::ouNull(fn (): array => $grafo->participations($this->cnpj, $limite));
-
-        return [
-            'detalhes' => Tentar::ouNull(fn (): mixed => $detalhes->para($this->cnpj)),
-            'beneficiarios' => Tentar::ouNull(fn (): array => $grafo->beneficialOwners($this->cnpj)),
-            'filiais' => Tentar::ouNull(fn (): array => $grafo->branches($this->cnpj)),
-            'estabelecimentos' => (int) Tentar::ouNull(fn (): int => $grafo->establishmentCount($this->cnpj)),
-            'participacoes' => $participacoes,
-            // Só conta à parte se a lista encheu (senão o total é o tamanho dela).
-            // Se só a contagem falhar, fica o tamanho da lista (nunca "sócia de 0").
-            'totalParticipacoes' => is_array($participacoes) && count($participacoes) >= $limite
-                ? (Tentar::ouNull(fn (): int => $grafo->participationCount($this->cnpj)) ?? count($participacoes))
-                : (is_array($participacoes) ? count($participacoes) : 0),
-        ];
+        return ['detalhes' => Tentar::ouNull(fn (): mixed => $detalhes->para($this->cnpj))];
     }
 }
