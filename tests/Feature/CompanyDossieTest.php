@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\DTO\Risco\EmpresaLigadaRisco;
+use App\DTO\Risco\RiscoAoRedorReport;
+use App\DTO\Vigilancia\DetalhesEmpresa;
+use App\DTO\Vigilancia\RegimeSimples;
 use App\Models\CompanyPartner;
 use App\Models\CompanySnapshot;
 use App\Models\DirtyListEmployer;
@@ -254,4 +258,157 @@ it('lists the participations in their own PDF section, not as the economic group
 
     expect(collect($dados['participacoes'])->pluck('label')->all())->toBe(['INVESTIDA SA'])
         ->and(collect($dados['grupo'])->pluck('label')->all())->toBe(['EMPRESA GRUPO']);
+});
+
+/** Gera o dossiê e devolve o HTML do PDF (mesmos dados que o dompdf recebeu). */
+function dossieHtml(MonitoredCompany $company, User $user): string
+{
+    $dados = null;
+    View::composer('dossie.pdf', function ($view) use (&$dados): void {
+        $dados = $view->getData();
+    });
+
+    test()->actingAs($user)->get(route('companies.dossie', $company))->assertOk();
+
+    return view('dossie.pdf', $dados)->render();
+}
+
+it('includes the recovery sections and degrades each one when its source is down', function () {
+    // base CNPJ vazia (sem tabelas): todas as fontes da base falham
+    $org = Organization::factory()->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $html = dossieHtml($company, User::factory()->for($org)->create());
+
+    expect($html)->toContain('Risco ao redor (empresas ligadas)')
+        ->toContain('Contratos públicos (fornecedora do governo federal)')
+        ->toContain('Bens e recebíveis (onde procurar penhora)')
+        ->toContain('Indícios de esvaziamento e sucessão')
+        ->toContain('Dívida ativa da União indisponível agora')
+        ->not->toContain('Nenhum contrato do Executivo Federal'); // não consultado ≠ nenhum
+});
+
+it('lists aircraft, trademarks, the full participations and the asset-stripping signals in the PDF', function () {
+    bootDossieCnpjBase();
+    createInpiTables();
+    seedMarca('11222333000181', '900000001', 'AURORA');
+    for ($i = 1; $i <= 12; $i++) { // o grafo traz só as primeiras; o dossiê, a lista inteira
+        DB::connection('cnpj')->table('empresas')->insert(['cnpj_basico' => sprintf('2%07d', $i), 'razao_social' => sprintf('INVESTIDA %02d SA', $i)]);
+        DB::connection('cnpj')->table('socios')->insert(['cnpj_basico' => sprintf('2%07d', $i), 'nome_socio' => 'EMPRESA CENTRO', 'cnpj_cpf_do_socio' => '11222333', 'identificador_de_socio' => '1']);
+    }
+    DB::table('aeronave_cargas')->insert(['data_arquivo' => '2026-11-25', 'aeronaves' => 1, 'carregado_em' => now()]);
+    DB::table('aeronaves')->insert(['marca' => 'PRAAA', 'modelo' => 'EMB-505', 'fabricante' => 'EMBRAER', 'gravame' => 'NENHUM GRAVAME REGISTRADO']);
+    DB::table('aeronave_vinculos')->insert(['marca' => 'PRAAA', 'papel' => 'proprietario', 'tipo' => 'PJ', 'cnpj' => '11222333000181', 'cnpj_basico' => '11222333', 'nome' => 'EMPRESA CENTRO', 'nome_norm' => 'EMPRESA CENTRO', 'percentual' => 100]);
+
+    $org = Organization::factory()->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181']);
+
+    $html = dossieHtml($company, User::factory()->for($org)->create());
+
+    expect($html)->toContain('PRAAA — EMBRAER EMB-505')
+        ->toContain('sem ônus')
+        ->toContain('AURORA')
+        ->toContain('1 registro(s) em vigor')
+        ->toContain('INVESTIDA 12 SA') // a 12ª participação também está no PDF
+        ->toContain('12 empresa(s)');
+});
+
+/** Dados que o dossiê entregou ao template (para trocar uma seção e renderizar de novo). */
+function dossieDados(MonitoredCompany $company, User $user): array
+{
+    $dados = null;
+    View::composer('dossie.pdf', function ($view) use (&$dados): void {
+        $dados = $view->getData();
+    });
+
+    test()->actingAs($user)->get(route('companies.dossie', $company))->assertOk();
+
+    return $dados;
+}
+
+function dossieEmpresa(array $atributos = []): array
+{
+    $org = Organization::factory()->create();
+    $company = MonitoredCompany::factory()->for(Portfolio::factory()->for($org))->create(['cnpj' => '11222333000181'] + $atributos);
+    CompanySnapshot::factory()->create(['monitored_company_id' => $company->id]);
+
+    return [$company, User::factory()->for($org)->create()];
+}
+
+it('lists the FULL participations (beyond what the graph brings) and says "N de M" above 300', function () {
+    bootDossieCnpjBase();
+    config()->set('cnpj.graph.reverse_limit', 5); // o grafo para em 5
+    $socios = array_map(fn (int $i): array => ['cnpj_basico' => sprintf('2%07d', $i), 'nome_socio' => 'EMPRESA CENTRO', 'cnpj_cpf_do_socio' => '11222333', 'identificador_de_socio' => '1'], range(1, 301));
+    $empresas = array_map(fn (int $i): array => ['cnpj_basico' => sprintf('2%07d', $i), 'razao_social' => sprintf('INVESTIDA %03d SA', $i)], range(1, 301));
+    foreach ([array_chunk($socios, 100), array_chunk($empresas, 100)] as $i => $lotes) {
+        foreach ($lotes as $lote) {
+            DB::connection('cnpj')->table($i === 0 ? 'socios' : 'empresas')->insert($lote);
+        }
+    }
+    [$company, $user] = dossieEmpresa();
+
+    $dados = dossieDados($company, $user);
+    $html = view('dossie.pdf', $dados)->render();
+
+    expect($dados['participacoes'])->toHaveCount(300)
+        ->and($dados['participacoesTotal'])->toBe(301)
+        ->and($html)->toContain('INVESTIDA 150 SA')
+        ->toContain('Listando 300 de 301 participações');
+});
+
+it('never says "none" about the linked companies when a source was not checked (same rule as the screen)', function () {
+    [$company, $user] = dossieEmpresa();
+    $dados = dossieDados($company, $user);
+    $ligada = new EmpresaLigadaRisco('HOLDING SA', '99888777000166', 'sócia', 'ATIVA', false, false, false, false);
+
+    $semPgfn = view('dossie.pdf', ['aoRedor' => new RiscoAoRedorReport([$ligada], pgfnConsultada: false, sancoesConsultadas: true, sancoesDesatualizadas: true)] + $dados)->render();
+    expect($semPgfn)->toContain('Nenhum sinal entre as 1 empresa(s) ligada(s) nas fontes que puderam ser consultadas')
+        ->toContain('Não consultado agora: dívida ativa (PGFN)')
+        ->toContain('A cópia das sanções da CGU está desatualizada')
+        ->not->toContain('Nenhuma das 1');
+
+    $limpo = view('dossie.pdf', ['aoRedor' => new RiscoAoRedorReport([$ligada], true, true)] + $dados)->render();
+    expect($limpo)->toContain('Nenhuma das 1 empresa(s) ligada(s) tem Lista Suja');
+
+    $comDivida = new EmpresaLigadaRisco('DEVEDORA SA', '55666777000100', 'participação', 'ATIVA', false, true, false, false);
+    $alerta = view('dossie.pdf', ['aoRedor' => new RiscoAoRedorReport([$ligada, $comDivida], true, true)] + $dados)->render();
+    expect($alerta)->toContain('1 de 2 empresas ligadas com dívida ativa')->toContain('DEVEDORA SA');
+});
+
+it('prints capital and Simples/MEI from the base details', function () {
+    [$company, $user] = dossieEmpresa();
+    $dados = dossieDados($company, $user);
+    $detalhes = new DetalhesEmpresa('2062', 'Sociedade Empresária Limitada', '03', 15000.5, new RegimeSimples(true, '2020-01-01'), new RegimeSimples(false));
+
+    $html = view('dossie.pdf', ['detalhes' => $detalhes] + $dados)->render();
+
+    expect($html)->toContain('Capital social')->toContain('15.000,50')
+        ->toContain('Simples Nacional')->toContain($detalhes->simples->texto())
+        ->toContain('MEI');
+});
+
+it('lists the public contracts, in force first and then the ended ones', function () {
+    bootDossieCnpjBase();
+    config()->set('risco.portal.api_key', 'chave-teste');
+    $contrato = fn (int $id, string $fim, string $objeto): array => [
+        'id' => $id, 'numero' => (string) $id, 'objeto' => $objeto, 'dataAssinatura' => '2024-01-01', 'dataInicioVigencia' => '2024-01-01',
+        'dataFimVigencia' => $fim, 'valorInicialCompra' => 1000, 'valorFinalCompra' => 1000, 'fornecedor' => ['cnpjFormatado' => '11.222.333/0001-81'],
+    ];
+    Http::fake(['*portaldatransparencia*' => Http::response([$contrato(1, '2020-01-01', 'SERVIÇO ANTIGO'), $contrato(2, '2099-01-01', 'SERVIÇO ATUAL')]), '*' => Http::response([])]);
+    [$company, $user] = dossieEmpresa();
+
+    $html = view('dossie.pdf', dossieDados($company, $user))->render();
+
+    expect($html)->toContain('2 contrato(s)')
+        ->toContain('1 vigente(s)')
+        ->toMatch('/SERVIÇO ATUAL.*vigente.*SERVIÇO ANTIGO.*encerrado/s');
+});
+
+it('uses the debtor date as the asset-stripping milestone when the company has one', function () {
+    bootDossieCnpjBase();
+    [$company, $user] = dossieEmpresa(['recuperacao_desde' => now(), 'recuperacao_marco' => '2021-06-30']);
+
+    $html = view('dossie.pdf', dossieDados($company, $user))->render();
+
+    expect($html)->toContain('Marco: data da dívida informada em 30/06/2021');
 });

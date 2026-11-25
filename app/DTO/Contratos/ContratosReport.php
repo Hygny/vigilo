@@ -48,6 +48,20 @@ final readonly class ContratosReport
         return count(array_filter($this->contratos, fn (ContratoPublico $c): bool => $c->vigente()));
     }
 
+    /**
+     * Os $n contratos em destaque: vigentes primeiro, cada grupo na ordem do
+     * relatório (mais recentes primeiro).
+     *
+     * @return list<ContratoPublico>
+     */
+    public function destaques(int $n): array
+    {
+        $vigentes = array_filter($this->contratos, fn (ContratoPublico $c): bool => $c->vigente());
+        $outros = array_filter($this->contratos, fn (ContratoPublico $c): bool => ! $c->vigente());
+
+        return array_slice([...array_values($vigentes), ...array_values($outros)], 0, $n);
+    }
+
     public function valorTotal(): float
     {
         return array_sum(array_map(fn (ContratoPublico $c): float => $c->valor() ?? 0.0, $this->contratos));

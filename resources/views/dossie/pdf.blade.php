@@ -67,6 +67,11 @@
             <tr><td class="k">Porte</td><td>{{ $snapshot->porte ?? '—' }}</td></tr>
             <tr><td class="k">Natureza jurídica</td><td>{{ $snapshot->natureza_juridica ?? '—' }}</td></tr>
             <tr><td class="k">Endereço</td><td>{{ collect([$snapshot->logradouro, $snapshot->municipio, $snapshot->uf])->filter()->implode(' · ') ?: '—' }}</td></tr>
+            @if ($detalhes !== null)
+                @if ($detalhes->capitalTexto())<tr><td class="k">Capital social</td><td>{{ $detalhes->capitalTexto() }}</td></tr>@endif
+                @if ($detalhes->simples)<tr><td class="k">Simples Nacional</td><td>{{ $detalhes->simples->texto() }}</td></tr>@endif
+                @if ($detalhes->mei)<tr><td class="k">MEI</td><td>{{ $detalhes->mei->texto() }}</td></tr>@endif
+            @endif
         </table>
 
         <h2>Quadro societário</h2>
@@ -101,8 +106,38 @@
                     <li>{{ $g['label'] }} <span class="muted">{{ $meta }}</span>@if (! $g['pgfn_consultada']) <span class="muted">— dívida ativa não consultada</span>@elseif ($g['divida']) <span style="color:#92400E;">— dívida ativa: {{ $g['divida']->resumo() }}</span>@endif</li>
                 @endforeach
             </ul>
+            @if ($ligadas === $participacoes && $participacoesTotal > count($participacoes))
+                <p class="muted" style="font-size:9px;">Listando {{ count($participacoes) }} de {{ $participacoesTotal }} participações (ativas primeiro).</p>
+            @endif
         @endif
     @endforeach
+
+    <h2>Risco ao redor (empresas ligadas)</h2>
+    @if ($aoRedor === null)
+        <p class="muted">Indisponível no momento.</p>
+    @elseif ($aoRedor->total() === 0)
+        <p class="muted">Sem empresas ligadas por sócio PJ ou participação.</p>
+    @else
+        @if ($aoRedor->selo())
+            <p style="color:#92400E;">{{ $aoRedor->selo() }}.</p>
+            <ul>
+                @foreach (array_slice($aoRedor->comAlerta(), 0, 15) as $e)
+                    <li>{{ $e->nome }} <span class="muted">{{ $e->cnpj }} · {{ $e->ligacao }}</span> — {{ implode(', ', array_map(fn ($c) => $e->rotulo($c), $e->codigos())) }}</li>
+                @endforeach
+            </ul>
+        @elseif ($aoRedor->semSinalConfiavel())
+            <p>Nenhuma das {{ $aoRedor->total() }} empresa(s) ligada(s) tem Lista Suja, sanção, dívida ativa ou situação negativa.</p>
+        @else
+            {{-- Fonte fora ou cópia da CGU velha: sem "nenhuma" (mesma regra da tela). --}}
+            <p>Nenhum sinal entre as {{ $aoRedor->total() }} empresa(s) ligada(s) nas fontes que puderam ser consultadas.</p>
+        @endif
+        @if ($aoRedor->naoConsultadas() !== [])
+            <p class="muted" style="font-size:9px;">Não consultado agora: {{ implode(', ', $aoRedor->naoConsultadas()) }}.</p>
+        @endif
+        @if ($aoRedor->sancoesDesatualizadas)
+            <p style="color:#92400E; font-size:9px;">A cópia das sanções da CGU está desatualizada — sanção recente pode não aparecer.</p>
+        @endif
+    @endif
 
     @if ($filiais !== [])
         <h2>Filiais</h2>
@@ -176,8 +211,95 @@
         </ul>
     @endif
 
+    @php($contratos = $bens?->contratos)
+    <h2>Contratos públicos (fornecedora do governo federal)</h2>
+    @if ($contratos === null || ! $contratos->configurado || ! $contratos->disponivel)
+        <p class="muted">Contratos públicos não consultados agora.</p>
+    @elseif ($contratos->total() === 0)
+        <p>Nenhum contrato do Executivo Federal como fornecedora.</p>
+    @else
+        <p>{{ $contratos->truncado ? 'Ao menos ' : '' }}{{ $contratos->total() }} contrato(s), {{ 'R$ '.number_format($contratos->valorTotal(), 2, ',', '.') }} no total · {{ $contratos->vigentes() }} vigente(s).</p>
+        <ul>
+            @foreach ($contratos->destaques(10) as $c)
+                <li>{{ $c->objeto ? \Illuminate\Support\Str::limit($c->objeto, 110) : 'Contrato' }} <span class="muted">— {{ $c->vigente() ? 'vigente' : 'encerrado' }} · {{ $c->detalhe() }}@if ($c->valor() !== null) · {{ 'R$ '.number_format($c->valor(), 2, ',', '.') }}@endif</span></li>
+            @endforeach
+        </ul>
+    @endif
+
+    <h2>Bens e recebíveis (onde procurar penhora)</h2>
+    @if ($bens === null)
+        <p class="muted">Indisponível no momento.</p>
+    @else
+        <table class="kv">
+            <tr><td class="k">Aeronaves (RAB/ANAC)</td><td>
+                @if ($bens->aeronaves === null) <span class="muted">não consultado</span>
+                @else {{ $bens->totalAeronavesAtivas }} ativa(s){{ $bens->totalAeronavesAtivas > 0 ? ' · '.($bens->aeronavesTruncadas() ? 'ao menos ' : '').count($bens->aeronavesLivres()).' sem ônus' : '' }}
+                @endif
+            </td></tr>
+            <tr><td class="k">Marcas (INPI)</td><td>
+                @if ($bens->marcas === null) <span class="muted">não consultado</span>
+                @else {{ $bens->marcasEmVigor() }} registro(s) em vigor · {{ $bens->totalMarcasAtivas() - $bens->marcasEmVigor() }} pedido(s) em andamento
+                @endif
+            </td></tr>
+            <tr><td class="k">Participações (quotas/ações)</td><td>{{ $bens->participacoes === null ? 'não consultado' : $bens->totalParticipacoes.' empresa(s)' }}</td></tr>
+            <tr><td class="k">Créditos a receber (contratos vigentes)</td><td>
+                @if (! $bens->contratos->configurado || ! $bens->contratos->disponivel) <span class="muted">não consultado</span>
+                @else {{ count($bens->contratosVigentes()) }} contrato(s) · {{ 'R$ '.number_format($bens->valorContratosVigentes(), 2, ',', '.') }}
+                @endif
+            </td></tr>
+        </table>
+        @if (($bens->aeronaves ?? []) !== [])
+            <ul>
+                @foreach (array_slice(array_values(array_filter($bens->aeronaves, fn ($a) => $a->ativa())), 0, 20) as $a)
+                    <li>{{ $a->marca }} — {{ $a->descricao() }} <span class="muted">({{ $a->rotuloPapeis(empresa: true) }}@if ($a->percentual !== null) {{ number_format($a->percentual, 0, ',', '.') }}%@endif)</span>@if ($a->onus()) <span style="color:#92400E;">— {{ $a->onus() }}</span>@elseif ($a->livre()) — sem ônus @endif</li>
+                @endforeach
+            </ul>
+        @endif
+        @if ($bens->marcasExibidas() !== [])
+            <ul>
+                @foreach ($bens->marcasExibidas() as $m)
+                    <li>{{ $m->nome ?? 'Marca sem elemento nominativo' }} <span class="muted">nº {{ $m->numero }} — {{ $m->emVigor() ? 'registro em vigor'.($m->dataVigencia ? ' até '.\Illuminate\Support\Carbon::parse($m->dataVigencia)->format('d/m/Y') : '') : 'pedido: '.$m->situacao }}</span></li>
+                @endforeach
+            </ul>
+        @endif
+        <p class="muted" style="font-size:9px;">Imóveis, veículos e contas bancárias não têm fonte aberta (cartórios/ONR, Detran, RENAJUD e SISBAJUD são pagos ou só por ordem judicial). Confirme a titularidade nas certidões antes de pedir penhora.</p>
+    @endif
+
+    <h2>Indícios de esvaziamento e sucessão</h2>
+    @if ($indicios === null)
+        <p class="muted">Indisponível no momento.</p>
+    @elseif ($indicios->semMarco())
+        <p class="muted">{{ $indicios->pgfnConsultada ? 'Sem inscrição em dívida ativa da União para usar como marco' : 'Dívida ativa da União indisponível agora' }} — informe a data da dívida no monitoramento de devedora para procurar o que mudou depois dela.</p>
+    @else
+        <p>Marco: {{ $indicios->origemMarco === \App\DTO\Esvaziamento\EsvaziamentoReport::MARCO_PGFN ? '1ª inscrição em dívida ativa da União' : 'data da dívida informada' }} em {{ \Illuminate\Support\Carbon::parse($indicios->marco)->format('d/m/Y') }}.
+            @if ($indicios->nivel() === \App\DTO\Esvaziamento\EsvaziamentoReport::NIVEL_ALTO) <strong style="color:#991B1B;">Indícios fortes.</strong>
+            @elseif ($indicios->nivel() === \App\DTO\Esvaziamento\EsvaziamentoReport::NIVEL_MEDIO) <strong style="color:#92400E;">Indícios.</strong>
+            @elseif ($indicios->nivel() === \App\DTO\Esvaziamento\EsvaziamentoReport::NIVEL_PARCIAL) <span class="muted">Consulta parcial — não dá para dizer que não há nada.</span>
+            @else <span class="muted">Nada encontrado.</span>
+            @endif
+        </p>
+        @if ($indicios->indicios() !== [])
+            <p>{{ implode(' · ', $indicios->indicios()) }}</p>
+        @endif
+        @if (($indicios->sucessoras ?? []) !== [])
+            <ul>
+                @foreach (array_slice($indicios->sucessoras, 0, 10) as $s)
+                    <li>{{ $s->nome }} <span class="muted">{{ $s->cnpj }} — {{ $s->forte() ? 'forte' : 'médio' }}: {{ implode(', ', $s->rotulos()) }}{{ $s->abertaAposMarco ? ' · aberta em '.\Illuminate\Support\Carbon::parse((string) $s->inicio)->format('d/m/Y') : '' }}</span></li>
+                @endforeach
+            </ul>
+        @endif
+        @if ($indicios->encerradaSituacao)<p>{{ ucfirst(mb_strtolower($indicios->encerradaSituacao)) }} em {{ \Illuminate\Support\Carbon::parse((string) $indicios->encerradaEm)->format('d/m/Y') }}, depois da dívida.</p>@endif
+        @if (($indicios->entradas ?? []) !== [])
+            <p>Sócios que entraram depois da dívida{{ $indicios->quadroTodoAposMarco ? ' (todos os atuais)' : '' }}: {{ implode(', ', array_map(fn ($m) => $m->nome, $indicios->entradas)) }}.</p>
+        @endif
+        @if (($indicios->saidas ?? []) !== [])
+            <p>Saídas de sócio depois da dívida: {{ implode(', ', array_map(fn ($m) => $m->nome, $indicios->saidas)) }}.</p>
+        @endif
+        <p class="muted" style="font-size:9px;">Indícios em dados abertos, não prova: orientam um pedido de redirecionamento, sucessão ou desconsideração da personalidade jurídica, que precisa de documentos.</p>
+    @endif
+
     <div class="footer">
-        Documento gerado automaticamente pelo Vigilo a partir de fontes públicas (Receita Federal, PGFN, Portal da Transparência/CGU e Lista Suja/MTE). Dados sujeitos a atualização — confirme nas fontes oficiais antes de qualquer decisão.
+        Documento gerado automaticamente pelo Vigilo a partir de fontes públicas (Receita Federal, PGFN, Portal da Transparência/CGU, Lista Suja/MTE, ANAC e INPI). Dados sujeitos a atualização — confirme nas fontes oficiais antes de qualquer decisão.
     </div>
 </body>
 </html>

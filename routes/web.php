@@ -18,6 +18,7 @@ use App\Livewire\Empresas\Grafo as EmpresasGrafo;
 use App\Livewire\Empresas\Perfil as EmpresasPerfil;
 use App\Livewire\Integrations\Index as Integrations;
 use App\Livewire\Pessoas\Busca as PessoasBusca;
+use App\Livewire\Pessoas\Grafo as PessoasGrafo;
 use App\Livewire\Pessoas\Perfil as PessoasPerfil;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
 use App\Livewire\Portfolios\Show as PortfolioShow;
@@ -46,6 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // (uuid) — nome e CPF mascarado nunca na URL.
     Route::get('pessoas', PessoasBusca::class)->name('pessoas.busca');
     Route::get('pessoas/{chave}', PessoasPerfil::class)->where('chave', '[0-9a-fA-F-]{36}')->name('pessoas.perfil');
+    Route::get('pessoas/{chave}/grafo', PessoasGrafo::class)->where('chave', '[0-9a-fA-F-]{36}')->name('pessoas.grafo');
 
     Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
 

@@ -101,6 +101,18 @@ abstract class GraphPage extends Component
         return false;
     }
 
+    /**
+     * Raiz PESSOA (grafo aberto pela página da pessoa): o grafo nasce centrado
+     * nela e "voltar" volta para ela. Null (padrão) = a raiz é a empresa de
+     * {@see rootCnpj()}.
+     *
+     * @return array{documento: string, nome: string}|null
+     */
+    protected function rootPerson(): ?array
+    {
+        return null;
+    }
+
     /** Zera o aviso transiente a cada nova ação (não "gruda" no próximo request). */
     public function hydrate(): void
     {
@@ -157,6 +169,26 @@ abstract class GraphPage extends Component
         $this->focusDocument = '';
         $this->focusName = '';
         $this->emitGraph($graphs);
+    }
+
+    /**
+     * O grafo está fora da raiz (mostra "voltar")? Raiz-empresa: em foco uma
+     * pessoa ou outra empresa. Raiz-pessoa: em foco uma empresa ou outra pessoa.
+     *
+     * @param  array{documento: string, nome: string}|null  $rootPerson
+     */
+    private function foraDaRaiz(?array $rootPerson, string $root, bool $personMode): bool
+    {
+        if ($rootPerson === null) {
+            return $personMode || ($this->focus !== '' && $this->focus !== $root);
+        }
+
+        if ($this->focus !== '') {
+            return true;
+        }
+
+        return $this->focusDocument !== ''
+            && ($this->focusDocument !== $rootPerson['documento'] || $this->focusName !== $rootPerson['nome']);
     }
 
     /**
@@ -262,10 +294,18 @@ abstract class GraphPage extends Component
             return $this->graphCache;
         }
 
-        $root = Cnpj::normalize($this->rootCnpj());
-        $personMode = $this->focusDocument !== '';
+        $rootPerson = $this->rootPerson();
+        $root = $rootPerson === null ? Cnpj::normalize($this->rootCnpj()) : '';
+
+        // Pessoa em foco: a do pivô, ou a raiz-pessoa quando nada está em foco.
+        [$personDocument, $personName] = match (true) {
+            $this->focusDocument !== '' => [$this->focusDocument, $this->focusName],
+            $this->focus === '' && $rootPerson !== null => [$rootPerson['documento'], $rootPerson['nome']],
+            default => ['', ''],
+        };
+        $personMode = $personDocument !== '';
         $cnpj = $this->focus !== '' ? $this->focus : $root;
-        $focused = $personMode || ($this->focus !== '' && $this->focus !== $root);
+        $focused = $this->foraDaRaiz($rootPerson, $root, $personMode);
 
         $available = true;
         $cyto = ['nodes' => [], 'edges' => [], 'center' => ''];
@@ -287,7 +327,7 @@ abstract class GraphPage extends Component
             }
 
             if ($personMode) {
-                $graph = $graphs->forPerson($this->focusDocument, $this->focusName);
+                $graph = $graphs->forPerson($personDocument, $personName);
             } else {
                 $graph = $graphs->for($cnpj, $this->showProbable, $this->showAddress);
                 $beneficiaries = $graphs->beneficialOwners($cnpj);
@@ -322,7 +362,7 @@ abstract class GraphPage extends Component
             $dividas = $this->dividasDoGrafo($graph);
             $pgfnDisponivel = $dividas !== null;
             $connections = $this->buildConnections($graph, $branches, $dividas ?? []);
-            $connectionsText = $this->connectionsText($connections, $focusLabel, $personMode ? $this->focusDocument : $cnpj, $pgfnDisponivel);
+            $connectionsText = $this->connectionsText($connections, $focusLabel, $personMode ? $personDocument : $cnpj, $pgfnDisponivel);
         } catch (GraphBlocked) {
             $available = false; // a tela mostra o aviso do teto, não "base indisponível"
         } catch (Throwable $e) {

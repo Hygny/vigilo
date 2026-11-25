@@ -28,6 +28,9 @@ class PessoaConsulta extends Model
 
     public const TIPO_PERFIL = 'perfil';
 
+    /** Grafo centrado na pessoa (aberto pela página dela). */
+    public const TIPO_GRAFO = 'grafo';
+
     public const UPDATED_AT = null;
 
     protected $table = 'pessoa_consultas';

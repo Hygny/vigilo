@@ -24,6 +24,11 @@
                     <x-ui.badge tone="med">Vínculo provável</x-ui.badge>
                 </div>
                 <p class="mt-1 font-mono text-sm text-ink-muted">{{ $pessoa->documento ?? 'sem documento' }}@if ($pessoa->estrangeiro) · estrangeiro @endif · sócio(a) de {{ $pessoa->totalEmpresas }} empresa(s)</p>
+                @if ($pessoa->documento !== null && ! $pessoa->estrangeiro)
+                    <a href="{{ route('pessoas.grafo', $pessoa->chave) }}" wire:navigate class="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline">
+                        <x-ui.icon name="hub" :size="17" />Ver no grafo societário
+                    </a>
+                @endif
             </div>
 
             <div class="flex items-start gap-2 rounded-btn border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
