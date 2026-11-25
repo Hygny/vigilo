@@ -16,6 +16,7 @@ use App\Services\Risco\RiscoAoRedor;
 use App\Services\Risco\RiscoService;
 use App\Services\Risco\SancoesLocais;
 use App\Services\Vigilancia\BuscaEmpresas;
+use App\Services\Vigilancia\BuscaPessoas;
 use App\Services\Vigilancia\DetalhesEmpresaLookup;
 use App\Services\Vigilancia\EmpresaLookup;
 use App\Services\Vigilancia\HistoricoLookup;
@@ -91,6 +92,13 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(DetalhesEmpresaLookup::class, fn (): DetalhesEmpresaLookup => new DetalhesEmpresaLookup(
             connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+        ));
+
+        $this->app->singleton(BuscaPessoas::class, fn (): BuscaPessoas => new BuscaPessoas(
+            connection: (string) config('cnpj.providers.local.connection', 'cnpj'),
+            candidatos: max(1, (int) config('cnpj.pessoas.candidatos', 200)),
+            timeoutMs: (int) config('cnpj.pessoas.timeout_ms', 5000),
+            maxEmpresas: max(1, (int) config('cnpj.pessoas.max_empresas', 200)),
         ));
 
         $this->app->singleton(HistoricoLookup::class, fn (): HistoricoLookup => new HistoricoLookup(

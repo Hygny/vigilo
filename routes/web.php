@@ -17,6 +17,8 @@ use App\Livewire\Empresas\Busca as EmpresasBusca;
 use App\Livewire\Empresas\Grafo as EmpresasGrafo;
 use App\Livewire\Empresas\Perfil as EmpresasPerfil;
 use App\Livewire\Integrations\Index as Integrations;
+use App\Livewire\Pessoas\Busca as PessoasBusca;
+use App\Livewire\Pessoas\Perfil as PessoasPerfil;
 use App\Livewire\Portfolios\Index as PortfolioIndex;
 use App\Livewire\Portfolios\Show as PortfolioShow;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +41,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('empresas', EmpresasBusca::class)->name('empresas.busca');
     Route::get('empresas/{cnpj}', EmpresasPerfil::class)->where('cnpj', '[0-9]{14}')->name('empresas.perfil');
     Route::get('empresas/{cnpj}/grafo', EmpresasGrafo::class)->where('cnpj', '[0-9]{14}')->name('empresas.grafo');
+
+    // Busca de PESSOAS (sócios) por nome. A página da pessoa vai pela chave opaca
+    // (uuid) — nome e CPF mascarado nunca na URL.
+    Route::get('pessoas', PessoasBusca::class)->name('pessoas.busca');
+    Route::get('pessoas/{chave}', PessoasPerfil::class)->where('chave', '[0-9a-fA-F-]{36}')->name('pessoas.perfil');
 
     Route::get('usuarios', Users::class)->name('users.index')->middleware('admin');
 

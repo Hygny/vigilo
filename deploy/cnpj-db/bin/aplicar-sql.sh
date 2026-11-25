@@ -4,12 +4,13 @@
 # pipeline da Receita (gatilhos do histórico cadastral, busca por nome...).
 # Tudo idempotente (IF NOT EXISTS / CREATE OR REPLACE): o reimport.sh chama
 # antes de cada import, então uma base restaurada ou recriada volta a ter os
-# gatilhos sozinha. Ordem importa: historico.sql antes de busca.sql.
+# gatilhos sozinha. Ordem importa: historico.sql antes de busca.sql, e
+# busca.sql (pg_trgm, busca_norm) antes de pessoas.sql.
 set -euo pipefail
 
 DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 
-for sql in historico busca; do
+for sql in historico busca pessoas; do
     f="$DIR/sql/$sql.sql"
     [ -f "$f" ] || continue
     docker exec -i cnpj-postgres psql -U cnpj -d cnpj -X -q -v ON_ERROR_STOP=1 <"$f"

@@ -65,6 +65,9 @@ if [ "$code" = 0 ]; then
     # 1ª vez, e elas também passam para o papel do app.
     "$DIR/bin/pos-reimport.sh" || echo "!! [$(date -Is)] pos-reimport.sh falhou — rode ~/cnpj/bin/pos-reimport.sh na VM"
     "$DIR/bin/papel-app.sh" || echo "!! [$(date -Is)] papel-app.sh falhou — rode ~/cnpj/bin/papel-app.sh na VM"
+    # Busca de pessoas: remonta só quando o dump mudou (~9 min). Falha não
+    # derruba o reimport — a busca segue com a montagem anterior.
+    "$DIR/bin/pessoas-popular.sh" --se-mudou || echo "!! [$(date -Is)] pessoas-popular.sh falhou — rode ~/cnpj/bin/pessoas-popular.sh na VM"
 fi
 
 # O 3 é reservado à checagem de disco acima (o VPS não re-tenta): um 3 vindo

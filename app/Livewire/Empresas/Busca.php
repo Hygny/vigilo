@@ -9,6 +9,7 @@ use App\Livewire\Concerns\InteractsWithCurrentOrganization;
 use App\Services\Vigilancia\BuscaEmpresas;
 use App\Support\BuscaNome;
 use App\Support\Cnpj;
+use App\Support\ConsultaComTimeout;
 use App\Support\SituacaoCadastral;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use PDOException;
 
 /**
  * Busca de QUALQUER empresa do Brasil por nome (razão social / nome fantasia)
@@ -99,8 +101,8 @@ class Busca extends Component
     {
         try {
             return [$busca->buscar($consulta, $uf, $situacao, max(1, (int) config('cnpj.busca.limite', 50))), null];
-        } catch (QueryException $e) {
-            if ((string) $e->getCode() === BuscaEmpresas::SQLSTATE_TIMEOUT) {
+        } catch (QueryException|PDOException $e) { // PDOException: base fora ao abrir a transação do timeout
+            if (ConsultaComTimeout::estourou($e)) {
                 return [null, 'Busca ampla demais para responder a tempo. Acrescente mais uma palavra do nome ou filtre por UF.'];
             }
 

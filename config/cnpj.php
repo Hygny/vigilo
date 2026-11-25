@@ -125,4 +125,17 @@ return [
         'participacoes_limite' => (int) env('CNPJ_PERFIL_PARTICIPACOES_LIMITE', 100),
     ],
 
+    // Busca de PESSOAS (sócios) por nome — tabela busca_pessoa da base CNPJ
+    // (deploy/cnpj-db/bin/pessoas-popular.sh). Dado de pessoa física: teto por
+    // usuário, trilha de auditoria (pessoa_consultas) com retenção.
+    'pessoas' => [
+        'per_minute' => (int) env('CNPJ_PESSOAS_PER_MINUTE', 20),
+        'limite' => (int) env('CNPJ_PESSOAS_LIMITE', 50),
+        'candidatos' => (int) env('CNPJ_PESSOAS_CANDIDATOS', 200),
+        'timeout_ms' => (int) env('CNPJ_PESSOAS_TIMEOUT_MS', 5000),
+        // Empresas listadas na página da pessoa.
+        'max_empresas' => (int) env('CNPJ_PESSOAS_MAX_EMPRESAS', 200),
+        'retencao_dias' => (int) env('CNPJ_PESSOAS_RETENCAO_DIAS', 365),
+    ],
+
 ];

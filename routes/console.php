@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\PessoaConsulta;
 use App\Models\WebhookDelivery;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -34,10 +35,11 @@ Schedule::command('portfolios:run-scheduled')
     ->name('vigilo-portfolio-schedules')
     ->withoutOverlapping();
 
-// Poda o log append-only de entregas de webhook (retenção em config/webhook.php).
-Schedule::command('model:prune', ['--model' => [WebhookDelivery::class]])
+// Poda os logs append-only: entregas de webhook (retenção em config/webhook.php)
+// e a trilha de consultas a pessoas (cnpj.pessoas.retencao_dias).
+Schedule::command('model:prune', ['--model' => [WebhookDelivery::class, PessoaConsulta::class]])
     ->dailyAt('03:30')
-    ->name('vigilo-prune-webhook-deliveries')
+    ->name('vigilo-prune-logs')
     ->withoutOverlapping();
 
 // Cópia local das sanções da CGU (CEIS/CNEP/CEPIM) para o risco de qualquer

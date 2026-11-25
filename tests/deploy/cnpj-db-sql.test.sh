@@ -54,11 +54,11 @@ INSERT INTO socios (socio_id, cnpj_basico, identificador_de_socio, nome_socio, c
     ('00000000-0000-0000-0000-00000000000b', '11222333', '2', 'BRUNO LIMA', '***333444**', '22', '2026-09-21 04:00', '2026-09-21 04:00');
 SQL
 
-for f in historico busca; do
+for f in historico busca pessoas; do
     q <"$SQL_DIR/$f.sql" >/dev/null 2>&1 || { echo "!! $f.sql falhou"; q <"$SQL_DIR/$f.sql"; exit 1; }
 done
 # Idempotência: aplicar de novo não pode falhar.
-for f in historico busca; do
+for f in historico busca pessoas; do
     q <"$SQL_DIR/$f.sql" >/dev/null 2>&1 || { echo "!! $f.sql não é idempotente"; exit 1; }
 done
 
@@ -90,6 +90,26 @@ check "carga da busca: UF/situação da razão social vêm da matriz" "SP|02" \
     "SELECT uf || '|' || situacao FROM busca_razao WHERE cnpj_basico = '11222333'"
 q -f /dev/stdin <"$SQL_DIR/pos-reimport.sql" >/dev/null 2>&1
 check "pos-reimport na primeira carga: só registra" "primeira_carga" "SELECT status FROM historico_execucoes WHERE referencia = '2026-09'"
+
+# --- Busca de pessoas (a mesma montagem do bin/pessoas-popular.sh) -----------
+q -c "INSERT INTO socios (socio_id, cnpj_basico, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, qualificacao_do_socio, data_criacao, data_atualizacao) VALUES
+    ('00000000-0000-0000-0000-0000000000c1', '44555666', '2', ' ANA SOUZA ', '***111222**', '49', now(), now()),
+    ('00000000-0000-0000-0000-0000000000c2', '44555666', '3', 'JOHN SMITH', '', '49', now(), now()),
+    ('00000000-0000-0000-0000-0000000000c3', '44555666', '1', 'EMPRESA SOCIA', '11222333', '49', now(), now())" >/dev/null
+q <"$SQL_DIR/pessoas-montar.sql" >/dev/null 2>&1 || { echo "!! pessoas-montar.sql falhou"; q <"$SQL_DIR/pessoas-montar.sql"; exit 1; }
+q <"$SQL_DIR/pessoas-montar.sql" >/dev/null 2>&1 || { echo "!! pessoas-montar.sql não roda de novo (troca)"; exit 1; }
+check "pessoas: uma linha por nome+documento, contando empresas distintas (PJ fora)" "3" "SELECT count(*) FROM busca_pessoa"
+check "pessoas: nome aparado, chave normalizada e 2 empresas da ANA" "ANA SOUZA| ANA SOUZA |2" \
+    "SELECT nome_exibicao || '|' || nome || '|' || empresas FROM busca_pessoa WHERE documento = '***111222**'"
+check "pessoas: estrangeiro sem documento fica com documento vazio" "3|" \
+    "SELECT tipo || '|' || documento FROM busca_pessoa WHERE nome_exibicao = 'JOHN SMITH'"
+# A MESMA conta do App\Support\PessoaChave (o teste PHP fixa o mesmo valor).
+check "pessoas: chave = md5(documento|nome)::uuid (igual à do PHP)" "b0c6bc3c-f28c-8354-a6e6-060ee66ecf93" \
+    "SELECT md5('***924790**' || '|' || 'JORGE GERDAU JOHANNPETER')::uuid"
+check "pessoas: índices da troca com o nome final" "busca_pessoa_pkey|idx_busca_pessoa_gin|idx_busca_pessoa_nome" \
+    "SELECT string_agg(indexname, '|' ORDER BY indexname) FROM pg_indexes WHERE tablename = 'busca_pessoa'"
+# Os sócios extras saem antes dos próximos dumps (que contam os sócios).
+q -c "DELETE FROM socios WHERE socio_id IN ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c3')" >/dev/null
 
 # --- Dump 2026-10: upsert igual ao do pipeline --------------------------------
 q >/dev/null <<'SQL'

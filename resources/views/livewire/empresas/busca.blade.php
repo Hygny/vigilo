@@ -1,7 +1,8 @@
 <div class="py-8">
     <div class="mx-auto max-w-[1000px] space-y-5 px-5 sm:px-8">
         <div>
-            <h1 class="text-[26px] font-bold tracking-[-0.03em] text-ink">Busca de empresas</h1>
+            @include('partials.busca-abas', ['ativa' => 'empresas'])
+            <h1 class="mt-3 text-[26px] font-bold tracking-[-0.03em] text-ink">Busca de empresas</h1>
             <p class="mt-1 text-sm text-ink-muted">Qualquer empresa do Brasil pelo nome (razão social ou nome fantasia) ou pelo CNPJ, direto da base da Receita Federal.</p>
         </div>
 

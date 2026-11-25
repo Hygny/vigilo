@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\Portfolio;
 use App\Models\User;
 use App\Support\Cnpj;
+use App\Support\PessoaChave;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -321,4 +322,11 @@ it('mounts the risk card lazily on the public profile', function () {
 
     Livewire::actingAs($user)->test(Perfil::class, ['cnpj' => '11222333000181'])
         ->assertSeeLivewire(RiscoPerfil::class);
+});
+
+it('links a natural-person partner of a company profile to the person page', function () {
+    seedPerfilBase();
+
+    $this->actingAs(perfilUser())->get(route('empresas.perfil', '11222333000181'))
+        ->assertSee(route('pessoas.perfil', PessoaChave::para('***456789**', 'MARIA SOUZA')), false);
 });

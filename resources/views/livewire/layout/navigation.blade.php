@@ -18,7 +18,7 @@ new class extends Component
         ['route' => 'dashboard', 'active' => 'dashboard', 'icon' => 'dashboard', 'label' => 'Painel'],
         ['route' => 'portfolios.index', 'active' => 'portfolios.*', 'icon' => 'folder_open', 'label' => 'Portfólios'],
         ['route' => 'alerts.index', 'active' => 'alerts.*', 'icon' => 'notifications', 'label' => 'Alertas'],
-        ['route' => 'empresas.busca', 'active' => 'empresas.*', 'icon' => 'search', 'label' => 'Busca'],
+        ['route' => 'empresas.busca', 'active' => ['empresas.*', 'pessoas.*'], 'icon' => 'search', 'label' => 'Busca'],
     ];
 
     if (auth()->user()?->isAdmin()) {

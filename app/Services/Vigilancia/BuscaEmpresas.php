@@ -7,9 +7,9 @@ namespace App\Services\Vigilancia;
 use App\DTO\Busca\ResultadoBusca;
 use App\DTO\Busca\ResultadosBusca;
 use App\Support\BuscaNome;
+use App\Support\ConsultaComTimeout;
 use App\Support\RazaoSocial;
 use App\Support\SituacaoCadastral;
-use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -34,7 +34,7 @@ use Illuminate\Support\Facades\DB;
 final class BuscaEmpresas
 {
     /** SQLSTATE do Postgres para statement_timeout estourado. */
-    public const SQLSTATE_TIMEOUT = '57014';
+    public const SQLSTATE_TIMEOUT = ConsultaComTimeout::SQLSTATE_TIMEOUT;
 
     public function __construct(
         private readonly string $connection,
@@ -57,7 +57,7 @@ final class BuscaEmpresas
 
         $db = DB::connection($this->connection);
 
-        [$razao, $fantasia] = $this->comTimeout($db, fn (): array => [
+        [$razao, $fantasia] = ConsultaComTimeout::executar($db, $this->timeoutMs, fn (): array => [
             $this->candidatosRazao($db, $termos, $uf, $situacaoCode),
             $this->candidatosFantasia($db, $termos, $uf, $situacaoCode),
         ]);
@@ -201,28 +201,6 @@ final class BuscaEmpresas
         }
 
         return $score;
-    }
-
-    /**
-     * Roda as consultas com statement_timeout no Postgres (SET LOCAL só vale na
-     * transação); nos demais drivers (testes em SQLite) roda direto.
-     *
-     * @template T
-     *
-     * @param  callable(): T  $callback
-     * @return T
-     */
-    private function comTimeout(ConnectionInterface $db, callable $callback): mixed
-    {
-        if (! $db instanceof Connection || $db->getDriverName() !== 'pgsql' || $this->timeoutMs <= 0) {
-            return $callback();
-        }
-
-        return $db->transaction(function () use ($db, $callback): mixed {
-            $db->statement('SET LOCAL statement_timeout = '.$this->timeoutMs);
-
-            return $callback();
-        });
     }
 
     private function data(mixed $value): ?string

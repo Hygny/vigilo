@@ -127,7 +127,15 @@
                     <ul class="divide-y divide-line">
                         @foreach ($empresa->socios as $socio)
                             <li class="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
-                                <span class="font-medium text-ink">{{ $socio->nome ?? 'Sócio' }} @if ($socio->documentoMascarado)<span class="font-mono text-[12.5px] text-ink-muted">({{ $socio->documentoMascarado }})</span>@endif</span>
+                                <span class="font-medium text-ink">
+                                    {{-- Sócio PF (CPF mascarado): leva à página da pessoa provável (chave opaca, sem nome/CPF na URL). --}}
+                                    @if ($socio->chavePessoa())
+                                        <a href="{{ route('pessoas.perfil', $socio->chavePessoa()) }}" wire:navigate class="hover:underline">{{ $socio->nome }}</a>
+                                    @else
+                                        {{ $socio->nome ?? 'Sócio' }}
+                                    @endif
+                                    @if ($socio->documentoMascarado)<span class="font-mono text-[12.5px] text-ink-muted">({{ $socio->documentoMascarado }})</span>@endif
+                                </span>
                                 <span class="text-ink-muted">{{ collect([$socio->qualificacao, $socio->dataEntrada ? 'desde '.\Illuminate\Support\Carbon::parse($socio->dataEntrada)->format('d/m/Y') : null])->filter()->implode(' · ') }}</span>
                             </li>
                         @endforeach
